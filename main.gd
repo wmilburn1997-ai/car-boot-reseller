@@ -137,6 +137,7 @@ var package_table = [
 ]
 
 var root_vbox
+var page_scroll
 var stat_labels = {}
 var body
 var footer_label
@@ -363,12 +364,19 @@ func build_ui():
     add_nav_button(nav, "Shop", Callable(self, "show_shop"))
     add_nav_button(nav, " Collection", Callable(self, "show_collection_log"))
     add_nav_button(nav, "Achievements", Callable(self, "show_achievements"))
+    add_nav_button(nav, "Patch Notes", Callable(self, "show_patch_notes"))
     add_nav_button(nav, "End Day", Callable(self, "end_day"))
 
+    page_scroll = ScrollContainer.new()
+    page_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    page_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    root_vbox.add_child(page_scroll)
+    remember_scroll(page_scroll)
+
     body = VBoxContainer.new()
-    body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     body.add_theme_constant_override("separation", 7)
-    root_vbox.add_child(body)
+    page_scroll.add_child(body)
 
     status_label = Label.new()
     status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -384,6 +392,33 @@ func build_ui():
     footer_label.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
     root_vbox.add_child(footer_label)
     update_header()
+
+func make_icon(kind, color):
+    var icon = Control.new()
+    icon.custom_minimum_size = Vector2(18, 18)
+    icon.draw.connect(Callable(self, "_draw_icon").bind(icon, kind, color))
+    icon.queue_redraw()
+    return icon
+
+func _draw_icon(icon, kind, color):
+    var shade = Color(0, 0, 0, 0.35)
+    match kind:
+        "cash":
+            icon.draw_circle(Vector2(9, 9), 8, color)
+            icon.draw_arc(Vector2(9, 9), 5, 0, TAU, 20, shade, 1.5, true)
+        "carry":
+            var pts = PackedVector2Array([Vector2(4, 7), Vector2(14, 7), Vector2(15, 17), Vector2(3, 17)])
+            icon.draw_colored_polygon(pts, color)
+            icon.draw_rect(Rect2(6, 2, 6, 5), color)
+            icon.draw_line(Vector2(6, 2), Vector2(6, 7), shade, 1.0)
+            icon.draw_line(Vector2(12, 2), Vector2(12, 7), shade, 1.0)
+        "storage":
+            icon.draw_rect(Rect2(3, 6, 10, 10), color, false, 2.0)
+            icon.draw_rect(Rect2(6, 3, 10, 10), color, false, 2.0)
+            icon.draw_line(Vector2(3, 6), Vector2(6, 3), color, 2.0)
+            icon.draw_line(Vector2(13, 6), Vector2(16, 3), color, 2.0)
+            icon.draw_line(Vector2(3, 16), Vector2(6, 13), color, 2.0)
+            icon.draw_line(Vector2(13, 16), Vector2(16, 13), color, 2.0)
 
 func add_stat_chip(parent, key, tooltip):
     var pill = PanelContainer.new()
@@ -415,17 +450,23 @@ func add_stat_chip(parent, key, tooltip):
     sb.content_margin_bottom = 4
     pill.add_theme_stylebox_override("panel", sb)
     parent.add_child(pill)
+    var row = HBoxContainer.new()
+    row.add_theme_constant_override("separation", 6)
+    pill.add_child(row)
+    if key == "cash" or key == "carry" or key == "storage":
+        var icon_color = border
+        row.add_child(make_icon(key, icon_color))
     var lbl = Label.new()
     lbl.tooltip_text = tooltip
     lbl.add_theme_font_size_override("font_size", 14)
     lbl.add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
-    pill.add_child(lbl)
+    row.add_child(lbl)
     stat_labels[key] = lbl
 
 func add_nav_button(parent, text, callback):
     var b = Button.new()
     b.text = text
-    b.pressed.connect(func(): last_scroll_value = 0.0)
+    b.pressed.connect(func(): last_scroll_value = 0.0; page_scroll.scroll_vertical = 0)
     b.pressed.connect(callback)
     style_button(b, "nav")
     parent.add_child(b)
@@ -769,7 +810,8 @@ func generate_item(seller):
         "haggle_result": "",
         "haggle_savings": 0.0,
         "extra_spend": 0.0,
-        "condition_price_note": ""
+        "condition_price_note": "",
+        "locked_gamble_hint": 0.20
     }
 
 func get_fault_chance(name, category, condition, seller_mult):
@@ -891,20 +933,11 @@ func show_stall():
     info.text = "Revealed %d/%d  •  Crowd %d%%  •  Packs up %s  •  Carry %d/%d  •  Mystery packages %d" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"]), carry_used, bag_upgrades[bag_level]["capacity"], mystery_packages_left]
     body.add_child(info)
 
-    var scroll = ScrollContainer.new()
-    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-    body.add_child(scroll)
-    remember_scroll(scroll)
-    var list = VBoxContainer.new()
-    list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    list.add_theme_constant_override("separation", 4)
-    scroll.add_child(list)
 
     for i in range(stall["revealed"]):
         var item = stall["stock"][i]
         var panel = make_card()
-        list.add_child(panel)
+        body.add_child(panel)
         var card = VBoxContainer.new()
         card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         card.add_theme_constant_override("separation", 3)
@@ -965,7 +998,7 @@ func show_stall():
             research_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
             research_result.add_theme_font_size_override("normal_font_size", 13)
             research_result.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
-            research_result.text = "Researched Prices: %s  •  [color=#e8c15a]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], gamble_hint_chance(item) * 100.0]
+            research_result.text = "Researched Prices: %s  •  [color=#e8c15a]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
             card.add_child(research_result)
 
         var top_row = HFlowContainer.new()
@@ -1049,7 +1082,7 @@ func show_stall():
 
         var look = Button.new()
         var look_accuracy = int(float(eye_upgrades[eye_level]["accuracy"]) * 100.0)
-        look.text = "Look %d%% | E1" % look_accuracy if not item["quick_look_done"] else "Looked"
+        look.text = "Inspect %d%% | E1" % look_accuracy if not item["quick_look_done"] else "Inspected"
         look.disabled = item["quick_look_done"]
         look.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         look.tooltip_text = "Cheap first impression of Condition. Can genuinely be wrong at this accuracy — never reveals the exact score."
@@ -1111,8 +1144,8 @@ func quick_look(index):
 
     item["quick_look_accuracy"] = accuracy
     item["quick_look_roll"] = roll
-    item["quick_look_note"] = "Look %d%%: %s" % [int(accuracy * 100.0), clue]
-    record_rng("Quick Look accuracy: %.1f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "ACCURATE" if accurate else "INACCURATE"])
+    item["quick_look_note"] = "Inspect %d%%: %s" % [int(accuracy * 100.0), clue]
+    record_rng("Inspect accuracy: %.1f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "ACCURATE" if accurate else "INACCURATE"])
     set_status(item["quick_look_note"])
     show_stall()
 
@@ -1156,6 +1189,7 @@ func prebuy_research(index):
     day_stats["research"] += 1.0
     item["basic_researched"] = true
     item["basic_comps"] = make_comps(item, false)
+    item["locked_gamble_hint"] = gamble_hint_chance(item)
     rival_pressure(0.07)
     show_stall()
 
@@ -1297,20 +1331,11 @@ func show_stall_list():
         body.add_child(closing)
         return
 
-    var scroll = ScrollContainer.new()
-    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-    body.add_child(scroll)
-    remember_scroll(scroll)
-    var list = VBoxContainer.new()
-    list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    list.add_theme_constant_override("separation", 7)
-    scroll.add_child(list)
 
     for i in range(stalls.size()):
         var stall = stalls[i]
         var panel = make_card()
-        list.add_child(panel)
+        body.add_child(panel)
         var row = HFlowContainer.new()
         row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         row.add_theme_constant_override("separation", 10)
@@ -1401,6 +1426,8 @@ func buy_item(index):
     day_stats["buy_spend"] += item["asking"]
     day_stats["items_bought"] += 1
     item["paid"] = item["asking"]
+    if item["haggle_result"] == "accepted":
+        total_haggled_savings += float(item["haggle_savings"])
     carry_used += size_units(item)
     inventory.append(item)
     stall["stock"].remove_at(index)
@@ -1514,7 +1541,7 @@ func show_special_offer():
     var note = Label.new()
     note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    note.text = "One-off offer — no Quick Look, Research or haggling available. Decide now, before it's gone."
+    note.text = "One-off offer — no Inspect, Research or haggling available. Decide now, before it's gone."
     note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     card.add_child(note)
@@ -1554,8 +1581,6 @@ func accept_special_offer():
     day_stats["buy_spend"] += item["asking"]
     day_stats["items_bought"] += 1
     item["paid"] = item["asking"]
-    if item["haggle_result"] == "accepted":
-        total_haggled_savings += float(item["haggle_savings"])
     carry_used += size_units(item)
     inventory.append(item)
     register_collection(item)
@@ -1606,20 +1631,11 @@ func show_inventory():
         body.add_child(empty)
         return
 
-    var scroll = ScrollContainer.new()
-    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-    body.add_child(scroll)
-    remember_scroll(scroll)
-    var list = VBoxContainer.new()
-    list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    list.add_theme_constant_override("separation", 8)
-    scroll.add_child(list)
 
     for i in range(inventory.size()):
         var item = inventory[i]
         var panel = make_card()
-        list.add_child(panel)
+        body.add_child(panel)
         var card = VBoxContainer.new()
         card.add_theme_constant_override("separation", 5)
         panel.add_child(card)
@@ -1738,23 +1754,19 @@ func show_inventory():
             deep_button.text = "Deep Researched"
             deep_button.disabled = true
         else:
-            deep_button.text = "Deep Research £9 | E12"
-            deep_button.pressed.connect(Callable(self, "deep_research").bind(i))
-        deep_button.tooltip_text = "Digs into exact model/variant details. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."
-        deep_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        style_button(deep_button, "action")
-        actions.add_child(deep_button)
-        if not item["deep_researched"]:
             var deep_knowledge = float(category_knowledge.get(item["category"], 5))
             var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
-            var deep_odds_preview = Label.new()
-            deep_odds_preview.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-            deep_odds_preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-            deep_odds_preview.add_theme_font_size_override("font_size", 12)
-            deep_odds_preview.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
-            deep_odds_preview.text = "Discovery %.0f%%  •  Rare gamble 20%% (15%% x2-3, 4%% x3-5, 1%% x5-10)" % (deep_chance * 100.0)
-            card.add_child(deep_odds_preview)
-        elif item["rare_variant_hit"]:
+            var real_rare_chance = 0.20
+            if item["basic_researched"]:
+                real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.03, 0.35)
+            deep_button.text = "Deep Research £9 | E12\nDiscovery %.0f%% | Rare %.0f%%" % [deep_chance * 100.0, real_rare_chance * 100.0]
+            deep_button.pressed.connect(Callable(self, "deep_research").bind(i))
+        deep_button.tooltip_text = "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."
+        deep_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        style_button(deep_button, "action")
+        deep_button.custom_minimum_size.y = 48
+        actions.add_child(deep_button)
+        if item["deep_researched"] and item["rare_variant_hit"]:
             var rare_hit_line = Label.new()
             rare_hit_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
             rare_hit_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1769,20 +1781,21 @@ func show_inventory():
                 test_button.text = "Tested"
                 test_button.disabled = true
             else:
-                test_button.text = "Test £2 | E5"
+                test_button.text = "Test £2 | E5\nFault chance: %.0f%%" % (float(item["fault_chance"]) * 100.0)
                 test_button.pressed.connect(Callable(self, "test_item").bind(i))
+                test_button.custom_minimum_size.y = 48
             test_button.tooltip_text = "Reveals whether this electronic item actually works. Required before it can be listed."
             test_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
             style_button(test_button, "action")
             actions.add_child(test_button)
-            if not item["tested"]:
-                var fault_preview = Label.new()
-                fault_preview.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-                fault_preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-                fault_preview.add_theme_font_size_override("font_size", 12)
-                fault_preview.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
-                fault_preview.text = "Fault chance: %.0f%%" % (float(item["fault_chance"]) * 100.0)
-                card.add_child(fault_preview)
+            if item["tested"] and item["test_note"] != "":
+                var test_note_line = Label.new()
+                test_note_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+                test_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+                test_note_line.add_theme_font_size_override("font_size", 13)
+                test_note_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+                test_note_line.text = item["test_note"]
+                card.add_child(test_note_line)
 
         var auth_button = Button.new()
         if item["auth_attempted"]:
@@ -2129,16 +2142,21 @@ func deep_research(index):
     var rare_roll = rng.randf()
     var rare_mult = 1.0
     var rare_tier = ""
-    if rare_roll < 0.01:
+    var total_chance = 0.20
+    if item["basic_researched"]:
+        total_chance = clamp(float(item["locked_gamble_hint"]), 0.03, 0.35)
+    var exceptional_cut = total_chance * 0.05
+    var significant_cut = total_chance * 0.20
+    if rare_roll < exceptional_cut:
         rare_mult = rng.randf_range(5.0, 10.0)
         rare_tier = "EXCEPTIONAL rare variant"
-    elif rare_roll < 0.05:
+    elif rare_roll < exceptional_cut + significant_cut:
         rare_mult = rng.randf_range(3.0, 5.0)
         rare_tier = "significant rare variant"
-    elif rare_roll < 0.20:
+    elif rare_roll < total_chance:
         rare_mult = rng.randf_range(2.0, 3.0)
         rare_tier = "rare variant"
-    record_rng("Deep research rare-variant chance: 20.0%% | Rolled: %.2f%% | Result: %s" % [rare_roll * 100.0, ("%s x%.1f" % [rare_tier, rare_mult]) if rare_mult > 1.0 else "no rare variant"])
+    record_rng("Deep research rare-variant chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [total_chance * 100.0, rare_roll * 100.0, ("%s x%.1f" % [rare_tier, rare_mult]) if rare_mult > 1.0 else "no rare variant"])
     if rare_mult > 1.0:
         item["true_value"] = float(item["true_value"]) * rare_mult
         after = estimate_identified_potential(item)
@@ -2175,7 +2193,7 @@ func test_item(index):
     var line = "Fault chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [item["fault_chance"] * 100.0, item["fault_roll"] * 100.0, result_text]
     record_rng(line)
     var after = estimate_identified_potential(item)
-    set_status("TEST COMPLETE — %s | Selling potential £%d–£%d -> £%d–£%d." % [line, before[0], before[1], after[0], after[1]])
+    item["test_note"] = "Test Complete — %s. Selling price %s: £%d–£%d -> £%d–£%d." % [line, ("decreased" if after[1] < before[1] else "unchanged"), before[0], before[1], after[0], after[1]]
     show_inventory()
 
 func fault_multiplier(severity):
@@ -2433,6 +2451,8 @@ func resolve_item_sale(item, sale_chance):
             return_chance += 0.06
         else:
             return_chance += 0.14
+    if not item["condition_checked"]:
+        return_chance += 0.12
     var return_roll = rng.randf()
     var returned = return_roll < return_chance
     record_rng("Buyer return chance: %.2f%% | Rolled: %.2f%% | Result: %s" % [return_chance * 100.0, return_roll * 100.0, "RETURN" if returned else "NO RETURN"])
@@ -2575,27 +2595,16 @@ func show_shop():
     var upkeep_note = Label.new()
     upkeep_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     upkeep_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    upkeep_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    upkeep_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     upkeep_note.text = "Current daily business upkeep: £%.2f (scales with total upgrade levels owned — a bigger operation costs more to run every day, on top of rent)." % compute_upkeep()
     upkeep_note.add_theme_color_override("font_color", Color(0.85,0.68,0.55,1.0))
     body.add_child(upkeep_note)
-    var scroll = ScrollContainer.new()
-    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-    body.add_child(scroll)
-    remember_scroll(scroll)
-    var list = VBoxContainer.new()
-    list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    list.add_theme_constant_override("separation", 10)
-    scroll.add_child(list)
-    add_upgrade_card("Car Boot Carrying", bag_upgrades, bag_level, "bag", list)
-    add_upgrade_card("Home Storage", storage_upgrades, storage_level, "storage", list)
-    add_upgrade_card("Repair Tools", toolbox_upgrades, toolbox_level, "toolbox", list)
-    add_upgrade_card("Quick Look Skill", eye_upgrades, eye_level, "eye", list)
-    add_upgrade_card("Selling Fees", fee_upgrades, fee_level, "fee", list)
-    add_scaling_upgrade_card("Package Insight", package_insight_level, PACKAGE_INSIGHT_MAX, package_insight_cost(package_insight_level), "Shifts Mystery Package odds away from Poor and into better tiers. Current: Poor reduced by %d%%, redistributed mostly to Average/Good." % package_insight_level, "package_insight", list)
-    add_scaling_upgrade_card("Persuasion Knowledge", persuasion_level, PERSUASION_MAX, persuasion_cost(persuasion_level), "A flat bonus to your acceptance chance on every haggle offer. Current: +%d%%." % persuasion_level, "persuasion", list)
+    add_upgrade_card("Car Boot Carrying", bag_upgrades, bag_level, "bag")
+    add_upgrade_card("Home Storage", storage_upgrades, storage_level, "storage")
+    add_upgrade_card("Repair Tools", toolbox_upgrades, toolbox_level, "toolbox")
+    add_upgrade_card("Inspect Skill", eye_upgrades, eye_level, "eye")
+    add_upgrade_card("Selling Fees", fee_upgrades, fee_level, "fee")
+    add_scaling_upgrade_card("Package Insight", package_insight_level, PACKAGE_INSIGHT_MAX, package_insight_cost(package_insight_level), "Shifts Mystery Package odds away from Poor and into better tiers. Current: Poor reduced by %d%%, redistributed mostly to Average/Good." % package_insight_level, "package_insight")
+    add_scaling_upgrade_card("Persuasion Knowledge", persuasion_level, PERSUASION_MAX, persuasion_cost(persuasion_level), "A flat bonus to your acceptance chance on every haggle offer. Current: +%d%%." % persuasion_level, "persuasion")
 
 func add_scaling_upgrade_card(title, level, max_level, cost, description, kind, target = null):
     if target == null:
@@ -2676,7 +2685,7 @@ func add_upgrade_card(title, data, level, kind, target = null):
     elif kind == "storage":
         description.text = "Home inventory capacity %d space." % data[level]["capacity"]
     elif kind == "eye":
-        description.text = "Quick Look accuracy %d%%. A Look can still be wrong and never reveals exact Condition." % int(float(data[level]["accuracy"]) * 100.0)
+        description.text = "Inspect accuracy %d%%. An Inspect can still be wrong and never reveals exact Condition." % int(float(data[level]["accuracy"]) * 100.0)
     elif kind == "fee":
         description.text = "Platform fee %.1f%% on every sale. Lower fees compound the more you sell." % (float(data[level]["fee"]) * 100.0)
     else:
@@ -2734,6 +2743,56 @@ func buy_upgrade(kind):
     set_status("UPGRADE PURCHASED.")
     show_shop()
 
+var patch_notes = [
+    {"version": "Latest", "notes": [
+        "Fixed: Haggled Savings achievement wasn't tracking at all — it was wired to the wrong purchase path (special offers instead of normal buys)",
+        "Selling an item without ever checking Condition now carries a real extra return risk",
+        "The 'Rare-variant gamble' shown after Basic Research is now real — it directly sets your Deep Research odds instead of being flavor text",
+        "Test and Deep Research buttons now show their odds directly on the button; results appear as blue text in the same place as other research results",
+        "Renamed 'Quick Look' to 'Inspect' throughout",
+        "Removed nested scrollboxes — the whole page now scrolls as one, with Cash/Carry/Storage/nav fixed at the top",
+        "Added this Patch Notes screen",
+    ]},
+    {"version": "Earlier", "notes": [
+        "Mobile support: Web export, real touch-drag scrolling, numeric keyboard on price fields, responsive layout for phone portrait/landscape",
+        "Haggle overhaul: player-chosen offer price with a live acceptance %, escalating consequences for aggressive lowballing",
+        "Quick Sell, Condition now visibly affects price, postage rebalanced for cheap items, colored profit/Buyer Interest throughout",
+        "Header redesigned with colored stat pills and hand-drawn icons for Cash/Carry/Storage",
+        "Shop economy expanded (Selling Fees, Package Insight, Persuasion Knowledge tracks) for a longer game",
+        "Bankruptcy, business upkeep, and haggle-backfire risk added for a harder long game",
+    ]},
+]
+
+func show_patch_notes():
+    current_screen_name = "show_patch_notes"
+    clear_body()
+    update_header()
+    var title = Label.new()
+    title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    title.add_theme_font_size_override("font_size", 20)
+    title.text = "PATCH NOTES"
+    body.add_child(title)
+    for entry in patch_notes:
+        var panel = make_card()
+        body.add_child(panel)
+        var box = VBoxContainer.new()
+        box.add_theme_constant_override("separation", 4)
+        panel.add_child(box)
+        var version_label = Label.new()
+        version_label.add_theme_font_size_override("font_size", 15)
+        version_label.text = entry["version"]
+        box.add_child(version_label)
+        for note in entry["notes"]:
+            var note_label = Label.new()
+            note_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+            note_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+            note_label.add_theme_font_size_override("font_size", 13)
+            note_label.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+            note_label.text = "- " + note
+            box.add_child(note_label)
+    footer_label.text = ""
+
 func show_sold_history():
     current_screen_name = "show_sold_history"
     clear_body()
@@ -2773,15 +2832,6 @@ func show_collection_log():
     title.text = " COLLECTION LOG — %d/%d discovered" % [discovered_log.size(), total_possible]
     body.add_child(title)
 
-    var scroll = ScrollContainer.new()
-    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-    body.add_child(scroll)
-    remember_scroll(scroll)
-    var list = VBoxContainer.new()
-    list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    list.add_theme_constant_override("separation", 4)
-    scroll.add_child(list)
 
     var entries = []
     for family in item_families:
@@ -2805,7 +2855,7 @@ func show_collection_log():
         line.text = "%s%s | %s | %s" % [prefix, entry["name"], entry["category"], odds]
         if not entry["discovered"]:
             line.add_theme_color_override("font_color", Color(0.42,0.47,0.55,1.0))
-        list.add_child(line)
+        body.add_child(line)
 
 func sort_log(a, b):
     return int(a["one_in"]) > int(b["one_in"])
@@ -3031,14 +3081,6 @@ func show_day_summary():
         sold_title.add_theme_font_size_override("font_size", 16)
         sold_title.text = "SOLD TODAY (%d)" % sold_today.size()
         body.add_child(sold_title)
-        var sold_scroll = ScrollContainer.new()
-        sold_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-        sold_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-        sold_scroll.custom_minimum_size = Vector2(0, 120)
-        body.add_child(sold_scroll)
-        var sold_list = VBoxContainer.new()
-        sold_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        sold_scroll.add_child(sold_list)
         for sale in sold_today:
             var sold_condition_text = "Unknown"
             if sale["condition_checked"]:
@@ -3050,14 +3092,14 @@ func show_day_summary():
             sold_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
             sold_line.add_theme_font_size_override("font_size", 13)
             sold_line.text = "• %s | Sold £%.2f | Paid £%.2f | Net £%.2f | Profit %+.2f | Condition %s" % [sale["name"], sale["price"], sale["paid"], net, profit, sold_condition_text]
-            sold_list.add_child(sold_line)
+            body.add_child(sold_line)
             var cost_line = Label.new()
             cost_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
             cost_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
             cost_line.add_theme_font_size_override("font_size", 12)
             cost_line.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
             cost_line.text = "    Fee £%.2f  •  Postage £%.2f  •  Insurance £%.2f  •  Packaging £%.2f" % [sale["fee"], sale["postage"], sale["insurance"], sale["packaging"]]
-            sold_list.add_child(cost_line)
+            body.add_child(cost_line)
     if day_stats["rng_events"].size() > 0:
         var rng_title = Label.new()
         rng_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
