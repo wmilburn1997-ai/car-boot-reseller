@@ -359,7 +359,7 @@ func build_ui():
 	end_day_button.custom_minimum_size = Vector2(0, 28)
 	end_day_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	end_day_button.size_flags_stretch_ratio = 1.0
-	end_day_button.add_theme_font_size_override("font_size", 12)
+	end_day_button.add_theme_font_size_override("font_size", 14)
 	end_day_button.pressed.connect(end_day)
 	secondary_row.add_child(end_day_button)
 
@@ -422,7 +422,7 @@ func build_ui():
 	footer_label = Label.new()
 	footer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	footer_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer_label.add_theme_font_size_override("font_size", 12)
+	footer_label.add_theme_font_size_override("font_size", 15)
 	footer_label.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
 	root_vbox.add_child(footer_label)
 	update_header()
@@ -505,13 +505,20 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 	parent.add_child(pill)
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
+	if compact:
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
 	pill.add_child(row)
 	if key == "cash" or key == "carry" or key == "storage":
 		var icon_color = border
 		row.add_child(make_icon(key, icon_color))
 	var lbl = Label.new()
 	lbl.tooltip_text = tooltip
-	lbl.add_theme_font_size_override("font_size", 12 if compact else 15)
+	lbl.add_theme_font_size_override("font_size", 14 if compact else 15)
+	if compact:
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
 	row.add_child(lbl)
 	stat_labels[key] = lbl
@@ -981,7 +988,7 @@ func show_stall():
 	var info = Label.new()
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_font_size_override("font_size", 12)
+	info.add_theme_font_size_override("font_size", 14)
 	info.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
 	info.text = "Revealed %d/%d  •  Crowd %d%%  •  Packs up %s  •  Carry %d/%d  •  Mystery packages %d" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"]), carry_used, bag_upgrades[bag_level]["capacity"], mystery_packages_left]
 	body.add_child(info)
@@ -1016,7 +1023,7 @@ func show_stall():
 		var state_line = Label.new()
 		state_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		state_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		state_line.add_theme_font_size_override("font_size", 12)
+		state_line.add_theme_font_size_override("font_size", 14)
 		state_line.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
 		state_line.text = "%s  •  Condition: %s  •  Function: %s" % [item["category"], condition_text, function_text_value]
 		card.add_child(state_line)
@@ -1025,7 +1032,7 @@ func show_stall():
 			var defect_line = Label.new()
 			defect_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			defect_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			defect_line.add_theme_font_size_override("font_size", 12)
+			defect_line.add_theme_font_size_override("font_size", 14)
 			if item["fault"]:
 				defect_line.text = "[!] Hidden flaw found: %s" % item["fault_severity"]
 				defect_line.add_theme_color_override("font_color", Color(0.92,0.55,0.45,1.0))
@@ -1038,7 +1045,7 @@ func show_stall():
 			var look_result = Label.new()
 			look_result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			look_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			look_result.add_theme_font_size_override("font_size", 12)
+			look_result.add_theme_font_size_override("font_size", 14)
 			look_result.text = item["quick_look_note"]
 			look_result.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
 			card.add_child(look_result)
@@ -1049,7 +1056,7 @@ func show_stall():
 			research_result.fit_content = true
 			research_result.scroll_active = false
 			research_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			research_result.add_theme_font_size_override("normal_font_size", 13)
+			research_result.add_theme_font_size_override("normal_font_size", 15)
 			research_result.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
 			research_result.text = "Researched Prices: %s  •  [color=#e8c15a]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
 			card.add_child(research_result)
@@ -1709,7 +1716,7 @@ func show_inventory():
 		var badge_line = Label.new()
 		badge_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		badge_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		badge_line.add_theme_font_size_override("font_size", 12)
+		badge_line.add_theme_font_size_override("font_size", 14)
 		badge_line.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
 		badge_line.text = "%s  •  Space %d  •  Trend %+.0f%%" % [item["category"], size_units(item), (float(current_trends.get(item["category"], 1.0)) - 1.0) * 100.0]
 		card.add_child(badge_line)
@@ -1722,14 +1729,14 @@ func show_inventory():
 		var status_line = Label.new()
 		status_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		status_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		status_line.add_theme_font_size_override("font_size", 13)
+		status_line.add_theme_font_size_override("font_size", 15)
 		status_line.text = "Condition: %s  •  Function: %s  •  %s" % [inv_condition_text, function_status(item), item["auth_status"]]
 		card.add_child(status_line)
 
 		var details = Label.new()
 		details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		details.add_theme_font_size_override("font_size", 13)
+		details.add_theme_font_size_override("font_size", 15)
 		details.text = "Est. value £%d–£%d  •  Buyer Interest: %s  •  %s" % [potential[0], potential[1], buyer_interest_label(item, preview_price), listed_text]
 		card.add_child(details)
 
@@ -1737,7 +1744,7 @@ func show_inventory():
 			var condition_note_line = Label.new()
 			condition_note_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			condition_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			condition_note_line.add_theme_font_size_override("font_size", 13)
+			condition_note_line.add_theme_font_size_override("font_size", 15)
 			condition_note_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
 			condition_note_line.text = item["condition_price_note"]
 			card.add_child(condition_note_line)
@@ -1746,7 +1753,7 @@ func show_inventory():
 			var inv_defect_line = Label.new()
 			inv_defect_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			inv_defect_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			inv_defect_line.add_theme_font_size_override("font_size", 12)
+			inv_defect_line.add_theme_font_size_override("font_size", 14)
 			if item["fault"]:
 				inv_defect_line.text = "[!] Hidden flaw found: %s" % item["fault_severity"]
 				inv_defect_line.add_theme_color_override("font_color", Color(0.92,0.55,0.45,1.0))
@@ -1759,7 +1766,7 @@ func show_inventory():
 			var comps = Label.new()
 			comps.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			comps.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			comps.add_theme_font_size_override("font_size", 13)
+			comps.add_theme_font_size_override("font_size", 15)
 			comps.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
 			comps.text = "Researched Prices: %s" % item["basic_comps"]
 			card.add_child(comps)
@@ -1767,7 +1774,7 @@ func show_inventory():
 			var note = Label.new()
 			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			note.add_theme_font_size_override("font_size", 13)
+			note.add_theme_font_size_override("font_size", 15)
 			note.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
 			note.text = item["research_note"]
 			card.add_child(note)
@@ -1919,7 +1926,7 @@ func add_listing_controls(card, index, item, potential):
 		breakdown_live.fit_content = true
 		breakdown_live.scroll_active = false
 		breakdown_live.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		breakdown_live.add_theme_font_size_override("normal_font_size", 13)
+		breakdown_live.add_theme_font_size_override("normal_font_size", 15)
 		breakdown_live.add_theme_color_override("default_color", Color(0.72,0.78,0.85,1.0))
 		breakdown_live.text = format_sale_breakdown(item, float(item["listing"])) + "\n" + format_sale_estimate(item, float(item["listing"]))
 		card.add_child(breakdown_live)
@@ -1943,7 +1950,7 @@ func add_listing_controls(card, index, item, potential):
 	breakdown.fit_content = true
 	breakdown.scroll_active = false
 	breakdown.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	breakdown.add_theme_font_size_override("normal_font_size", 13)
+	breakdown.add_theme_font_size_override("normal_font_size", 15)
 	breakdown.add_theme_color_override("default_color", Color(0.72,0.78,0.85,1.0))
 	breakdown.text = format_sale_breakdown(item, initial_value) + "\n" + format_sale_estimate(item, initial_value)
 
@@ -2797,6 +2804,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 08/09/2026 22:34", "notes": [
+		"Improved mobile readability: increased smaller gameplay, research, condition, sale-breakdown and RNG text sizes",
+		"Energy, Rep, Listed and Day are now larger and centred in the second HUD row; End Day text increased to match",
+	]},
 	{"version": "Latest — 08/09/2026 21:56", "notes": [
 		"Header spacing polished for mobile: Cash, Carry and Storage now fill the entire first row evenly; Energy, Rep, Listed, Day and End Day fill the entire second row evenly",
 	]},
