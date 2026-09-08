@@ -338,15 +338,15 @@ func build_ui():
 	header_vbox.add_theme_constant_override("separation", 6)
 	header_row.add_child(header_vbox)
 
-	var primary_row = HFlowContainer.new()
-	primary_row.add_theme_constant_override("separation", 10)
+	var primary_row = HBoxContainer.new()
+	primary_row.add_theme_constant_override("separation", 8)
 	header_vbox.add_child(primary_row)
 	add_stat_chip(primary_row, "cash", "Cash on hand. Staying negative accrues daily overdraft interest, and 4 consecutive days in the red ends the run.")
 	add_stat_chip(primary_row, "carry", "Space used in your car-boot bag today vs its capacity. Upgrade capacity in the Shop.")
 	add_stat_chip(primary_row, "storage", "Space used in home storage vs its capacity. Upgrade capacity in the Shop.")
 
-	var secondary_row = HFlowContainer.new()
-	secondary_row.add_theme_constant_override("separation", 6)
+	var secondary_row = HBoxContainer.new()
+	secondary_row.add_theme_constant_override("separation", 5)
 	header_vbox.add_child(secondary_row)
 	add_stat_chip(secondary_row, "energy", "Energy left today. Most actions cost some; it refills to 100 at the start of each day.", true)
 	add_stat_chip(secondary_row, "rep", "Reputation. Clean sales raise it, returns lower it. Higher reputation nudges Buyer Interest up slightly.", true)
@@ -356,8 +356,10 @@ func build_ui():
 	end_day_button.text = "End Day"
 	end_day_button.tooltip_text = "End the day, resolve pending sales, and start fresh tomorrow."
 	style_button(end_day_button, "danger")
-	end_day_button.custom_minimum_size = Vector2(0, 26)
-	end_day_button.add_theme_font_size_override("font_size", 11)
+	end_day_button.custom_minimum_size = Vector2(0, 28)
+	end_day_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	end_day_button.size_flags_stretch_ratio = 1.0
+	end_day_button.add_theme_font_size_override("font_size", 12)
 	end_day_button.pressed.connect(end_day)
 	secondary_row.add_child(end_day_button)
 
@@ -498,6 +500,8 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 	sb.content_margin_top = 2 if compact else 4
 	sb.content_margin_bottom = 2 if compact else 4
 	pill.add_theme_stylebox_override("panel", sb)
+	pill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pill.size_flags_stretch_ratio = 1.0
 	parent.add_child(pill)
 	var row = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
@@ -507,7 +511,7 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 		row.add_child(make_icon(key, icon_color))
 	var lbl = Label.new()
 	lbl.tooltip_text = tooltip
-	lbl.add_theme_font_size_override("font_size", 11 if compact else 14)
+	lbl.add_theme_font_size_override("font_size", 12 if compact else 15)
 	lbl.add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
 	row.add_child(lbl)
 	stat_labels[key] = lbl
@@ -2793,7 +2797,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
-	{"version": "Latest — 08/09/2026 21:39", "notes": [
+	{"version": "Latest — 08/09/2026 21:56", "notes": [
+		"Header spacing polished for mobile: Cash, Carry and Storage now fill the entire first row evenly; Energy, Rep, Listed, Day and End Day fill the entire second row evenly",
+	]},
+	{"version": "Previous Update — 08/09/2026 21:39", "notes": [
 		"Fixed Jersey 10 font loading for Web/mobile exports by using Godot's imported font resource",
 	]},
 	{"version": "Previous Update — 08/09/2026 21:33", "notes": [
