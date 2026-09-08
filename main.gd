@@ -321,23 +321,31 @@ func build_ui():
     header_row.add_theme_stylebox_override("panel", header_style)
     root_vbox.add_child(header_row)
 
-    var header_box = HFlowContainer.new()
-    header_box.add_theme_constant_override("separation", 16)
-    header_row.add_child(header_box)
+    var header_vbox = VBoxContainer.new()
+    header_vbox.add_theme_constant_override("separation", 6)
+    header_row.add_child(header_vbox)
 
-    var game_title = Label.new()
-    game_title.text = "CAR BOOT RESELLER v0.9"
-    game_title.add_theme_font_size_override("font_size", 15)
-    game_title.add_theme_color_override("font_color", Color(0.55,0.62,0.72,1.0))
-    header_box.add_child(game_title)
+    var primary_row = HFlowContainer.new()
+    primary_row.add_theme_constant_override("separation", 10)
+    header_vbox.add_child(primary_row)
+    add_stat_chip(primary_row, "cash", "Cash on hand. Staying negative accrues daily overdraft interest, and 4 consecutive days in the red ends the run.")
+    add_stat_chip(primary_row, "carry", "Space used in your car-boot bag today vs its capacity. Upgrade capacity in the Shop.")
+    add_stat_chip(primary_row, "storage", "Space used in home storage vs its capacity. Upgrade capacity in the Shop.")
 
-    add_stat_chip(header_box, "day", "In-game day and current time. The car boot closes at 12:00.")
-    add_stat_chip(header_box, "cash", "Cash on hand. Staying negative accrues daily overdraft interest, and 4 consecutive days in the red ends the run.")
-    add_stat_chip(header_box, "energy", "Energy left today. Most actions cost some; it refills to 100 at the start of each day.")
-    add_stat_chip(header_box, "rep", "Reputation. Clean sales raise it, returns lower it. Higher reputation nudges Buyer Interest up slightly.")
-    add_stat_chip(header_box, "carry", "Space used in your car-boot bag today vs its capacity. Upgrade capacity in the Shop.")
-    add_stat_chip(header_box, "storage", "Space used in home storage vs its capacity. Upgrade capacity in the Shop.")
-    add_stat_chip(header_box, "listed", "Number of items you currently have listed for sale.")
+    var secondary_row = HFlowContainer.new()
+    secondary_row.add_theme_constant_override("separation", 8)
+    header_vbox.add_child(secondary_row)
+    add_stat_chip(secondary_row, "energy", "Energy left today. Most actions cost some; it refills to 100 at the start of each day.")
+    add_stat_chip(secondary_row, "rep", "Reputation. Clean sales raise it, returns lower it. Higher reputation nudges Buyer Interest up slightly.")
+    add_stat_chip(secondary_row, "listed", "Number of items you currently have listed for sale.")
+    add_stat_chip(secondary_row, "day", "In-game day and current time. The car boot closes at 12:00.")
+    var end_day_button = Button.new()
+    end_day_button.text = "End Day"
+    end_day_button.tooltip_text = "End the day, resolve pending sales, and start fresh tomorrow."
+    style_button(end_day_button, "danger")
+    end_day_button.custom_minimum_size.y = 30
+    end_day_button.pressed.connect(end_day)
+    secondary_row.add_child(end_day_button)
 
     var nav_panel = PanelContainer.new()
     var nav_style = StyleBoxFlat.new()
@@ -360,12 +368,9 @@ func build_ui():
     add_nav_button(nav, "Stalls", Callable(self, "show_stall_list"))
     add_nav_button(nav, "Inventory", Callable(self, "show_inventory"))
     add_nav_button(nav, "£ Sold", Callable(self, "show_sold_history"))
-    add_nav_button(nav, "Trends", Callable(self, "show_trends"))
     add_nav_button(nav, "Shop", Callable(self, "show_shop"))
-    add_nav_button(nav, " Collection", Callable(self, "show_collection_log"))
-    add_nav_button(nav, "Achievements", Callable(self, "show_achievements"))
-    add_nav_button(nav, "Patch Notes", Callable(self, "show_patch_notes"))
-    add_nav_button(nav, "End Day", Callable(self, "end_day"))
+    add_nav_button(nav, "Collection", Callable(self, "show_collection_log"))
+    add_nav_button(nav, "More", Callable(self, "show_more_menu"))
 
     page_scroll = ScrollContainer.new()
     page_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -373,10 +378,24 @@ func build_ui():
     root_vbox.add_child(page_scroll)
     remember_scroll(page_scroll)
 
+    var page_content = VBoxContainer.new()
+    page_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    page_content.add_theme_constant_override("separation", 7)
+    page_scroll.add_child(page_content)
+
+    var banner_tex = load("res://banner.png")
+    if banner_tex != null:
+        var banner_rect = TextureRect.new()
+        banner_rect.texture = banner_tex
+        banner_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+        banner_rect.stretch_mode = TextureRect.STRETCH_SCALE
+        banner_rect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        page_content.add_child(banner_rect)
+
     body = VBoxContainer.new()
     body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     body.add_theme_constant_override("separation", 7)
-    page_scroll.add_child(body)
+    page_content.add_child(body)
 
     status_label = Label.new()
     status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -392,6 +411,22 @@ func build_ui():
     footer_label.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
     root_vbox.add_child(footer_label)
     update_header()
+
+func show_more_menu():
+    current_screen_name = "show_more_menu"
+    clear_body()
+    update_header()
+    var title = Label.new()
+    title.add_theme_font_size_override("font_size", 20)
+    title.text = "MORE"
+    body.add_child(title)
+    var more_row = HFlowContainer.new()
+    more_row.add_theme_constant_override("separation", 8)
+    body.add_child(more_row)
+    add_nav_button(more_row, "Trends", Callable(self, "show_trends"))
+    add_nav_button(more_row, "Achievements", Callable(self, "show_achievements"))
+    add_nav_button(more_row, "Patch Notes", Callable(self, "show_patch_notes"))
+    footer_label.text = ""
 
 func make_icon(kind, color):
     var icon = Control.new()
