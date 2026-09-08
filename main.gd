@@ -380,8 +380,9 @@ func build_ui():
 	nav_panel.add_theme_stylebox_override("panel", nav_style)
 	root_vbox.add_child(nav_panel)
 
-	var nav = HFlowContainer.new()
-	nav.add_theme_constant_override("separation", 7)
+	var nav = HBoxContainer.new()
+	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_theme_constant_override("separation", 5)
 	nav_panel.add_child(nav)
 	add_nav_button(nav, "Stall", Callable(self, "show_stall"))
 	add_nav_button(nav, "Stalls", Callable(self, "show_stall_list"))
@@ -569,6 +570,17 @@ func add_nav_button(parent, text, callback):
 	b.pressed.connect(func(): last_scroll_value = 0.0; page_scroll.scroll_vertical = 0)
 	b.pressed.connect(callback)
 	style_button(b, "nav")
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Give the longer primary destinations a little more room while keeping all six on one line.
+	if text == "Inventory":
+		b.size_flags_stretch_ratio = 1.35
+	elif text == "Stall" or text == "Stalls":
+		b.size_flags_stretch_ratio = 1.08
+	elif text == "£ Sold":
+		b.size_flags_stretch_ratio = 1.02
+	else:
+		b.size_flags_stretch_ratio = 0.92
+	b.add_theme_font_size_override("font_size", 15)
 	parent.add_child(b)
 
 func style_button(button, kind):
@@ -2869,6 +2881,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 08/09/2026 22:28", "notes": [
+		"Polished the main mobile navigation: Stall, Stalls, Inventory, £ Sold, Shop and More now fill the full row cleanly with no wasted space",
+		"Stall, Stalls and especially Inventory have been given more room while all six navigation buttons remain on one line",
+	]},
 	{"version": "Latest — 08/09/2026 22:45", "notes": [
 		"Reclaimed mobile screen space: status/help and Last RNG no longer reserve a permanent footer area",
 		"Button hold-help and RNG results now appear in a temporary bottom overlay and automatically disappear after 4 seconds",
