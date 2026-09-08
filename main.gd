@@ -296,11 +296,10 @@ func build_ui():
 	# Global UI font: Jersey 10.
 	# Keep Jersey10-Regular.ttf in res://fonts/
 	var global_theme = Theme.new()
-	var jersey_font = FontFile.new()
-	var font_error = jersey_font.load_dynamic_font("res://fonts/Jersey10-Regular.ttf")
-	if font_error == OK:
+	var jersey_font = load("res://fonts/Jersey10-Regular.ttf")
+	if jersey_font != null:
 		global_theme.default_font = jersey_font
-		# Explicitly apply the font to the UI control types used throughout the game.
+		# Use Godot's imported font resource so the same font is packaged correctly for Web exports.
 		for control_type in ["Label", "Button", "CheckButton", "CheckBox", "LineEdit", "TextEdit", "RichTextLabel", "SpinBox", "OptionButton", "MenuButton", "TooltipLabel"]:
 			global_theme.set_font("font", control_type, jersey_font)
 		theme = global_theme
@@ -2794,7 +2793,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
-	{"version": "Latest — 08/09/2026 21:33", "notes": [
+	{"version": "Latest — 08/09/2026 21:39", "notes": [
+		"Fixed Jersey 10 font loading for Web/mobile exports by using Godot's imported font resource",
+	]},
+	{"version": "Previous Update — 08/09/2026 21:33", "notes": [
 		"Added Jersey 10 as the global UI font across the game",
 	]},
 	{"version": "Previous Update", "notes": [
