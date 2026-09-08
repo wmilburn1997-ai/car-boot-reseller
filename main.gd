@@ -333,17 +333,18 @@ func build_ui():
     add_stat_chip(primary_row, "storage", "Space used in home storage vs its capacity. Upgrade capacity in the Shop.")
 
     var secondary_row = HFlowContainer.new()
-    secondary_row.add_theme_constant_override("separation", 8)
+    secondary_row.add_theme_constant_override("separation", 6)
     header_vbox.add_child(secondary_row)
-    add_stat_chip(secondary_row, "energy", "Energy left today. Most actions cost some; it refills to 100 at the start of each day.")
-    add_stat_chip(secondary_row, "rep", "Reputation. Clean sales raise it, returns lower it. Higher reputation nudges Buyer Interest up slightly.")
-    add_stat_chip(secondary_row, "listed", "Number of items you currently have listed for sale.")
-    add_stat_chip(secondary_row, "day", "In-game day and current time. The car boot closes at 12:00.")
+    add_stat_chip(secondary_row, "energy", "Energy left today. Most actions cost some; it refills to 100 at the start of each day.", true)
+    add_stat_chip(secondary_row, "rep", "Reputation. Clean sales raise it, returns lower it. Higher reputation nudges Buyer Interest up slightly.", true)
+    add_stat_chip(secondary_row, "listed", "Number of items you currently have listed for sale.", true)
+    add_stat_chip(secondary_row, "day", "In-game day and current time. The car boot closes at 12:00.", true)
     var end_day_button = Button.new()
     end_day_button.text = "End Day"
     end_day_button.tooltip_text = "End the day, resolve pending sales, and start fresh tomorrow."
     style_button(end_day_button, "danger")
-    end_day_button.custom_minimum_size.y = 30
+    end_day_button.custom_minimum_size = Vector2(0, 26)
+    end_day_button.add_theme_font_size_override("font_size", 11)
     end_day_button.pressed.connect(end_day)
     secondary_row.add_child(end_day_button)
 
@@ -369,7 +370,6 @@ func build_ui():
     add_nav_button(nav, "Inventory", Callable(self, "show_inventory"))
     add_nav_button(nav, "£ Sold", Callable(self, "show_sold_history"))
     add_nav_button(nav, "Shop", Callable(self, "show_shop"))
-    add_nav_button(nav, "Collection", Callable(self, "show_collection_log"))
     add_nav_button(nav, "More", Callable(self, "show_more_menu"))
 
     page_scroll = ScrollContainer.new()
@@ -383,8 +383,8 @@ func build_ui():
     page_content.add_theme_constant_override("separation", 7)
     page_scroll.add_child(page_content)
 
-    var banner_tex = load("res://banner.png")
-    if banner_tex != null:
+    if ResourceLoader.exists("res://banner.png"):
+        var banner_tex = load("res://banner.png")
         var banner_rect = TextureRect.new()
         banner_rect.texture = banner_tex
         banner_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
@@ -424,6 +424,7 @@ func show_more_menu():
     more_row.add_theme_constant_override("separation", 8)
     body.add_child(more_row)
     add_nav_button(more_row, "Trends", Callable(self, "show_trends"))
+    add_nav_button(more_row, "Collection", Callable(self, "show_collection_log"))
     add_nav_button(more_row, "Achievements", Callable(self, "show_achievements"))
     add_nav_button(more_row, "Patch Notes", Callable(self, "show_patch_notes"))
     footer_label.text = ""
@@ -455,7 +456,7 @@ func _draw_icon(icon, kind, color):
             icon.draw_line(Vector2(3, 16), Vector2(6, 13), color, 2.0)
             icon.draw_line(Vector2(13, 16), Vector2(16, 13), color, 2.0)
 
-func add_stat_chip(parent, key, tooltip):
+func add_stat_chip(parent, key, tooltip, compact = false):
     var pill = PanelContainer.new()
     var sb = StyleBoxFlat.new()
     var bg = Color(0.10,0.13,0.18,1.0)
@@ -479,10 +480,10 @@ func add_stat_chip(parent, key, tooltip):
     sb.corner_radius_top_right = 10
     sb.corner_radius_bottom_left = 10
     sb.corner_radius_bottom_right = 10
-    sb.content_margin_left = 10
-    sb.content_margin_right = 10
-    sb.content_margin_top = 4
-    sb.content_margin_bottom = 4
+    sb.content_margin_left = 6 if compact else 10
+    sb.content_margin_right = 6 if compact else 10
+    sb.content_margin_top = 2 if compact else 4
+    sb.content_margin_bottom = 2 if compact else 4
     pill.add_theme_stylebox_override("panel", sb)
     parent.add_child(pill)
     var row = HBoxContainer.new()
@@ -493,7 +494,7 @@ func add_stat_chip(parent, key, tooltip):
         row.add_child(make_icon(key, icon_color))
     var lbl = Label.new()
     lbl.tooltip_text = tooltip
-    lbl.add_theme_font_size_override("font_size", 14)
+    lbl.add_theme_font_size_override("font_size", 11 if compact else 14)
     lbl.add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
     row.add_child(lbl)
     stat_labels[key] = lbl
