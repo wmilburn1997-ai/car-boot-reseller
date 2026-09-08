@@ -142,6 +142,9 @@ var stat_labels = {}
 var body
 var footer_label
 var status_label
+var status_panel
+var status_hide_timer
+var tooltip_is_held = false
 
 
 var bag_level = 0
@@ -412,19 +415,56 @@ func build_ui():
 	body.add_theme_constant_override("separation", 7)
 	page_content.add_child(body)
 
+	# Transient status/RNG overlay. This no longer reserves permanent vertical space.
+	status_panel = PanelContainer.new()
+	status_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	status_panel.offset_left = 16
+	status_panel.offset_right = -16
+	status_panel.offset_top = -108
+	status_panel.offset_bottom = -14
+	status_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	status_panel.visible = false
+	var status_style = StyleBoxFlat.new()
+	status_style.bg_color = Color(0.045,0.055,0.07,0.96)
+	status_style.border_width_left = 1
+	status_style.border_width_top = 1
+	status_style.border_width_right = 1
+	status_style.border_width_bottom = 1
+	status_style.border_color = Color(0.18,0.22,0.28,1.0)
+	status_style.corner_radius_top_left = 8
+	status_style.corner_radius_top_right = 8
+	status_style.corner_radius_bottom_left = 8
+	status_style.corner_radius_bottom_right = 8
+	status_style.content_margin_left = 10
+	status_style.content_margin_right = 10
+	status_style.content_margin_top = 8
+	status_style.content_margin_bottom = 8
+	status_panel.add_theme_stylebox_override("panel", status_style)
+	add_child(status_panel)
+
+	var status_box = VBoxContainer.new()
+	status_box.add_theme_constant_override("separation", 4)
+	status_panel.add_child(status_box)
+
 	status_label = Label.new()
 	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	status_label.add_theme_font_size_override("font_size", 13)
+	status_label.add_theme_font_size_override("font_size", 15)
 	status_label.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
-	root_vbox.add_child(status_label)
+	status_box.add_child(status_label)
 
 	footer_label = Label.new()
 	footer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	footer_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer_label.add_theme_font_size_override("font_size", 15)
+	footer_label.add_theme_font_size_override("font_size", 14)
 	footer_label.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
-	root_vbox.add_child(footer_label)
+	status_box.add_child(footer_label)
+
+	status_hide_timer = Timer.new()
+	status_hide_timer.one_shot = true
+	status_hide_timer.wait_time = 4.0
+	status_hide_timer.timeout.connect(Callable(self, "_hide_status_overlay"))
+	add_child(status_hide_timer)
 	update_header()
 
 func show_more_menu():
@@ -571,12 +611,22 @@ func style_button(button, kind):
 func _on_tooltip_button_down(button):
 	if button.tooltip_text == "":
 		return
+	tooltip_is_held = true
+	if status_hide_timer != null:
+		status_hide_timer.stop()
 	tooltip_saved_text = status_label.text
 	status_label.text = button.tooltip_text
 	status_label.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
+	_show_status_overlay(false)
 
 func _on_tooltip_button_up():
-	set_status(tooltip_saved_text)
+	tooltip_is_held = false
+	status_label.text = tooltip_saved_text
+	status_label.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+	if status_label.text == "" and last_rng_line == "No RNG rolls yet.":
+		_hide_status_overlay()
+	else:
+		_show_status_overlay(true)
 
 func make_card():
 	var panel = PanelContainer.new()
@@ -622,6 +672,21 @@ func set_status(text, color = null):
 	if color == null:
 		color = Color(0.72,0.88,1.0,1.0)
 	status_label.add_theme_color_override("font_color", color)
+	_show_status_overlay(true)
+
+func _show_status_overlay(auto_hide = true):
+	if status_panel == null:
+		return
+	status_panel.visible = true
+	status_panel.move_to_front()
+	if auto_hide and not tooltip_is_held and status_hide_timer != null:
+		status_hide_timer.start()
+
+func _hide_status_overlay():
+	if tooltip_is_held:
+		return
+	if status_panel != null:
+		status_panel.visible = false
 
 func _on_scroll_changed(value):
 	last_scroll_value = value
@@ -2804,6 +2869,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 08/09/2026 22:45", "notes": [
+		"Reclaimed mobile screen space: status/help and Last RNG no longer reserve a permanent footer area",
+		"Button hold-help and RNG results now appear in a temporary bottom overlay and automatically disappear after 4 seconds",
+	]},
 	{"version": "Latest — 08/09/2026 22:34", "notes": [
 		"Improved mobile readability: increased smaller gameplay, research, condition, sale-breakdown and RNG text sizes",
 		"Energy, Rep, Listed and Day are now larger and centred in the second HUD row; End Day text increased to match",
@@ -2989,9 +3058,11 @@ func unlock_achievement(name):
 
 func record_rng(line):
 	last_rng_line = line
+	footer_label.text = "Last RNG: " + last_rng_line
 	day_stats["rng_events"].append(line)
 	if day_stats["rng_events"].size() > 12:
 		day_stats["rng_events"].pop_front()
+	_show_status_overlay(true)
 
 func chance_text(chance):
 	if chance <= 0.0:
