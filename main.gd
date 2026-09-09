@@ -661,10 +661,16 @@ func _on_tooltip_button_up():
 	if tooltip_panel != null:
 		tooltip_panel.visible = false
 
-func update_highest_max(item, action_key, new_max):
-	if new_max > float(item["highest_max_price"]):
-		item["highest_max_price"] = new_max
-		item["highest_max_action"] = action_key
+func apply_price_highlight(item, action_key, before_max, after_max):
+	item["highlight_action"] = action_key
+	item["highlight_color"] = "gold" if after_max < before_max else "yellow"
+
+func get_highlight_color(item, action_key):
+	if item["highlight_action"] != action_key:
+		return "#b8dcff"
+	if item["highlight_color"] == "gold":
+		return "#d4af37"
+	return "#f0d060"
 
 func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8dcff"):
 	var panel = PanelContainer.new()
@@ -1034,8 +1040,8 @@ func generate_item(seller):
 		"buy_block_note": "",
 		"listing_block_note": "",
 		"action_order": [],
-		"highest_max_price": 0.0,
-		"highest_max_action": "",
+		"highlight_action": "",
+		"highlight_color": "yellow",
 		"basic_comps_max": 0.0,
 		"locked_gamble_hint": 0.20,
 		"dismissed": false
@@ -1226,11 +1232,11 @@ func show_stall():
 					stall_condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
 				else:
 					stall_condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
-			card.add_child(make_completed_action_box("Condition Checked", stall_condition_note, "#f0d060" if item["highest_max_action"] == "condition" else "#b8dcff"))
+			card.add_child(make_completed_action_box("Condition Checked", stall_condition_note, get_highlight_color(item, "condition")))
 
 		if item["basic_researched"]:
 			var stall_research_note = "Researched Prices: %s  •  [color=#e08fd0]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
-			card.add_child(make_completed_action_box("Researched", stall_research_note, "#f0d060" if item["highest_max_action"] == "research" else "#b8dcff"))
+			card.add_child(make_completed_action_box("Researched", stall_research_note, get_highlight_color(item, "research")))
 
 		var top_row = HFlowContainer.new()
 		top_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1423,7 +1429,7 @@ func check_condition(index):
 	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
 	var change_word = "increased" if after_center >= before_center else "decreased"
 	item["condition_price_note"] = "Condition Checked — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
-	update_highest_max(item, "condition", float(after_check[1]))
+	apply_price_highlight(item, "condition", float(before_check[1]), float(after_check[1]))
 	var message = "CONDITION CHECK COMPLETE — Condition %d/10." % item["condition"]
 	if item["testable"]:
 		message += " Function remains unknown until testing."
@@ -1448,9 +1454,10 @@ func prebuy_research(index):
 	energy -= 2
 	current_time_minutes += 4
 	day_stats["research"] += 1.0
+	var research_before = estimate_identified_potential(item)
 	item["basic_researched"] = true
 	item["basic_comps"] = make_comps(item, false)
-	update_highest_max(item, "research", float(item["basic_comps_max"]))
+	apply_price_highlight(item, "research", float(research_before[1]), float(item["basic_comps_max"]))
 	item["locked_gamble_hint"] = gamble_hint_chance(item)
 	rival_pressure(0.07)
 	show_stall()
@@ -2005,7 +2012,7 @@ func show_inventory():
 					condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
 				else:
 					condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
-			card.add_child(make_completed_action_box("Condition Checked", condition_note, "#f0d060" if item["highest_max_action"] == "condition" else "#b8dcff"))
+			card.add_child(make_completed_action_box("Condition Checked", condition_note, get_highlight_color(item, "condition")))
 		else:
 			var inv_condition_button = Button.new()
 			inv_condition_button.text = "Condition £5 | E4"
@@ -2017,7 +2024,7 @@ func show_inventory():
 			actions.add_child(inv_condition_button)
 
 		if item["basic_researched"]:
-			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], "#f0d060" if item["highest_max_action"] == "research" else "#b8dcff"))
+			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], get_highlight_color(item, "research")))
 		else:
 			var basic_button = Button.new()
 			basic_button.text = "Research £1 | E2"
@@ -2032,7 +2039,7 @@ func show_inventory():
 			var deep_note = item["research_note"]
 			if item["rare_variant_hit"]:
 				deep_note += "\nRARE VARIANT — [color=#e08fd0]rolled %.2f%%[/color] (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
-			card.add_child(make_completed_action_box("Deep Researched", deep_note, "#f0d060" if item["highest_max_action"] == "deep_research" else "#b8dcff"))
+			card.add_child(make_completed_action_box("Deep Researched", deep_note, get_highlight_color(item, "deep_research")))
 		else:
 			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
 			var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
@@ -2366,7 +2373,7 @@ func inventory_check_condition(index):
 	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
 	var change_word = "increased" if after_center >= before_center else "decreased"
 	item["condition_price_note"] = "Condition Checked — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
-	update_highest_max(item, "condition", float(after_check[1]))
+	apply_price_highlight(item, "condition", float(before_check[1]), float(after_check[1]))
 	var message = "CONDITION CHECK COMPLETE — Condition %d/10." % item["condition"]
 	if item["testable"]:
 		message += " Function remains unknown until testing."
@@ -2392,10 +2399,11 @@ func inventory_basic_research(index):
 	energy -= 2
 	current_time_minutes += 4
 	day_stats["research"] += 1.0
+	var research_before = estimate_identified_potential(item)
 	item["basic_researched"] = true
 	item["action_order"].append("research")
 	item["basic_comps"] = make_comps(item, false)
-	update_highest_max(item, "research", float(item["basic_comps_max"]))
+	apply_price_highlight(item, "research", float(research_before[1]), float(item["basic_comps_max"]))
 	show_inventory()
 
 func deep_research(index):
@@ -2471,7 +2479,7 @@ func deep_research(index):
 		item["rare_variant_mult"] = rare_mult
 
 	item["research_note"] = "Deep Research — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] | Result: %s%s Range £%d–£%d -> £%d–£%d." % [chance * 100.0, roll * 100.0, reason, rare_text, before[0], before[1], after[0], after[1]]
-	update_highest_max(item, "deep_research", float(after[1]))
+	apply_price_highlight(item, "deep_research", float(before[1]), float(after[1]))
 	show_inventory()
 
 func test_item(index):
@@ -3060,6 +3068,9 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 17:50", "notes": [
+		"Highlight system redesigned: whichever action (Condition/Research/Deep Research) most recently ran now always takes the highlight, colored yellow if it increased the price or gold if it decreased it — replacing the old 'highest ever' comparison",
+	]},
 	{"version": "Latest — 09/09/2026 17:30", "notes": [
 		"Reverted the box reordering from last update — Condition/Research/Deep Research/Test/Authenticate now stay in their original fixed positions again",
 		"Fixed: Condition checked on the STALL page (before buying) never actually recorded the price-change note — only the Inventory version did. Now both do, so the values genuinely carry over when you buy the item",
