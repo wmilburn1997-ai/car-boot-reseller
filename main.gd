@@ -948,7 +948,9 @@ func generate_item(seller):
 		"haggle_savings": 0.0,
 		"extra_spend": 0.0,
 		"condition_price_note": "",
-		"locked_gamble_hint": 0.20
+		"auth_note": "",
+		"locked_gamble_hint": 0.20,
+		"dismissed": false
 	}
 
 func get_fault_chance(name, category, condition, seller_mult):
@@ -1073,7 +1075,10 @@ func show_stall():
 
 	for i in range(stall["revealed"]):
 		var item = stall["stock"][i]
+		if item["dismissed"]:
+			continue
 		var panel = make_card()
+		panel.gui_input.connect(Callable(self, "_on_stall_card_input").bind(panel, i))
 		body.add_child(panel)
 		var card = VBoxContainer.new()
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1090,12 +1095,22 @@ func show_stall():
 		if item["testable"]:
 			function_text_value = "Untested"
 
+		var name_row = HBoxContainer.new()
+		name_row.add_theme_constant_override("separation", 6)
+		card.add_child(name_row)
 		var name_line = Label.new()
 		name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_line.add_theme_font_size_override("font_size", 16)
 		name_line.text = "%s%s  •  £%.0f  •  Space %d" % [rarity_text, item["name"], item["asking"], size_units(item)]
-		card.add_child(name_line)
+		name_row.add_child(name_line)
+		var dismiss_button = Button.new()
+		dismiss_button.text = "×"
+		dismiss_button.tooltip_text = "Not interested — hide this item for the rest of this stall visit. Free, no time cost. It's still there for anyone else, and dismissing doesn't affect the real item pool."
+		dismiss_button.custom_minimum_size = Vector2(32, 32)
+		style_button(dismiss_button, "nav")
+		dismiss_button.pressed.connect(Callable(self, "dismiss_stall_item").bind(i))
+		name_row.add_child(dismiss_button)
 
 		var state_line = Label.new()
 		state_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1366,6 +1381,27 @@ func _adjust_haggle_value(value_edit, delta, asking, chance_label, item, seller)
 
 func _on_haggle_value_submitted(submitted_text, value_edit, asking, chance_label, item, seller):
 	_adjust_haggle_value(value_edit, 0.0, asking, chance_label, item, seller)
+
+func dismiss_stall_item(index):
+	var stall = stalls[current_stall_index]
+	if index >= stall["stock"].size():
+		return
+	stall["stock"][index]["dismissed"] = true
+	show_stall()
+
+func _on_stall_card_input(event, panel, index):
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			panel.set_meta("swipe_start", event.position)
+			panel.set_meta("swipe_total", Vector2.ZERO)
+		else:
+			if panel.has_meta("swipe_total"):
+				var total = panel.get_meta("swipe_total")
+				if total.x < -80.0 and abs(total.y) < 50.0:
+					dismiss_stall_item(index)
+	elif event is InputEventScreenDrag:
+		if panel.has_meta("swipe_total"):
+			panel.set_meta("swipe_total", panel.get_meta("swipe_total") + event.relative)
 
 func haggle_item(index, value_edit):
 	var stall = stalls[current_stall_index]
@@ -1817,6 +1853,15 @@ func show_inventory():
 		details.text = "Est. value £%d–£%d  •  Buyer Interest: %s  •  %s" % [potential[0], potential[1], buyer_interest_label(item, preview_price), listed_text]
 		card.add_child(details)
 
+		if item["quick_look_done"] and item["quick_look_note"] != "":
+			var inv_look_result = Label.new()
+			inv_look_result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			inv_look_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			inv_look_result.add_theme_font_size_override("font_size", 14)
+			inv_look_result.text = item["quick_look_note"]
+			inv_look_result.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
+			card.add_child(inv_look_result)
+
 		if item["condition_checked"] and item["condition_price_note"] != "":
 			var condition_note_line = Label.new()
 			condition_note_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1936,15 +1981,24 @@ func show_inventory():
 
 		var auth_button = Button.new()
 		if item["auth_attempted"]:
-			auth_button.text = "Authenticated"
+			auth_button.text = "Authenticated\n%s" % item["auth_status"]
 			auth_button.disabled = true
 		else:
-			auth_button.text = "Authenticate £%d | E6" % int(authentication_cost(item))
+			auth_button.text = "Authenticate £%d | E6\nAccuracy: %.0f%%" % [int(authentication_cost(item)), authentication_accuracy(item) * 100.0]
 			auth_button.pressed.connect(Callable(self, "authenticate_item").bind(i))
+			auth_button.custom_minimum_size.y = 48
 		auth_button.tooltip_text = "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."
 		auth_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		style_button(auth_button, "action")
 		actions.add_child(auth_button)
+		if item["auth_attempted"] and item["auth_note"] != "":
+			var auth_note_line = Label.new()
+			auth_note_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			auth_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			auth_note_line.add_theme_font_size_override("font_size", 13)
+			auth_note_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+			auth_note_line.text = item["auth_note"]
+			card.add_child(auth_note_line)
 
 		if toolbox_level > 0 and item["tested"] and item["fault"]:
 			var repair_button = Button.new()
@@ -2352,6 +2406,15 @@ func authentication_cost(item):
 		cost += 42.0
 	return cost
 
+func authentication_accuracy(item):
+	var cost = authentication_cost(item)
+	var accuracy = 0.84
+	if cost >= 32.0:
+		accuracy = 0.92
+	if item["special_discovered"] and item["hidden_special"] != "":
+		accuracy = 0.96
+	return accuracy
+
 func authenticate_item(index):
 	if index >= inventory.size():
 		return
@@ -2370,13 +2433,10 @@ func authenticate_item(index):
 	day_stats["authentication"] += cost
 	item["auth_attempted"] = true
 
-	var accuracy = 0.84
-	if cost >= 32.0:
-		accuracy = 0.92
-	if item["special_discovered"] and item["hidden_special"] != "":
-		accuracy = 0.96
+	var accuracy = authentication_accuracy(item)
 	var roll = rng.randf()
 	var success = roll < accuracy
+	var line = "Accuracy: %.0f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "SUCCESS" if success else "INCONCLUSIVE"]
 	record_rng("Authentication accuracy: %.1f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "SUCCESS" if success else "INCONCLUSIVE"])
 	if success:
 		if item["authentic"]:
@@ -2387,6 +2447,7 @@ func authenticate_item(index):
 			unlock_achievement("Should've Known Better")
 	else:
 		item["auth_status"] = "Inconclusive"
+	item["auth_note"] = "%s — %s" % [line, item["auth_status"]]
 	set_status("AUTHENTICATION COMPLETE — %s. This one-time attempt cannot be rerolled." % item["auth_status"])
 	show_inventory()
 
@@ -2972,10 +3033,15 @@ func show_sold_history():
 		var sold_condition_text = "Unknown"
 		if sale["condition_checked"]:
 			sold_condition_text = "%d/10" % sale["condition"]
-		var line = Label.new()
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var costs_total = float(sale.get("fee", 0.0)) + float(sale.get("postage", 0.0)) + float(sale.get("insurance", 0.0)) + float(sale.get("packaging", 0.0))
+		var profit = float(sale["price"]) - costs_total - float(sale.get("paid", 0.0)) - float(sale.get("extra_spend", 0.0))
+		var profit_color = "#8cd98f" if profit >= 0.0 else "#e88c7a"
+		var line = RichTextLabel.new()
+		line.bbcode_enabled = true
+		line.fit_content = true
+		line.scroll_active = false
 		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		line.text = "%s | Condition %s | Sold £%.2f | Day %d" % [sale["name"], sold_condition_text, sale["price"], sale["day"]]
+		line.text = "%s | Condition %s | Sold £%.2f | [color=%s]Profit £%+.2f[/color] | Day %d" % [sale["name"], sold_condition_text, sale["price"], profit_color, profit, sale["day"]]
 		body.add_child(line)
 
 func show_collection_log():
