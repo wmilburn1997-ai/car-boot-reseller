@@ -146,6 +146,10 @@ var status_panel
 var tooltip_panel
 var status_hide_timer
 var deep_research_icon
+var condition_icon
+var research_icon
+var test_icon
+var authenticate_icon
 var blocked_popup
 var blocked_popup_label
 var blocked_popup_timer
@@ -255,6 +259,14 @@ var pending_special_offer = null
 func _ready():
 	if ResourceLoader.exists("res://deep_research_icon.png"):
 		deep_research_icon = load("res://deep_research_icon.png")
+	if ResourceLoader.exists("res://condition_icon.png"):
+		condition_icon = load("res://condition_icon.png")
+	if ResourceLoader.exists("res://research_icon.png"):
+		research_icon = load("res://research_icon.png")
+	if ResourceLoader.exists("res://test_icon.png"):
+		test_icon = load("res://test_icon.png")
+	if ResourceLoader.exists("res://authenticate_icon.png"):
+		authenticate_icon = load("res://authenticate_icon.png")
 	rng.randomize()
 	reset_day_stats()
 	generate_weekly_trends()
@@ -667,6 +679,12 @@ func _on_tooltip_button_up():
 func apply_price_highlight(item, action_key, before_max, after_max):
 	item["highlight_action"] = action_key
 	item["highlight_color"] = "gold" if after_max < before_max else "yellow"
+
+func apply_button_icon(button, icon_tex):
+	if icon_tex != null:
+		button.icon = icon_tex
+		button.add_theme_constant_override("icon_max_width", 32)
+		button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 func get_highlight_color(item, action_key):
 	if item["highlight_action"] != action_key:
@@ -1246,11 +1264,11 @@ func show_stall():
 					stall_condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
 				else:
 					stall_condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
-			card.add_child(make_completed_action_box("Condition Checked", stall_condition_note, get_highlight_color(item, "condition")))
+			card.add_child(make_completed_action_box("Condition Checked", stall_condition_note, get_highlight_color(item, "condition"), condition_icon))
 
 		if item["basic_researched"]:
 			var stall_research_note = "Researched Prices: %s  •  [color=#e08fd0]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
-			card.add_child(make_completed_action_box("Researched", stall_research_note, get_highlight_color(item, "research")))
+			card.add_child(make_completed_action_box("Researched", stall_research_note, get_highlight_color(item, "research"), research_icon))
 
 		var top_row = HFlowContainer.new()
 		top_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1369,6 +1387,7 @@ func show_stall():
 			style_button(condition_button, "action")
 			condition_button.add_theme_font_size_override("font_size", 14)
 			condition_button.pressed.connect(Callable(self, "check_condition").bind(i))
+			apply_button_icon(condition_button, condition_icon)
 			actions.add_child(condition_button)
 
 		if not item["basic_researched"]:
@@ -1379,6 +1398,7 @@ func show_stall():
 			style_button(research_button, "action")
 			research_button.add_theme_font_size_override("font_size", 14)
 			research_button.pressed.connect(Callable(self, "prebuy_research").bind(i))
+			apply_button_icon(research_button, research_icon)
 			actions.add_child(research_button)
 
 	footer_label.text = ""
@@ -2026,11 +2046,12 @@ func show_inventory():
 					condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
 				else:
 					condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
-			card.add_child(make_completed_action_box("Condition Checked", condition_note, get_highlight_color(item, "condition")))
+			card.add_child(make_completed_action_box("Condition Checked", condition_note, get_highlight_color(item, "condition"), condition_icon))
 		else:
 			var inv_condition_button = Button.new()
 			inv_condition_button.text = "Condition £5 | E4"
 			inv_condition_button.pressed.connect(Callable(self, "inventory_check_condition").bind(i))
+			apply_button_icon(inv_condition_button, condition_icon)
 			inv_condition_button.tooltip_text = "Reveals the exact Condition score, and — for non-electronic items — any hidden defect. Only reliable way to know for sure if you skipped it before buying."
 			inv_condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(inv_condition_button, "action")
@@ -2038,11 +2059,12 @@ func show_inventory():
 			actions.add_child(inv_condition_button)
 
 		if item["basic_researched"]:
-			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], get_highlight_color(item, "research")))
+			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], get_highlight_color(item, "research"), research_icon))
 		else:
 			var basic_button = Button.new()
 			basic_button.text = "Research £1 | E2"
 			basic_button.pressed.connect(Callable(self, "inventory_basic_research").bind(i))
+			apply_button_icon(basic_button, research_icon)
 			basic_button.tooltip_text = "Sold-price comparables for this item. Evidence only, one-time."
 			basic_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(basic_button, "action")
@@ -2076,11 +2098,12 @@ func show_inventory():
 
 		if item["testable"]:
 			if item["tested"]:
-				card.add_child(make_completed_action_box("Tested", item["test_note"]))
+				card.add_child(make_completed_action_box("Tested", item["test_note"], "#b8dcff", test_icon))
 			else:
 				var test_button = Button.new()
 				test_button.text = "Test £2 | E5\nFault chance: %.0f%%" % (float(item["fault_chance"]) * 100.0)
 				test_button.pressed.connect(Callable(self, "test_item").bind(i))
+				apply_button_icon(test_button, test_icon)
 				test_button.custom_minimum_size.y = 48
 				test_button.tooltip_text = "Reveals whether this electronic item actually works. Required before it can be listed."
 				test_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2089,11 +2112,12 @@ func show_inventory():
 				actions.add_child(test_button)
 
 		if item["auth_attempted"]:
-			card.add_child(make_completed_action_box("Authenticated — %s" % item["auth_status"], item["auth_note"]))
+			card.add_child(make_completed_action_box("Authenticated — %s" % item["auth_status"], item["auth_note"], "#b8dcff", authenticate_icon))
 		else:
 			var auth_button = Button.new()
 			auth_button.text = "Authenticate £%d | E6\nAccuracy: %.0f%%" % [int(authentication_cost(item)), authentication_accuracy(item) * 100.0]
 			auth_button.pressed.connect(Callable(self, "authenticate_item").bind(i))
+			apply_button_icon(auth_button, authenticate_icon)
 			auth_button.custom_minimum_size.y = 48
 			auth_button.tooltip_text = "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."
 			auth_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2335,7 +2359,7 @@ func format_sale_estimate(item, price):
 	var interest = buyer_interest_score(item, price)
 	var chance = clamp(0.05 + interest * 0.47, 0.04, 0.55)
 	var expected_days = max(1, int(round(1.0 / chance)))
-	return "Est. time to sell ~%d day%s at %d%% daily chance." % [expected_days, "" if expected_days == 1 else "s"]
+	return "Est. time to sell ~%d day%s at %d%% daily chance." % [expected_days, "" if expected_days == 1 else "s", int(round(chance * 100.0))]
 
 func fault_is_known(item):
 	if item["testable"]:
@@ -3086,6 +3110,12 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 18:45", "notes": [
+		"Added icons for Condition, Research, Test, and Authenticate — same 32×32 crisp pixel-art treatment as Deep Research, shown on both the active button and its completed result box, on the stall page and Inventory alike",
+	]},
+	{"version": "Latest — 09/09/2026 18:25", "notes": [
+		"Fixed a real crash in Inventory: format_sale_estimate() was missing an argument for its daily-chance percentage, left over from an earlier edit — this was throwing a red error every time the Inventory listing screen rendered",
+	]},
 	{"version": "Latest — 09/09/2026 18:10", "notes": [
 		"Added a Deep Research icon (32×32, crisp pixel-art filtering) next to the Deep Research text — shown consistently on the button itself and on its completed result box",
 	]},
