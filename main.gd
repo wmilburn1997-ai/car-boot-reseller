@@ -154,6 +154,7 @@ var inspect_icon
 var cash_icon
 var carry_icon
 var storage_icon
+var energy_icon
 var blocked_popup
 var blocked_popup_label
 var blocked_popup_timer
@@ -279,6 +280,8 @@ func _ready():
 		carry_icon = load("res://carry_icon.png")
 	if ResourceLoader.exists("res://storage_icon.png"):
 		storage_icon = load("res://storage_icon.png")
+	if ResourceLoader.exists("res://energy_icon.png"):
+		energy_icon = load("res://energy_icon.png")
 	rng.randomize()
 	reset_day_stats()
 	generate_weekly_trends()
@@ -611,10 +614,12 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 		stat_icon_tex = carry_icon
 	elif key == "storage":
 		stat_icon_tex = storage_icon
+	elif key == "energy":
+		stat_icon_tex = energy_icon
 	if stat_icon_tex != null:
 		var stat_icon_rect = TextureRect.new()
 		stat_icon_rect.texture = stat_icon_tex
-		stat_icon_rect.custom_minimum_size = Vector2(28, 28)
+		stat_icon_rect.custom_minimum_size = Vector2(16, 16) if compact else Vector2(28, 28)
 		stat_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		stat_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		stat_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -706,6 +711,62 @@ func _on_tooltip_button_up():
 func apply_price_highlight(item, action_key, before_max, after_max):
 	item["highlight_action"] = action_key
 	item["highlight_color"] = "gold" if after_max < before_max else "yellow"
+
+func apply_energy_button(button, prefix_text, energy_cost, font_size, extra_icon = null, second_line = ""):
+	button.text = ""
+	button.icon = null
+	var outer = VBoxContainer.new()
+	outer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	outer.alignment = BoxContainer.ALIGNMENT_CENTER
+	outer.add_theme_constant_override("separation", 2)
+	outer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var row = HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 4)
+	if extra_icon != null:
+		var action_icon_rect = TextureRect.new()
+		action_icon_rect.texture = extra_icon
+		action_icon_rect.custom_minimum_size = Vector2(32, 32)
+		action_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		action_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		action_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		action_icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(action_icon_rect)
+	var prefix_label = Label.new()
+	prefix_label.text = prefix_text
+	prefix_label.add_theme_font_size_override("font_size", font_size)
+	prefix_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(prefix_label)
+	if energy_icon != null:
+		var e_icon_rect = TextureRect.new()
+		e_icon_rect.texture = energy_icon
+		e_icon_rect.custom_minimum_size = Vector2(16, 16)
+		e_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		e_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		e_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		e_icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(e_icon_rect)
+	else:
+		var e_fallback = Label.new()
+		e_fallback.text = "E"
+		e_fallback.add_theme_font_size_override("font_size", font_size)
+		e_fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(e_fallback)
+	var energy_label = Label.new()
+	energy_label.text = str(int(energy_cost))
+	energy_label.add_theme_font_size_override("font_size", font_size)
+	energy_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(energy_label)
+	outer.add_child(row)
+	if second_line != "":
+		var second_label = Label.new()
+		second_label.text = second_line
+		second_label.add_theme_font_size_override("font_size", font_size)
+		second_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		second_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		outer.add_child(second_label)
+	button.add_child(outer)
 
 func apply_button_icon(button, icon_tex):
 	if icon_tex != null:
@@ -865,7 +926,7 @@ func update_header():
 		stat_labels["cash"].add_theme_color_override("font_color", Color(0.95,0.55,0.45,1.0))
 	else:
 		stat_labels["cash"].add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
-	stat_labels["energy"].text = "E %d/100" % energy
+	stat_labels["energy"].text = "%d/100" % energy
 	if energy <= 15:
 		stat_labels["energy"].add_theme_color_override("font_color", Color(0.95,0.55,0.45,1.0))
 	elif energy <= 35:
@@ -1198,10 +1259,10 @@ func show_stall():
 	title_row.add_child(title)
 
 	var browse = Button.new()
-	browse.text = "Dig Deeper E4"
 	style_button(browse, "action")
 	browse.custom_minimum_size.y = 32
 	browse.pressed.connect(browse_stall)
+	apply_energy_button(browse, "Dig Deeper", 4, 13)
 	title_row.add_child(browse)
 
 	if mystery_packages_left > 0:
@@ -1363,11 +1424,11 @@ func show_stall():
 			haggle_value_edit.focus_exited.connect(Callable(self, "_adjust_haggle_value").bind(haggle_value_edit, 0.0, haggle_asking, haggle_chance_label, item, seller))
 
 			var haggle_offer_button = Button.new()
-			haggle_offer_button.text = "Offer | E2"
 			haggle_offer_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			haggle_offer_button.tooltip_text = "One attempt at this price. Lowballing risks annoying the seller — they might refuse to sell you this item, or even kick you off their whole stall for the rest of the day."
 			style_button(haggle_offer_button, "nav")
 			haggle_offer_button.pressed.connect(Callable(self, "haggle_item").bind(i, haggle_value_edit))
+			apply_energy_button(haggle_offer_button, "Offer |", 2, 13)
 			top_row.add_child(haggle_offer_button)
 
 		if item["buy_block_note"] != "":
@@ -1398,35 +1459,34 @@ func show_stall():
 
 		var look = Button.new()
 		var look_accuracy = int(float(eye_upgrades[eye_level]["accuracy"]) * 100.0)
-		look.text = "Inspect %d%% | E1" % look_accuracy if not item["quick_look_done"] else "Inspected"
 		look.disabled = item["quick_look_done"]
 		look.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		look.tooltip_text = "Cheap first impression of Condition. Can genuinely be wrong at this accuracy — never reveals the exact score."
 		style_button(look, "nav")
 		look.pressed.connect(Callable(self, "quick_look").bind(i))
-		apply_button_icon(look, inspect_icon)
+		if item["quick_look_done"]:
+			look.text = "Inspected"
+			apply_button_icon(look, inspect_icon)
+		else:
+			apply_energy_button(look, "Inspect %d%% |" % look_accuracy, 1, 13, inspect_icon)
 		actions.add_child(look)
 
 		if not item["condition_checked"]:
 			var condition_button = Button.new()
-			condition_button.text = "Condition £5 | E4"
 			condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			condition_button.tooltip_text = "Reveals the exact Condition score for certain. This is the only reliable way to know it before buying — and, for non-electronic items, the only way to know about hidden defects at all."
 			style_button(condition_button, "action")
-			condition_button.add_theme_font_size_override("font_size", 14)
 			condition_button.pressed.connect(Callable(self, "check_condition").bind(i))
-			apply_button_icon(condition_button, condition_icon)
+			apply_energy_button(condition_button, "Condition £5 |", 4, 14, condition_icon)
 			actions.add_child(condition_button)
 
 		if not item["basic_researched"]:
 			var research_button = Button.new()
-			research_button.text = "Research £1 | E2"
 			research_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			research_button.tooltip_text = "Shows real sold-price comparables for this exact item. Evidence to weigh, not a guaranteed value — one-time only."
 			style_button(research_button, "action")
-			research_button.add_theme_font_size_override("font_size", 14)
 			research_button.pressed.connect(Callable(self, "prebuy_research").bind(i))
-			apply_button_icon(research_button, research_icon)
+			apply_energy_button(research_button, "Research £1 |", 2, 14, research_icon)
 			actions.add_child(research_button)
 
 	footer_label.text = ""
@@ -2077,26 +2137,22 @@ func show_inventory():
 			card.add_child(make_completed_action_box("Condition Checked", condition_note, get_highlight_color(item, "condition"), condition_icon))
 		else:
 			var inv_condition_button = Button.new()
-			inv_condition_button.text = "Condition £5 | E4"
 			inv_condition_button.pressed.connect(Callable(self, "inventory_check_condition").bind(i))
-			apply_button_icon(inv_condition_button, condition_icon)
 			inv_condition_button.tooltip_text = "Reveals the exact Condition score, and — for non-electronic items — any hidden defect. Only reliable way to know for sure if you skipped it before buying."
 			inv_condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(inv_condition_button, "action")
-			inv_condition_button.add_theme_font_size_override("font_size", 14)
+			apply_energy_button(inv_condition_button, "Condition £5 |", 4, 14, condition_icon)
 			actions.add_child(inv_condition_button)
 
 		if item["basic_researched"]:
 			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], get_highlight_color(item, "research"), research_icon))
 		else:
 			var basic_button = Button.new()
-			basic_button.text = "Research £1 | E2"
 			basic_button.pressed.connect(Callable(self, "inventory_basic_research").bind(i))
-			apply_button_icon(basic_button, research_icon)
 			basic_button.tooltip_text = "Sold-price comparables for this item. Evidence only, one-time."
 			basic_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(basic_button, "action")
-			basic_button.add_theme_font_size_override("font_size", 14)
+			apply_energy_button(basic_button, "Research £1 |", 2, 14, research_icon)
 			actions.add_child(basic_button)
 
 		if item["deep_researched"]:
@@ -2111,17 +2167,12 @@ func show_inventory():
 			if item["basic_researched"]:
 				real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.03, 0.35)
 			var deep_button = Button.new()
-			deep_button.text = "Deep Research £9 | E12\nDiscovery %.0f%% | Rare %.0f%%" % [deep_chance * 100.0, real_rare_chance * 100.0]
 			deep_button.pressed.connect(Callable(self, "deep_research").bind(i))
 			deep_button.tooltip_text = "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."
 			deep_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(deep_button, "action")
 			deep_button.custom_minimum_size.y = 48
-			deep_button.add_theme_font_size_override("font_size", 14)
-			if deep_research_icon != null:
-				deep_button.icon = deep_research_icon
-				deep_button.add_theme_constant_override("icon_max_width", 32)
-				deep_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			apply_energy_button(deep_button, "Deep Research £9 |", 12, 14, deep_research_icon, "Discovery %.0f%% | Rare %.0f%%" % [deep_chance * 100.0, real_rare_chance * 100.0])
 			actions.add_child(deep_button)
 
 		if item["testable"]:
@@ -2129,28 +2180,24 @@ func show_inventory():
 				card.add_child(make_completed_action_box("Tested", item["test_note"], "#b8dcff", test_icon))
 			else:
 				var test_button = Button.new()
-				test_button.text = "Test £2 | E5\nFault chance: %.0f%%" % (float(item["fault_chance"]) * 100.0)
 				test_button.pressed.connect(Callable(self, "test_item").bind(i))
-				apply_button_icon(test_button, test_icon)
 				test_button.custom_minimum_size.y = 48
 				test_button.tooltip_text = "Reveals whether this electronic item actually works. Required before it can be listed."
 				test_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				style_button(test_button, "action")
-				test_button.add_theme_font_size_override("font_size", 14)
+				apply_energy_button(test_button, "Test £2 |", 5, 14, test_icon, "Fault chance: %.0f%%" % (float(item["fault_chance"]) * 100.0))
 				actions.add_child(test_button)
 
 		if item["auth_attempted"]:
 			card.add_child(make_completed_action_box("Authenticated — %s" % item["auth_status"], item["auth_note"], "#b8dcff", authenticate_icon))
 		else:
 			var auth_button = Button.new()
-			auth_button.text = "Authenticate £%d | E6\nAccuracy: %.0f%%" % [int(authentication_cost(item)), authentication_accuracy(item) * 100.0]
 			auth_button.pressed.connect(Callable(self, "authenticate_item").bind(i))
-			apply_button_icon(auth_button, authenticate_icon)
 			auth_button.custom_minimum_size.y = 48
 			auth_button.tooltip_text = "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."
 			auth_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(auth_button, "action")
-			auth_button.add_theme_font_size_override("font_size", 14)
+			apply_energy_button(auth_button, "Authenticate £%d |" % int(authentication_cost(item)), 6, 14, authenticate_icon, "Accuracy: %.0f%%" % (authentication_accuracy(item) * 100.0))
 			actions.add_child(auth_button)
 
 
@@ -2160,11 +2207,12 @@ func show_inventory():
 				repair_button.text = "Repair Attempt Used"
 				repair_button.disabled = true
 			else:
-				repair_button.text = "Repair £%d | E10" % int(repair_cost(item))
 				repair_button.pressed.connect(Callable(self, "repair_item").bind(i))
 			repair_button.tooltip_text = "One attempt to fix the fault. Better tools improve the odds; a failed attempt still costs the fee."
 			repair_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(repair_button, "buy")
+			if not item["repair_attempted"]:
+				apply_energy_button(repair_button, "Repair £%d |" % int(repair_cost(item)), 10, 13)
 			actions.add_child(repair_button)
 			if item["repair_note"] != "":
 				var repair_note_line = RichTextLabel.new()
@@ -3138,6 +3186,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 22:15", "notes": [
+		"Replaced the 'E' energy notation with a proper icon everywhere it appears: header stat, Condition, Research, Deep Research, Test, Authenticate, Inspect, Haggle Offer, Dig Deeper, and Repair — on both the stall page and Inventory",
+		"This required a genuinely different technique than the earlier action icons, since Godot buttons can't natively show an icon mid-text — rebuilt these buttons' internals as custom icon+label rows instead of plain button text",
+	]},
 	{"version": "Latest — 09/09/2026 21:25", "notes": [
 		"Replaced the hand-drawn Cash/Carry/Storage header icons with proper pixel-art versions, widened the chip padding slightly to fit them comfortably",
 	]},
