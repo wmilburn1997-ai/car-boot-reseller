@@ -426,6 +426,43 @@ func build_ui():
 	footer_label = Label.new()
 	footer_label.visible = false
 
+	blocked_popup = PanelContainer.new()
+	blocked_popup.set_anchors_preset(Control.PRESET_CENTER)
+	blocked_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	blocked_popup.visible = false
+	blocked_popup.z_index = 100
+	var blocked_style = StyleBoxFlat.new()
+	blocked_style.bg_color = Color(0.16,0.05,0.05,0.97)
+	blocked_style.border_width_left = 2
+	blocked_style.border_width_top = 2
+	blocked_style.border_width_right = 2
+	blocked_style.border_width_bottom = 2
+	blocked_style.border_color = Color(0.75,0.35,0.32,1.0)
+	blocked_style.corner_radius_top_left = 10
+	blocked_style.corner_radius_top_right = 10
+	blocked_style.corner_radius_bottom_left = 10
+	blocked_style.corner_radius_bottom_right = 10
+	blocked_style.content_margin_left = 22
+	blocked_style.content_margin_right = 22
+	blocked_style.content_margin_top = 16
+	blocked_style.content_margin_bottom = 16
+	blocked_popup.add_theme_stylebox_override("panel", blocked_style)
+	add_child(blocked_popup)
+
+	blocked_popup_label = Label.new()
+	blocked_popup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	blocked_popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	blocked_popup_label.custom_minimum_size = Vector2(220, 0)
+	blocked_popup_label.add_theme_font_size_override("font_size", 16)
+	blocked_popup_label.add_theme_color_override("font_color", Color(0.95,0.88,0.86,1.0))
+	blocked_popup.add_child(blocked_popup_label)
+
+	blocked_popup_timer = Timer.new()
+	blocked_popup_timer.one_shot = true
+	blocked_popup_timer.wait_time = 2.6
+	blocked_popup_timer.timeout.connect(Callable(self, "_hide_blocked_popup"))
+	add_child(blocked_popup_timer)
+
 	update_header()
 
 func show_more_menu():
@@ -643,7 +680,18 @@ func set_status(text, color = null):
 	status_label.text = text
 
 func show_blocked_popup(text):
-	status_label.text = text
+	if blocked_popup == null:
+		return
+	blocked_popup_label.text = text
+	blocked_popup.visible = true
+	blocked_popup.move_to_front()
+	blocked_popup.reset_size()
+	blocked_popup.set_anchors_preset(Control.PRESET_CENTER)
+	blocked_popup_timer.start()
+
+func _hide_blocked_popup():
+	if blocked_popup != null:
+		blocked_popup.visible = false
 
 func _show_status_overlay(auto_hide = true):
 	if status_panel == null:
@@ -910,6 +958,8 @@ func generate_item(seller):
 		"auth_note": "",
 		"haggle_note": "",
 		"repair_note": "",
+		"buy_block_note": "",
+		"listing_block_note": "",
 		"locked_gamble_hint": 0.20,
 		"dismissed": false
 	}
@@ -1188,6 +1238,15 @@ func show_stall():
 			style_button(haggle_offer_button, "nav")
 			haggle_offer_button.pressed.connect(Callable(self, "haggle_item").bind(i, haggle_value_edit))
 			top_row.add_child(haggle_offer_button)
+
+		if item["buy_block_note"] != "":
+			var buy_block_line = Label.new()
+			buy_block_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			buy_block_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			buy_block_line.add_theme_font_size_override("font_size", 13)
+			buy_block_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+			buy_block_line.text = item["buy_block_note"]
+			card.add_child(buy_block_line)
 
 		if item["haggle_note"] != "":
 			var haggle_note_line = RichTextLabel.new()
@@ -2026,6 +2085,15 @@ func show_inventory():
 				repair_note_line.text = item["repair_note"]
 				card.add_child(repair_note_line)
 
+		if item["listing_block_note"] != "":
+			var listing_block_line = Label.new()
+			listing_block_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			listing_block_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			listing_block_line.add_theme_font_size_override("font_size", 13)
+			listing_block_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+			listing_block_line.text = item["listing_block_note"]
+			card.add_child(listing_block_line)
+
 		if item["auth_status"] == "Confirmed Counterfeit":
 			var scrap_button = Button.new()
 			scrap_button.text = "Scrap / Recover"
@@ -2383,7 +2451,7 @@ func deep_research(index):
 		item["rare_variant_tier"] = rare_tier
 		item["rare_variant_mult"] = rare_mult
 
-	item["research_note"] = "Deep Research [color=#e08fd0]%.0f%% discovery chance[/color]: %s%s Range £%d–£%d -> £%d–£%d." % [chance * 100.0, reason, rare_text, before[0], before[1], after[0], after[1]]
+	item["research_note"] = "Deep Research — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] | Result: %s%s Range £%d–£%d -> £%d–£%d." % [chance * 100.0, roll * 100.0, reason, rare_text, before[0], before[1], after[0], after[1]]
 	show_inventory()
 
 func test_item(index):
@@ -2970,6 +3038,13 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 16:20", "notes": [
+		"Brought back the floating red center popup for the three blocked-action messages (not enough cash, not enough bag space, test-required) — everything else stays inline as before",
+	]},
+	{"version": "Latest — 09/09/2026 16:05", "notes": [
+		"Fixed: Deep Research note was missing the actual rolled value — now shows Chance/Rolled/Result like everywhere else",
+		"Fixed: blocked-action messages (not enough cash, not enough bag space, test-required) had genuinely stopped showing anywhere after the popup removal — now shown inline on the relevant item card",
+	]},
 	{"version": "Latest — 09/09/2026 15:45", "notes": [
 		"Removed all floating popups/toasts entirely — action results now appear inline in the item card instead",
 		"Unified coloring: normal result text blue, any RNG/chance/rolled-percentage text pink — applies to Inspect, Research, Condition, Offers, Testing, Authentication, Repairs, and rare-variant rolls",
