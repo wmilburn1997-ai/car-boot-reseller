@@ -420,93 +420,11 @@ func build_ui():
 	body.add_theme_constant_override("separation", 7)
 	page_content.add_child(body)
 
-	# Transient status/RNG overlay. This no longer reserves permanent vertical space.
-	status_panel = PanelContainer.new()
-	status_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	status_panel.offset_left = 16
-	status_panel.offset_right = -16
-	status_panel.offset_top = -108
-	status_panel.offset_bottom = -14
-	status_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	status_panel.visible = false
-	var status_style = StyleBoxFlat.new()
-	status_style.bg_color = Color(0.045,0.055,0.07,0.96)
-	status_style.border_width_left = 1
-	status_style.border_width_top = 1
-	status_style.border_width_right = 1
-	status_style.border_width_bottom = 1
-	status_style.border_color = Color(0.18,0.22,0.28,1.0)
-	status_style.corner_radius_top_left = 8
-	status_style.corner_radius_top_right = 8
-	status_style.corner_radius_bottom_left = 8
-	status_style.corner_radius_bottom_right = 8
-	status_style.content_margin_left = 10
-	status_style.content_margin_right = 10
-	status_style.content_margin_top = 8
-	status_style.content_margin_bottom = 8
-	status_panel.add_theme_stylebox_override("panel", status_style)
-	add_child(status_panel)
-
-	var status_box = VBoxContainer.new()
-	status_box.add_theme_constant_override("separation", 4)
-	status_panel.add_child(status_box)
-
 	status_label = Label.new()
-	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	status_label.add_theme_font_size_override("font_size", 15)
-	status_label.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
-	status_box.add_child(status_label)
+	status_label.visible = false
 
 	footer_label = Label.new()
-	footer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	footer_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer_label.add_theme_font_size_override("font_size", 14)
-	footer_label.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
-	status_box.add_child(footer_label)
-
-	status_hide_timer = Timer.new()
-	status_hide_timer.one_shot = true
-	status_hide_timer.wait_time = 4.0
-	status_hide_timer.timeout.connect(Callable(self, "_hide_status_overlay"))
-	add_child(status_hide_timer)
-
-	blocked_popup = PanelContainer.new()
-	blocked_popup.set_anchors_preset(Control.PRESET_CENTER)
-	blocked_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	blocked_popup.visible = false
-	blocked_popup.z_index = 100
-	var blocked_style = StyleBoxFlat.new()
-	blocked_style.bg_color = Color(0.16,0.05,0.05,0.97)
-	blocked_style.border_width_left = 2
-	blocked_style.border_width_top = 2
-	blocked_style.border_width_right = 2
-	blocked_style.border_width_bottom = 2
-	blocked_style.border_color = Color(0.75,0.35,0.32,1.0)
-	blocked_style.corner_radius_top_left = 10
-	blocked_style.corner_radius_top_right = 10
-	blocked_style.corner_radius_bottom_left = 10
-	blocked_style.corner_radius_bottom_right = 10
-	blocked_style.content_margin_left = 22
-	blocked_style.content_margin_right = 22
-	blocked_style.content_margin_top = 16
-	blocked_style.content_margin_bottom = 16
-	blocked_popup.add_theme_stylebox_override("panel", blocked_style)
-	add_child(blocked_popup)
-
-	blocked_popup_label = Label.new()
-	blocked_popup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	blocked_popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	blocked_popup_label.custom_minimum_size = Vector2(220, 0)
-	blocked_popup_label.add_theme_font_size_override("font_size", 16)
-	blocked_popup_label.add_theme_color_override("font_color", Color(0.95,0.88,0.86,1.0))
-	blocked_popup.add_child(blocked_popup_label)
-
-	blocked_popup_timer = Timer.new()
-	blocked_popup_timer.one_shot = true
-	blocked_popup_timer.wait_time = 2.6
-	blocked_popup_timer.timeout.connect(Callable(self, "_hide_blocked_popup"))
-	add_child(blocked_popup_timer)
+	footer_label.visible = false
 
 	update_header()
 
@@ -723,24 +641,9 @@ func _input(event):
 
 func set_status(text, color = null):
 	status_label.text = text
-	if color == null:
-		color = Color(0.72,0.88,1.0,1.0)
-	status_label.add_theme_color_override("font_color", color)
-	_show_status_overlay(true)
 
 func show_blocked_popup(text):
-	if blocked_popup == null:
-		return
-	blocked_popup_label.text = text
-	blocked_popup.visible = true
-	blocked_popup.move_to_front()
-	blocked_popup.reset_size()
-	blocked_popup.set_anchors_preset(Control.PRESET_CENTER)
-	blocked_popup_timer.start()
-
-func _hide_blocked_popup():
-	if blocked_popup != null:
-		blocked_popup.visible = false
+	status_label.text = text
 
 func _show_status_overlay(auto_hide = true):
 	if status_panel == null:
@@ -1005,6 +908,8 @@ func generate_item(seller):
 		"extra_spend": 0.0,
 		"condition_price_note": "",
 		"auth_note": "",
+		"haggle_note": "",
+		"repair_note": "",
 		"locked_gamble_hint": 0.20,
 		"dismissed": false
 	}
@@ -1190,12 +1095,14 @@ func show_stall():
 			card.add_child(defect_line)
 
 		if item["quick_look_done"] and item["quick_look_note"] != "":
-			var look_result = Label.new()
-			look_result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var look_result = RichTextLabel.new()
+			look_result.bbcode_enabled = true
+			look_result.fit_content = true
+			look_result.scroll_active = false
 			look_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			look_result.add_theme_font_size_override("font_size", 14)
+			look_result.add_theme_font_size_override("normal_font_size", 14)
+			look_result.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
 			look_result.text = item["quick_look_note"]
-			look_result.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
 			card.add_child(look_result)
 
 		if item["basic_researched"]:
@@ -1206,7 +1113,7 @@ func show_stall():
 			research_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			research_result.add_theme_font_size_override("normal_font_size", 15)
 			research_result.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
-			research_result.text = "Researched Prices: %s  •  [color=#e8c15a]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
+			research_result.text = "Researched Prices: %s  •  [color=#e08fd0]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
 			card.add_child(research_result)
 
 		var top_row = HFlowContainer.new()
@@ -1282,6 +1189,17 @@ func show_stall():
 			haggle_offer_button.pressed.connect(Callable(self, "haggle_item").bind(i, haggle_value_edit))
 			top_row.add_child(haggle_offer_button)
 
+		if item["haggle_note"] != "":
+			var haggle_note_line = RichTextLabel.new()
+			haggle_note_line.bbcode_enabled = true
+			haggle_note_line.fit_content = true
+			haggle_note_line.scroll_active = false
+			haggle_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			haggle_note_line.add_theme_font_size_override("normal_font_size", 13)
+			haggle_note_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
+			haggle_note_line.text = item["haggle_note"]
+			card.add_child(haggle_note_line)
+
 		var actions = HFlowContainer.new()
 		actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		actions.add_theme_constant_override("h_separation", 6)
@@ -1352,7 +1270,7 @@ func quick_look(index):
 
 	item["quick_look_accuracy"] = accuracy
 	item["quick_look_roll"] = roll
-	item["quick_look_note"] = "Inspect %d%%: %s" % [int(accuracy * 100.0), clue]
+	item["quick_look_note"] = "[color=#e08fd0]Inspect %d%%[/color]: %s" % [int(accuracy * 100.0), clue]
 	record_rng("Inspect accuracy: %.1f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "ACCURATE" if accurate else "INACCURATE"])
 	set_status(item["quick_look_note"])
 	show_stall()
@@ -1472,7 +1390,7 @@ func haggle_item(index, value_edit):
 		item["asking"] = target_price
 		item["haggle_result"] = "accepted"
 		item["haggle_savings"] = asking - target_price
-		set_status("Haggle accepted.", Color(0.55,0.85,0.58,1.0))
+		item["haggle_note"] = "Offer £%.0f — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — Accepted." % [target_price, chance * 100.0, roll * 100.0]
 		show_stall()
 		return
 
@@ -1483,14 +1401,14 @@ func haggle_item(index, value_edit):
 	if kicked_out:
 		stall["banned_today"] = true
 		item["haggle_result"] = "refused"
-		set_status("Kicked off the stall for today.", Color(0.92,0.55,0.45,1.0))
+		item["haggle_note"] = "Offer £%.0f — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — Refused. Kicked off the stall for today." % [target_price, chance * 100.0, roll * 100.0]
 	elif item_banned:
 		item["seller_refuses"] = true
 		item["haggle_result"] = "refused"
-		set_status("Haggle refused.", Color(0.92,0.55,0.45,1.0))
+		item["haggle_note"] = "Offer £%.0f — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — Refused." % [target_price, chance * 100.0, roll * 100.0]
 	else:
 		item["haggle_result"] = "rejected"
-		set_status("Haggle rejected.")
+		item["haggle_note"] = "Offer £%.0f — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — Rejected." % [target_price, chance * 100.0, roll * 100.0]
 	show_stall()
 
 func browse_stall():
@@ -1929,12 +1847,14 @@ func show_inventory():
 		card.add_child(details)
 
 		if item["quick_look_done"] and item["quick_look_note"] != "":
-			var inv_look_result = Label.new()
-			inv_look_result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var inv_look_result = RichTextLabel.new()
+			inv_look_result.bbcode_enabled = true
+			inv_look_result.fit_content = true
+			inv_look_result.scroll_active = false
 			inv_look_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			inv_look_result.add_theme_font_size_override("font_size", 14)
+			inv_look_result.add_theme_font_size_override("normal_font_size", 14)
+			inv_look_result.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
 			inv_look_result.text = item["quick_look_note"]
-			inv_look_result.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
 			card.add_child(inv_look_result)
 
 		if item["condition_checked"] and item["condition_price_note"] != "":
@@ -1968,11 +1888,13 @@ func show_inventory():
 			comps.text = "Researched Prices: %s" % item["basic_comps"]
 			card.add_child(comps)
 		if item["research_note"] != "":
-			var note = Label.new()
-			note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var note = RichTextLabel.new()
+			note.bbcode_enabled = true
+			note.fit_content = true
+			note.scroll_active = false
 			note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			note.add_theme_font_size_override("font_size", 15)
-			note.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+			note.add_theme_font_size_override("normal_font_size", 15)
+			note.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
 			note.text = item["research_note"]
 			card.add_child(note)
 
@@ -2024,12 +1946,14 @@ func show_inventory():
 		deep_button.custom_minimum_size.y = 48
 		actions.add_child(deep_button)
 		if item["deep_researched"] and item["rare_variant_hit"]:
-			var rare_hit_line = Label.new()
-			rare_hit_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var rare_hit_line = RichTextLabel.new()
+			rare_hit_line.bbcode_enabled = true
+			rare_hit_line.fit_content = true
+			rare_hit_line.scroll_active = false
 			rare_hit_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			rare_hit_line.add_theme_font_size_override("font_size", 13)
-			rare_hit_line.add_theme_color_override("font_color", Color(0.95,0.78,0.35,1.0))
-			rare_hit_line.text = "RARE VARIANT — rolled %.2f%% (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
+			rare_hit_line.add_theme_font_size_override("normal_font_size", 13)
+			rare_hit_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
+			rare_hit_line.text = "RARE VARIANT — [color=#e08fd0]rolled %.2f%%[/color] (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
 			card.add_child(rare_hit_line)
 
 		if item["testable"]:
@@ -2046,11 +1970,13 @@ func show_inventory():
 			style_button(test_button, "action")
 			actions.add_child(test_button)
 			if item["tested"] and item["test_note"] != "":
-				var test_note_line = Label.new()
-				test_note_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				var test_note_line = RichTextLabel.new()
+				test_note_line.bbcode_enabled = true
+				test_note_line.fit_content = true
+				test_note_line.scroll_active = false
 				test_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				test_note_line.add_theme_font_size_override("font_size", 13)
-				test_note_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+				test_note_line.add_theme_font_size_override("normal_font_size", 13)
+				test_note_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
 				test_note_line.text = item["test_note"]
 				card.add_child(test_note_line)
 
@@ -2067,11 +1993,13 @@ func show_inventory():
 		style_button(auth_button, "action")
 		actions.add_child(auth_button)
 		if item["auth_attempted"] and item["auth_note"] != "":
-			var auth_note_line = Label.new()
-			auth_note_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var auth_note_line = RichTextLabel.new()
+			auth_note_line.bbcode_enabled = true
+			auth_note_line.fit_content = true
+			auth_note_line.scroll_active = false
 			auth_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			auth_note_line.add_theme_font_size_override("font_size", 13)
-			auth_note_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+			auth_note_line.add_theme_font_size_override("normal_font_size", 13)
+			auth_note_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
 			auth_note_line.text = item["auth_note"]
 			card.add_child(auth_note_line)
 
@@ -2087,6 +2015,16 @@ func show_inventory():
 			repair_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(repair_button, "buy")
 			actions.add_child(repair_button)
+			if item["repair_note"] != "":
+				var repair_note_line = RichTextLabel.new()
+				repair_note_line.bbcode_enabled = true
+				repair_note_line.fit_content = true
+				repair_note_line.scroll_active = false
+				repair_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				repair_note_line.add_theme_font_size_override("normal_font_size", 13)
+				repair_note_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
+				repair_note_line.text = item["repair_note"]
+				card.add_child(repair_note_line)
 
 		if item["auth_status"] == "Confirmed Counterfeit":
 			var scrap_button = Button.new()
@@ -2445,7 +2383,7 @@ func deep_research(index):
 		item["rare_variant_tier"] = rare_tier
 		item["rare_variant_mult"] = rare_mult
 
-	item["research_note"] = "Deep Research: %s%s Range £%d–£%d -> £%d–£%d." % [reason, rare_text, before[0], before[1], after[0], after[1]]
+	item["research_note"] = "Deep Research [color=#e08fd0]%.0f%% discovery chance[/color]: %s%s Range £%d–£%d -> £%d–£%d." % [chance * 100.0, reason, rare_text, before[0], before[1], after[0], after[1]]
 	show_inventory()
 
 func test_item(index):
@@ -2469,10 +2407,11 @@ func test_item(index):
 	var result_text = "WORKING"
 	if item["fault"]:
 		result_text = item["fault_severity"] + " FAULT"
-	var line = "Fault chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [item["fault_chance"] * 100.0, item["fault_roll"] * 100.0, result_text]
-	record_rng(line)
+	var plain_line = "Fault chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [item["fault_chance"] * 100.0, item["fault_roll"] * 100.0, result_text]
+	record_rng(plain_line)
+	var colored_line = "[color=#e08fd0]Fault chance: %.1f%% | Rolled: %.2f%%[/color] | Result: %s" % [item["fault_chance"] * 100.0, item["fault_roll"] * 100.0, result_text]
 	var after = estimate_identified_potential(item)
-	item["test_note"] = "Test Complete — %s. Selling price %s: £%d–£%d -> £%d–£%d." % [line, ("decreased" if after[1] < before[1] else "unchanged"), before[0], before[1], after[0], after[1]]
+	item["test_note"] = "Test Complete — %s. Selling price %s: £%d–£%d -> £%d–£%d." % [colored_line, ("decreased" if after[1] < before[1] else "unchanged"), before[0], before[1], after[0], after[1]]
 	show_inventory()
 
 func fault_multiplier(severity):
@@ -2524,8 +2463,9 @@ func authenticate_item(index):
 	var accuracy = authentication_accuracy(item)
 	var roll = rng.randf()
 	var success = roll < accuracy
-	var line = "Accuracy: %.0f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "SUCCESS" if success else "INCONCLUSIVE"]
-	record_rng("Authentication accuracy: %.1f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "SUCCESS" if success else "INCONCLUSIVE"])
+	var plain_line = "Accuracy: %.0f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "SUCCESS" if success else "INCONCLUSIVE"]
+	var line = "[color=#e08fd0]Accuracy: %.0f%% | Rolled: %.2f%%[/color] | Result: %s" % [accuracy * 100.0, roll * 100.0, "SUCCESS" if success else "INCONCLUSIVE"]
+	record_rng(plain_line)
 	if success:
 		if item["authentic"]:
 			item["auth_status"] = "Confirmed Genuine"
@@ -2588,7 +2528,7 @@ func repair_item(index):
 			item["fault_severity"] = "Minor"
 		else:
 			item["fault_severity"] = "Moderate"
-	set_status("REPAIR %s — %s" % ["SUCCESS" if success else "FAILED", function_status(item)])
+	item["repair_note"] = "Repair — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — %s. %s" % [chance * 100.0, roll * 100.0, ("SUCCESS" if success else "FAILED"), function_status(item)]
 	show_inventory()
 
 func buyer_interest_score(item, price):
@@ -3030,6 +2970,11 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 15:45", "notes": [
+		"Removed all floating popups/toasts entirely — action results now appear inline in the item card instead",
+		"Unified coloring: normal result text blue, any RNG/chance/rolled-percentage text pink — applies to Inspect, Research, Condition, Offers, Testing, Authentication, Repairs, and rare-variant rolls",
+		"Offers and Repairs now show a persistent inline result for the first time (previously only a temporary message)",
+	]},
 	{"version": "Latest — 09/09/2026 15:20", "notes": [
 		"Removed swipe-to-dismiss on mobile (kept just the × button, made bigger and easier to tap on both mobile and desktop)",
 		"Blocked-action messages now use exact short wording: 'Not enough cash.', 'Not enough space in your bag.', 'You need to test this item first.'",
