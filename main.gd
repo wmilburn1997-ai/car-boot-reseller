@@ -144,6 +144,9 @@ var footer_label
 var status_label
 var status_panel
 var status_hide_timer
+var blocked_popup
+var blocked_popup_label
+var blocked_popup_timer
 var tooltip_is_held = false
 
 
@@ -163,6 +166,7 @@ var current_screen_name = "show_stall"
 var tooltip_saved_text = ""
 var total_haggled_savings = 0.0
 var pending_instant_sale_banner = ""
+var inventory_tab = "unlisted"
 var package_insight_level = 0
 var persuasion_level = 0
 const PACKAGE_INSIGHT_MAX = 20
@@ -386,7 +390,7 @@ func build_ui():
 	nav_panel.add_child(nav)
 	add_nav_button(nav, "Stall", Callable(self, "show_stall"))
 	add_nav_button(nav, "Stalls", Callable(self, "show_stall_list"))
-	add_nav_button(nav, "Inventory", Callable(self, "show_inventory"))
+	add_nav_button(nav, "Inventory", Callable(self, "show_inventory_fresh"))
 	add_nav_button(nav, "£ Sold", Callable(self, "show_sold_history"))
 	add_nav_button(nav, "Shop", Callable(self, "show_shop"))
 	add_nav_button(nav, "More", Callable(self, "show_more_menu"))
@@ -466,6 +470,44 @@ func build_ui():
 	status_hide_timer.wait_time = 4.0
 	status_hide_timer.timeout.connect(Callable(self, "_hide_status_overlay"))
 	add_child(status_hide_timer)
+
+	blocked_popup = PanelContainer.new()
+	blocked_popup.set_anchors_preset(Control.PRESET_CENTER)
+	blocked_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	blocked_popup.visible = false
+	blocked_popup.z_index = 100
+	var blocked_style = StyleBoxFlat.new()
+	blocked_style.bg_color = Color(0.16,0.05,0.05,0.97)
+	blocked_style.border_width_left = 2
+	blocked_style.border_width_top = 2
+	blocked_style.border_width_right = 2
+	blocked_style.border_width_bottom = 2
+	blocked_style.border_color = Color(0.75,0.35,0.32,1.0)
+	blocked_style.corner_radius_top_left = 10
+	blocked_style.corner_radius_top_right = 10
+	blocked_style.corner_radius_bottom_left = 10
+	blocked_style.corner_radius_bottom_right = 10
+	blocked_style.content_margin_left = 22
+	blocked_style.content_margin_right = 22
+	blocked_style.content_margin_top = 16
+	blocked_style.content_margin_bottom = 16
+	blocked_popup.add_theme_stylebox_override("panel", blocked_style)
+	add_child(blocked_popup)
+
+	blocked_popup_label = Label.new()
+	blocked_popup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	blocked_popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	blocked_popup_label.custom_minimum_size = Vector2(220, 0)
+	blocked_popup_label.add_theme_font_size_override("font_size", 16)
+	blocked_popup_label.add_theme_color_override("font_color", Color(0.95,0.88,0.86,1.0))
+	blocked_popup.add_child(blocked_popup_label)
+
+	blocked_popup_timer = Timer.new()
+	blocked_popup_timer.one_shot = true
+	blocked_popup_timer.wait_time = 2.6
+	blocked_popup_timer.timeout.connect(Callable(self, "_hide_blocked_popup"))
+	add_child(blocked_popup_timer)
+
 	update_header()
 
 func show_more_menu():
@@ -685,6 +727,20 @@ func set_status(text, color = null):
 		color = Color(0.72,0.88,1.0,1.0)
 	status_label.add_theme_color_override("font_color", color)
 	_show_status_overlay(true)
+
+func show_blocked_popup(text):
+	if blocked_popup == null:
+		return
+	blocked_popup_label.text = text
+	blocked_popup.visible = true
+	blocked_popup.move_to_front()
+	blocked_popup.reset_size()
+	blocked_popup.set_anchors_preset(Control.PRESET_CENTER)
+	blocked_popup_timer.start()
+
+func _hide_blocked_popup():
+	if blocked_popup != null:
+		blocked_popup.visible = false
 
 func _show_status_overlay(auto_hide = true):
 	if status_panel == null:
@@ -1078,7 +1134,6 @@ func show_stall():
 		if item["dismissed"]:
 			continue
 		var panel = make_card()
-		panel.gui_input.connect(Callable(self, "_on_stall_card_input").bind(panel, i))
 		body.add_child(panel)
 		var card = VBoxContainer.new()
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1107,7 +1162,8 @@ func show_stall():
 		var dismiss_button = Button.new()
 		dismiss_button.text = "×"
 		dismiss_button.tooltip_text = "Not interested — hide this item for the rest of this stall visit. Free, no time cost. It's still there for anyone else, and dismissing doesn't affect the real item pool."
-		dismiss_button.custom_minimum_size = Vector2(32, 32)
+		dismiss_button.custom_minimum_size = Vector2(44, 44)
+		dismiss_button.add_theme_font_size_override("font_size", 20)
 		style_button(dismiss_button, "nav")
 		dismiss_button.pressed.connect(Callable(self, "dismiss_stall_item").bind(i))
 		name_row.add_child(dismiss_button)
@@ -1389,20 +1445,6 @@ func dismiss_stall_item(index):
 	stall["stock"][index]["dismissed"] = true
 	show_stall()
 
-func _on_stall_card_input(event, panel, index):
-	if event is InputEventScreenTouch:
-		if event.pressed:
-			panel.set_meta("swipe_start", event.position)
-			panel.set_meta("swipe_total", Vector2.ZERO)
-		else:
-			if panel.has_meta("swipe_total"):
-				var total = panel.get_meta("swipe_total")
-				if total.x < -80.0 and abs(total.y) < 50.0:
-					dismiss_stall_item(index)
-	elif event is InputEventScreenDrag:
-		if panel.has_meta("swipe_total"):
-			panel.set_meta("swipe_total", panel.get_meta("swipe_total") + event.relative)
-
 func haggle_item(index, value_edit):
 	var stall = stalls[current_stall_index]
 	var item = stall["stock"][index]
@@ -1587,10 +1629,10 @@ func buy_item(index):
 		set_status("They won't sell you this item today.")
 		return
 	if cash < item["asking"]:
-		set_status("You don't have enough cash.")
+		show_blocked_popup("Not enough cash.")
 		return
 	if not can_carry(item):
-		set_status("BAG FULL — This item needs %d space. Upgrade carrying capacity in the Shop." % size_units(item))
+		show_blocked_popup("Not enough space in your bag.")
 		return
 	if not can_store(item):
 		set_status("HOME STORAGE FULL — Upgrade storage in the Shop before buying more stock.")
@@ -1775,6 +1817,10 @@ func rival_pressure(chance):
 			stall["stock"].remove_at(idx)
 			status_label.text += " A rival grabbed %s while you were occupied." % gone
 
+func show_inventory_fresh():
+	inventory_tab = "unlisted"
+	show_inventory()
+
 func show_inventory():
 	current_screen_name = "show_inventory"
 	clear_body()
@@ -1785,6 +1831,31 @@ func show_inventory():
 	title.add_theme_font_size_override("font_size", 20)
 	title.text = "INVENTORY — Storage %d/%d" % [inventory_space_used(), storage_upgrades[storage_level]["capacity"]]
 	body.add_child(title)
+
+	var unlisted_count = 0
+	var listed_count = 0
+	for it in inventory:
+		if it["listed"]:
+			listed_count += 1
+		else:
+			unlisted_count += 1
+
+	var tab_row = HBoxContainer.new()
+	tab_row.add_theme_constant_override("separation", 8)
+	body.add_child(tab_row)
+	var unlisted_tab = Button.new()
+	unlisted_tab.text = "UNLISTED (%d)" % unlisted_count
+	unlisted_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(unlisted_tab, "buy" if inventory_tab == "unlisted" else "nav")
+	unlisted_tab.pressed.connect(Callable(self, "_switch_inventory_tab").bind("unlisted"))
+	tab_row.add_child(unlisted_tab)
+	var listed_tab = Button.new()
+	listed_tab.text = "LISTED (%d)" % listed_count
+	listed_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(listed_tab, "buy" if inventory_tab == "listed" else "nav")
+	listed_tab.pressed.connect(Callable(self, "_switch_inventory_tab").bind("listed"))
+	tab_row.add_child(listed_tab)
+
 	if pending_instant_sale_banner != "":
 		var banner_panel = make_card()
 		body.add_child(banner_panel)
@@ -1803,10 +1874,14 @@ func show_inventory():
 		empty.text = "No stock."
 		body.add_child(empty)
 		return
+	var showing_any = false
 
 
 	for i in range(inventory.size()):
 		var item = inventory[i]
+		if item["listed"] != (inventory_tab == "listed"):
+			continue
+		showing_any = true
 		var panel = make_card()
 		body.add_child(panel)
 		var card = VBoxContainer.new()
@@ -2023,8 +2098,21 @@ func show_inventory():
 		else:
 			add_listing_controls(card, i, item, potential)
 
+	if not showing_any:
+		var empty_tab = Label.new()
+		empty_tab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if inventory_tab == "listed":
+			empty_tab.text = "Nothing listed yet. Create a listing from the Unlisted tab."
+		else:
+			empty_tab.text = "Nothing unlisted — everything you own is currently listed."
+		body.add_child(empty_tab)
+	else:
+		set_status("Choose your own asking price. Buyer Interest is tied directly to the daily buyer roll.")
 
-	set_status("Choose your own asking price. Buyer Interest is tied directly to the daily buyer roll.")
+func _switch_inventory_tab(tab):
+	inventory_tab = tab
+	show_inventory()
 
 func function_status(item):
 	if not item["testable"]:
@@ -2559,7 +2647,7 @@ func create_listing(index, value_edit):
 		set_status("Confirmed counterfeit items cannot be listed normally.")
 		return
 	if item["testable"] and not item["tested"]:
-		set_status("TEST REQUIRED — Electrical/electronic items must be tested before listing.")
+		show_blocked_popup("You need to test this item first.")
 		return
 	var potential = estimate_identified_potential(item)
 	var price = clamp(_parse_price(value_edit.text), float(potential[0]), float(potential[1]))
@@ -2942,6 +3030,24 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 15:20", "notes": [
+		"Removed swipe-to-dismiss on mobile (kept just the × button, made bigger and easier to tap on both mobile and desktop)",
+		"Blocked-action messages now use exact short wording: 'Not enough cash.', 'Not enough space in your bag.', 'You need to test this item first.'",
+		"Inventory split into UNLISTED / LISTED tabs with live counts — always opens on Unlisted; listing/unlisting moves items between tabs immediately",
+	]},
+	{"version": "Latest — 09/09/2026 14:50", "notes": [
+		"Swipe left to dismiss a stall item on mobile (session-only, doesn't touch the real item pool, free — no Energy or time cost)",
+		"Added a small × button next to every stall item for the same dismiss action on desktop",
+	]},
+	{"version": "Latest — 09/09/2026 14:30", "notes": [
+		"Authenticate button now shows its accuracy % before pressing, and the actual Chance/Rolled/Result outcome on the button itself afterward — matching Test and Deep Research",
+	]},
+	{"version": "Latest — 09/09/2026 14:10", "notes": [
+		"The exact Inspect result (e.g. 'Looks rough', 'Looks unusually clean') now persists into the Inventory card if the item was inspected before buying",
+	]},
+	{"version": "Latest — 09/09/2026 13:50", "notes": [
+		"£ Sold tab now shows a Profit column, calculated from the actual realised sale after fees/postage/packaging/paid/research spend — green if positive, red if negative",
+	]},
 	{"version": "Latest — 08/09/2026 22:28", "notes": [
 		"Polished the main mobile navigation: Stall, Stalls, Inventory, £ Sold, Shop and More now fill the full row cleanly with no wasted space",
 		"Stall, Stalls and especially Inventory have been given more room while all six navigation buttons remain on one line",
