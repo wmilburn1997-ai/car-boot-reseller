@@ -145,6 +145,7 @@ var status_label
 var status_panel
 var tooltip_panel
 var status_hide_timer
+var deep_research_icon
 var blocked_popup
 var blocked_popup_label
 var blocked_popup_timer
@@ -252,6 +253,8 @@ var special_event_profiles = {
 var pending_special_offer = null
 
 func _ready():
+	if ResourceLoader.exists("res://deep_research_icon.png"):
+		deep_research_icon = load("res://deep_research_icon.png")
 	rng.randomize()
 	reset_day_stats()
 	generate_weekly_trends()
@@ -672,7 +675,7 @@ func get_highlight_color(item, action_key):
 		return "#d4af37"
 	return "#f0d060"
 
-func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8dcff"):
+func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8dcff", header_icon = null):
 	var panel = PanelContainer.new()
 	var sb = StyleBoxFlat.new()
 	sb.bg_color = Color(0.09,0.10,0.12,1.0)
@@ -694,11 +697,22 @@ func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8d
 	var box = VBoxContainer.new()
 	box.add_theme_constant_override("separation", 4)
 	panel.add_child(box)
+	var header_row = HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	box.add_child(header_row)
+	if header_icon != null:
+		var header_icon_rect = TextureRect.new()
+		header_icon_rect.texture = header_icon
+		header_icon_rect.custom_minimum_size = Vector2(32, 32)
+		header_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		header_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		header_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		header_row.add_child(header_icon_rect)
 	var header = Label.new()
 	header.text = header_text
 	header.add_theme_font_size_override("font_size", 15)
 	header.add_theme_color_override("font_color", Color(0.58,0.63,0.70,1.0))
-	box.add_child(header)
+	header_row.add_child(header)
 	if note_bbcode_text != "":
 		var note = RichTextLabel.new()
 		note.bbcode_enabled = true
@@ -2039,7 +2053,7 @@ func show_inventory():
 			var deep_note = item["research_note"]
 			if item["rare_variant_hit"]:
 				deep_note += "\nRARE VARIANT — [color=#e08fd0]rolled %.2f%%[/color] (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
-			card.add_child(make_completed_action_box("Deep Researched", deep_note, get_highlight_color(item, "deep_research")))
+			card.add_child(make_completed_action_box("Deep Researched", deep_note, get_highlight_color(item, "deep_research"), deep_research_icon))
 		else:
 			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
 			var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
@@ -2054,6 +2068,10 @@ func show_inventory():
 			style_button(deep_button, "action")
 			deep_button.custom_minimum_size.y = 48
 			deep_button.add_theme_font_size_override("font_size", 14)
+			if deep_research_icon != null:
+				deep_button.icon = deep_research_icon
+				deep_button.add_theme_constant_override("icon_max_width", 32)
+				deep_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			actions.add_child(deep_button)
 
 		if item["testable"]:
@@ -3068,6 +3086,9 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 18:10", "notes": [
+		"Added a Deep Research icon (32×32, crisp pixel-art filtering) next to the Deep Research text — shown consistently on the button itself and on its completed result box",
+	]},
 	{"version": "Latest — 09/09/2026 17:50", "notes": [
 		"Highlight system redesigned: whichever action (Condition/Research/Deep Research) most recently ran now always takes the highlight, colored yellow if it increased the price or gold if it decreased it — replacing the old 'highest ever' comparison",
 	]},
