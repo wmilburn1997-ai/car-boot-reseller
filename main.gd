@@ -150,6 +150,10 @@ var condition_icon
 var research_icon
 var test_icon
 var authenticate_icon
+var inspect_icon
+var cash_icon
+var carry_icon
+var storage_icon
 var blocked_popup
 var blocked_popup_label
 var blocked_popup_timer
@@ -267,6 +271,14 @@ func _ready():
 		test_icon = load("res://test_icon.png")
 	if ResourceLoader.exists("res://authenticate_icon.png"):
 		authenticate_icon = load("res://authenticate_icon.png")
+	if ResourceLoader.exists("res://inspect_icon.png"):
+		inspect_icon = load("res://inspect_icon.png")
+	if ResourceLoader.exists("res://cash_icon.png"):
+		cash_icon = load("res://cash_icon.png")
+	if ResourceLoader.exists("res://carry_icon.png"):
+		carry_icon = load("res://carry_icon.png")
+	if ResourceLoader.exists("res://storage_icon.png"):
+		storage_icon = load("res://storage_icon.png")
 	rng.randomize()
 	reset_day_stats()
 	generate_weekly_trends()
@@ -578,10 +590,10 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 	sb.corner_radius_top_right = 10
 	sb.corner_radius_bottom_left = 10
 	sb.corner_radius_bottom_right = 10
-	sb.content_margin_left = 6 if compact else 10
-	sb.content_margin_right = 6 if compact else 10
-	sb.content_margin_top = 2 if compact else 4
-	sb.content_margin_bottom = 2 if compact else 4
+	sb.content_margin_left = 6 if compact else 12
+	sb.content_margin_right = 6 if compact else 12
+	sb.content_margin_top = 2 if compact else 5
+	sb.content_margin_bottom = 2 if compact else 5
 	pill.add_theme_stylebox_override("panel", sb)
 	pill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pill.size_flags_stretch_ratio = 1.0
@@ -592,7 +604,22 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 	pill.add_child(row)
-	if key == "cash" or key == "carry" or key == "storage":
+	var stat_icon_tex = null
+	if key == "cash":
+		stat_icon_tex = cash_icon
+	elif key == "carry":
+		stat_icon_tex = carry_icon
+	elif key == "storage":
+		stat_icon_tex = storage_icon
+	if stat_icon_tex != null:
+		var stat_icon_rect = TextureRect.new()
+		stat_icon_rect.texture = stat_icon_tex
+		stat_icon_rect.custom_minimum_size = Vector2(28, 28)
+		stat_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		stat_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		stat_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		row.add_child(stat_icon_rect)
+	elif key == "cash" or key == "carry" or key == "storage":
 		var icon_color = border
 		row.add_child(make_icon(key, icon_color))
 	var lbl = Label.new()
@@ -1377,6 +1404,7 @@ func show_stall():
 		look.tooltip_text = "Cheap first impression of Condition. Can genuinely be wrong at this accuracy — never reveals the exact score."
 		style_button(look, "nav")
 		look.pressed.connect(Callable(self, "quick_look").bind(i))
+		apply_button_icon(look, inspect_icon)
 		actions.add_child(look)
 
 		if not item["condition_checked"]:
@@ -3110,6 +3138,12 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 21:25", "notes": [
+		"Replaced the hand-drawn Cash/Carry/Storage header icons with proper pixel-art versions, widened the chip padding slightly to fit them comfortably",
+	]},
+	{"version": "Latest — 09/09/2026 21:10", "notes": [
+		"Added the Inspect icon — same treatment as the other action icons, shown on the button in both its active and completed states",
+	]},
 	{"version": "Latest — 09/09/2026 18:45", "notes": [
 		"Added icons for Condition, Research, Test, and Authenticate — same 32×32 crisp pixel-art treatment as Deep Research, shown on both the active button and its completed result box, on the stall page and Inventory alike",
 	]},
