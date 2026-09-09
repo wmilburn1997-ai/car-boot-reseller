@@ -143,6 +143,7 @@ var body
 var footer_label
 var status_label
 var status_panel
+var tooltip_panel
 var status_hide_timer
 var blocked_popup
 var blocked_popup_label
@@ -421,13 +422,42 @@ func build_ui():
 	page_content.add_child(body)
 
 	status_label = Label.new()
-	status_label.visible = false
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_label.add_theme_font_size_override("font_size", 14)
+	status_label.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
+
+	tooltip_panel = PanelContainer.new()
+	tooltip_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	tooltip_panel.offset_left = 16
+	tooltip_panel.offset_right = -16
+	tooltip_panel.offset_top = -64
+	tooltip_panel.offset_bottom = -14
+	tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tooltip_panel.visible = false
+	var tooltip_style = StyleBoxFlat.new()
+	tooltip_style.bg_color = Color(0.06,0.07,0.09,0.96)
+	tooltip_style.border_width_left = 1
+	tooltip_style.border_width_top = 1
+	tooltip_style.border_width_right = 1
+	tooltip_style.border_width_bottom = 1
+	tooltip_style.border_color = Color(0.30,0.28,0.22,1.0)
+	tooltip_style.corner_radius_top_left = 8
+	tooltip_style.corner_radius_top_right = 8
+	tooltip_style.corner_radius_bottom_left = 8
+	tooltip_style.corner_radius_bottom_right = 8
+	tooltip_style.content_margin_left = 10
+	tooltip_style.content_margin_right = 10
+	tooltip_style.content_margin_top = 8
+	tooltip_style.content_margin_bottom = 8
+	tooltip_panel.add_theme_stylebox_override("panel", tooltip_style)
+	add_child(tooltip_panel)
+	tooltip_panel.add_child(status_label)
 
 	footer_label = Label.new()
 	footer_label.visible = false
 
 	blocked_popup = PanelContainer.new()
-	blocked_popup.set_anchors_preset(Control.PRESET_CENTER)
+	blocked_popup.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	blocked_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	blocked_popup.visible = false
 	blocked_popup.z_index = 100
@@ -621,21 +651,59 @@ func _on_tooltip_button_down(button):
 	if button.tooltip_text == "":
 		return
 	tooltip_is_held = true
-	if status_hide_timer != null:
-		status_hide_timer.stop()
-	tooltip_saved_text = status_label.text
 	status_label.text = button.tooltip_text
-	status_label.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
-	_show_status_overlay(false)
+	if tooltip_panel != null:
+		tooltip_panel.visible = true
+		tooltip_panel.move_to_front()
 
 func _on_tooltip_button_up():
 	tooltip_is_held = false
-	status_label.text = tooltip_saved_text
-	status_label.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
-	if status_label.text == "" and last_rng_line == "No RNG rolls yet.":
-		_hide_status_overlay()
-	else:
-		_show_status_overlay(true)
+	if tooltip_panel != null:
+		tooltip_panel.visible = false
+
+func update_highest_max(item, action_key, new_max):
+	if new_max > float(item["highest_max_price"]):
+		item["highest_max_price"] = new_max
+		item["highest_max_action"] = action_key
+
+func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8dcff"):
+	var panel = PanelContainer.new()
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color(0.09,0.10,0.12,1.0)
+	sb.border_width_left = 1
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.border_color = Color(0.20,0.22,0.26,1.0)
+	sb.corner_radius_top_left = 6
+	sb.corner_radius_top_right = 6
+	sb.corner_radius_bottom_left = 6
+	sb.corner_radius_bottom_right = 6
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	panel.add_child(box)
+	var header = Label.new()
+	header.text = header_text
+	header.add_theme_font_size_override("font_size", 15)
+	header.add_theme_color_override("font_color", Color(0.58,0.63,0.70,1.0))
+	box.add_child(header)
+	if note_bbcode_text != "":
+		var note = RichTextLabel.new()
+		note.bbcode_enabled = true
+		note.fit_content = true
+		note.scroll_active = false
+		note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		note.add_theme_font_size_override("normal_font_size", 14)
+		note.add_theme_color_override("default_color", Color(note_color))
+		note.text = note_bbcode_text
+		box.add_child(note)
+	return panel
 
 func make_card():
 	var panel = PanelContainer.new()
@@ -685,9 +753,14 @@ func show_blocked_popup(text):
 	blocked_popup_label.text = text
 	blocked_popup.visible = true
 	blocked_popup.move_to_front()
-	blocked_popup.reset_size()
-	blocked_popup.set_anchors_preset(Control.PRESET_CENTER)
+	call_deferred("_center_blocked_popup")
 	blocked_popup_timer.start()
+
+func _center_blocked_popup():
+	if blocked_popup == null or not blocked_popup.visible:
+		return
+	var viewport_size = get_viewport_rect().size
+	blocked_popup.position = (viewport_size - blocked_popup.size) / 2.0
 
 func _hide_blocked_popup():
 	if blocked_popup != null:
@@ -960,6 +1033,10 @@ func generate_item(seller):
 		"repair_note": "",
 		"buy_block_note": "",
 		"listing_block_note": "",
+		"action_order": [],
+		"highest_max_price": 0.0,
+		"highest_max_action": "",
+		"basic_comps_max": 0.0,
 		"locked_gamble_hint": 0.20,
 		"dismissed": false
 	}
@@ -1131,19 +1208,6 @@ func show_stall():
 		state_line.text = "%s  •  Condition: %s  •  Function: %s" % [item["category"], condition_text, function_text_value]
 		card.add_child(state_line)
 
-		if item["condition_checked"] and not item["testable"]:
-			var defect_line = Label.new()
-			defect_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			defect_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			defect_line.add_theme_font_size_override("font_size", 14)
-			if item["fault"]:
-				defect_line.text = "[!] Hidden flaw found: %s" % item["fault_severity"]
-				defect_line.add_theme_color_override("font_color", Color(0.92,0.55,0.45,1.0))
-			else:
-				defect_line.text = "No hidden defects found."
-				defect_line.add_theme_color_override("font_color", Color(0.55,0.78,0.58,1.0))
-			card.add_child(defect_line)
-
 		if item["quick_look_done"] and item["quick_look_note"] != "":
 			var look_result = RichTextLabel.new()
 			look_result.bbcode_enabled = true
@@ -1155,16 +1219,18 @@ func show_stall():
 			look_result.text = item["quick_look_note"]
 			card.add_child(look_result)
 
+		if item["condition_checked"]:
+			var stall_condition_note = item["condition_price_note"]
+			if not item["testable"]:
+				if item["fault"]:
+					stall_condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
+				else:
+					stall_condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
+			card.add_child(make_completed_action_box("Condition Checked", stall_condition_note, "#f0d060" if item["highest_max_action"] == "condition" else "#b8dcff"))
+
 		if item["basic_researched"]:
-			var research_result = RichTextLabel.new()
-			research_result.bbcode_enabled = true
-			research_result.fit_content = true
-			research_result.scroll_active = false
-			research_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			research_result.add_theme_font_size_override("normal_font_size", 15)
-			research_result.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
-			research_result.text = "Researched Prices: %s  •  [color=#e08fd0]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
-			card.add_child(research_result)
+			var stall_research_note = "Researched Prices: %s  •  [color=#e08fd0]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
+			card.add_child(make_completed_action_box("Researched", stall_research_note, "#f0d060" if item["highest_max_action"] == "research" else "#b8dcff"))
 
 		var top_row = HFlowContainer.new()
 		top_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1275,23 +1341,25 @@ func show_stall():
 		look.pressed.connect(Callable(self, "quick_look").bind(i))
 		actions.add_child(look)
 
-		var condition_button = Button.new()
-		condition_button.text = "Condition £5 | E4" if not item["condition_checked"] else "Checked"
-		condition_button.disabled = item["condition_checked"]
-		condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		condition_button.tooltip_text = "Reveals the exact Condition score for certain. This is the only reliable way to know it before buying — and, for non-electronic items, the only way to know about hidden defects at all."
-		style_button(condition_button, "action")
-		condition_button.pressed.connect(Callable(self, "check_condition").bind(i))
-		actions.add_child(condition_button)
+		if not item["condition_checked"]:
+			var condition_button = Button.new()
+			condition_button.text = "Condition £5 | E4"
+			condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			condition_button.tooltip_text = "Reveals the exact Condition score for certain. This is the only reliable way to know it before buying — and, for non-electronic items, the only way to know about hidden defects at all."
+			style_button(condition_button, "action")
+			condition_button.add_theme_font_size_override("font_size", 14)
+			condition_button.pressed.connect(Callable(self, "check_condition").bind(i))
+			actions.add_child(condition_button)
 
-		var research_button = Button.new()
-		research_button.text = "Research £1 | E2" if not item["basic_researched"] else "Researched"
-		research_button.disabled = item["basic_researched"]
-		research_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		research_button.tooltip_text = "Shows real sold-price comparables for this exact item. Evidence to weigh, not a guaranteed value — one-time only."
-		style_button(research_button, "action")
-		research_button.pressed.connect(Callable(self, "prebuy_research").bind(i))
-		actions.add_child(research_button)
+		if not item["basic_researched"]:
+			var research_button = Button.new()
+			research_button.text = "Research £1 | E2"
+			research_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			research_button.tooltip_text = "Shows real sold-price comparables for this exact item. Evidence to weigh, not a guaranteed value — one-time only."
+			style_button(research_button, "action")
+			research_button.add_theme_font_size_override("font_size", 14)
+			research_button.pressed.connect(Callable(self, "prebuy_research").bind(i))
+			actions.add_child(research_button)
 
 	footer_label.text = ""
 
@@ -1347,7 +1415,15 @@ func check_condition(index):
 	energy -= 4
 	current_time_minutes += 5
 	day_stats["research"] += 5.0
+	var before_check = estimate_identified_potential(item)
 	item["condition_checked"] = true
+	item["action_order"].append("condition")
+	var after_check = estimate_identified_potential(item)
+	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
+	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
+	var change_word = "increased" if after_center >= before_center else "decreased"
+	item["condition_price_note"] = "Condition Checked — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
+	update_highest_max(item, "condition", float(after_check[1]))
 	var message = "CONDITION CHECK COMPLETE — Condition %d/10." % item["condition"]
 	if item["testable"]:
 		message += " Function remains unknown until testing."
@@ -1374,6 +1450,7 @@ func prebuy_research(index):
 	day_stats["research"] += 1.0
 	item["basic_researched"] = true
 	item["basic_comps"] = make_comps(item, false)
+	update_highest_max(item, "research", float(item["basic_comps_max"]))
 	item["locked_gamble_hint"] = gamble_hint_chance(item)
 	rival_pressure(0.07)
 	show_stall()
@@ -1389,6 +1466,7 @@ func make_comps(item, deep):
 			spread = rng.randf_range(0.70, 1.30)
 		values.append(max(1, int(item["true_value"] * spread)))
 	values.sort()
+	item["basic_comps_max"] = float(values[-1])
 	var text = ""
 	for i in range(values.size()):
 		if i > 0:
@@ -1865,9 +1943,6 @@ func show_inventory():
 		card.add_theme_constant_override("separation", 5)
 		panel.add_child(card)
 
-		var listed_text = "UNLISTED"
-		if item["listed"]:
-			listed_text = "LISTED £%.2f" % item["listing"]
 		var inv_condition_text = "Unknown"
 		if item["condition_checked"]:
 			inv_condition_text = "%d/10" % item["condition"]
@@ -1902,7 +1977,7 @@ func show_inventory():
 		details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		details.add_theme_font_size_override("font_size", 15)
-		details.text = "Est. value £%d–£%d  •  Buyer Interest: %s  •  %s" % [potential[0], potential[1], buyer_interest_label(item, preview_price), listed_text]
+		details.text = "Est. value £%d–£%d" % [potential[0], potential[1]]
 		card.add_child(details)
 
 		if item["quick_look_done"] and item["quick_look_note"] != "":
@@ -1916,151 +1991,91 @@ func show_inventory():
 			inv_look_result.text = item["quick_look_note"]
 			card.add_child(inv_look_result)
 
-		if item["condition_checked"] and item["condition_price_note"] != "":
-			var condition_note_line = Label.new()
-			condition_note_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			condition_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			condition_note_line.add_theme_font_size_override("font_size", 15)
-			condition_note_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
-			condition_note_line.text = item["condition_price_note"]
-			card.add_child(condition_note_line)
-
-		if item["condition_checked"] and not item["testable"]:
-			var inv_defect_line = Label.new()
-			inv_defect_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			inv_defect_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			inv_defect_line.add_theme_font_size_override("font_size", 14)
-			if item["fault"]:
-				inv_defect_line.text = "[!] Hidden flaw found: %s" % item["fault_severity"]
-				inv_defect_line.add_theme_color_override("font_color", Color(0.92,0.55,0.45,1.0))
-			else:
-				inv_defect_line.text = "No hidden defects found."
-				inv_defect_line.add_theme_color_override("font_color", Color(0.55,0.78,0.58,1.0))
-			card.add_child(inv_defect_line)
-
-		if item["basic_researched"]:
-			var comps = Label.new()
-			comps.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			comps.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			comps.add_theme_font_size_override("font_size", 15)
-			comps.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
-			comps.text = "Researched Prices: %s" % item["basic_comps"]
-			card.add_child(comps)
-		if item["research_note"] != "":
-			var note = RichTextLabel.new()
-			note.bbcode_enabled = true
-			note.fit_content = true
-			note.scroll_active = false
-			note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			note.add_theme_font_size_override("normal_font_size", 15)
-			note.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
-			note.text = item["research_note"]
-			card.add_child(note)
-
 		var actions = HFlowContainer.new()
 		actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		actions.add_theme_constant_override("h_separation", 6)
 		actions.add_theme_constant_override("v_separation", 6)
 		card.add_child(actions)
 
-		var inv_condition_button = Button.new()
+
 		if item["condition_checked"]:
-			inv_condition_button.text = "Condition Checked"
-			inv_condition_button.disabled = true
+			var condition_note = item["condition_price_note"]
+			if not item["testable"]:
+				if item["fault"]:
+					condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
+				else:
+					condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
+			card.add_child(make_completed_action_box("Condition Checked", condition_note, "#f0d060" if item["highest_max_action"] == "condition" else "#b8dcff"))
 		else:
+			var inv_condition_button = Button.new()
 			inv_condition_button.text = "Condition £5 | E4"
 			inv_condition_button.pressed.connect(Callable(self, "inventory_check_condition").bind(i))
-		inv_condition_button.tooltip_text = "Reveals the exact Condition score, and — for non-electronic items — any hidden defect. Only reliable way to know for sure if you skipped it before buying."
-		inv_condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		style_button(inv_condition_button, "action")
-		actions.add_child(inv_condition_button)
+			inv_condition_button.tooltip_text = "Reveals the exact Condition score, and — for non-electronic items — any hidden defect. Only reliable way to know for sure if you skipped it before buying."
+			inv_condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			style_button(inv_condition_button, "action")
+			inv_condition_button.add_theme_font_size_override("font_size", 14)
+			actions.add_child(inv_condition_button)
 
-		var basic_button = Button.new()
 		if item["basic_researched"]:
-			basic_button.text = "Researched"
-			basic_button.disabled = true
+			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], "#f0d060" if item["highest_max_action"] == "research" else "#b8dcff"))
 		else:
+			var basic_button = Button.new()
 			basic_button.text = "Research £1 | E2"
 			basic_button.pressed.connect(Callable(self, "inventory_basic_research").bind(i))
-		basic_button.tooltip_text = "Sold-price comparables for this item. Evidence only, one-time."
-		basic_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		style_button(basic_button, "action")
-		actions.add_child(basic_button)
+			basic_button.tooltip_text = "Sold-price comparables for this item. Evidence only, one-time."
+			basic_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			style_button(basic_button, "action")
+			basic_button.add_theme_font_size_override("font_size", 14)
+			actions.add_child(basic_button)
 
-		var deep_button = Button.new()
 		if item["deep_researched"]:
-			deep_button.text = "Deep Researched"
-			deep_button.disabled = true
+			var deep_note = item["research_note"]
+			if item["rare_variant_hit"]:
+				deep_note += "\nRARE VARIANT — [color=#e08fd0]rolled %.2f%%[/color] (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
+			card.add_child(make_completed_action_box("Deep Researched", deep_note, "#f0d060" if item["highest_max_action"] == "deep_research" else "#b8dcff"))
 		else:
 			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
 			var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
 			var real_rare_chance = 0.20
 			if item["basic_researched"]:
 				real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.03, 0.35)
+			var deep_button = Button.new()
 			deep_button.text = "Deep Research £9 | E12\nDiscovery %.0f%% | Rare %.0f%%" % [deep_chance * 100.0, real_rare_chance * 100.0]
 			deep_button.pressed.connect(Callable(self, "deep_research").bind(i))
-		deep_button.tooltip_text = "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."
-		deep_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		style_button(deep_button, "action")
-		deep_button.custom_minimum_size.y = 48
-		actions.add_child(deep_button)
-		if item["deep_researched"] and item["rare_variant_hit"]:
-			var rare_hit_line = RichTextLabel.new()
-			rare_hit_line.bbcode_enabled = true
-			rare_hit_line.fit_content = true
-			rare_hit_line.scroll_active = false
-			rare_hit_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			rare_hit_line.add_theme_font_size_override("normal_font_size", 13)
-			rare_hit_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
-			rare_hit_line.text = "RARE VARIANT — [color=#e08fd0]rolled %.2f%%[/color] (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
-			card.add_child(rare_hit_line)
+			deep_button.tooltip_text = "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."
+			deep_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			style_button(deep_button, "action")
+			deep_button.custom_minimum_size.y = 48
+			deep_button.add_theme_font_size_override("font_size", 14)
+			actions.add_child(deep_button)
 
 		if item["testable"]:
-			var test_button = Button.new()
 			if item["tested"]:
-				test_button.text = "Tested"
-				test_button.disabled = true
+				card.add_child(make_completed_action_box("Tested", item["test_note"]))
 			else:
+				var test_button = Button.new()
 				test_button.text = "Test £2 | E5\nFault chance: %.0f%%" % (float(item["fault_chance"]) * 100.0)
 				test_button.pressed.connect(Callable(self, "test_item").bind(i))
 				test_button.custom_minimum_size.y = 48
-			test_button.tooltip_text = "Reveals whether this electronic item actually works. Required before it can be listed."
-			test_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			style_button(test_button, "action")
-			actions.add_child(test_button)
-			if item["tested"] and item["test_note"] != "":
-				var test_note_line = RichTextLabel.new()
-				test_note_line.bbcode_enabled = true
-				test_note_line.fit_content = true
-				test_note_line.scroll_active = false
-				test_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				test_note_line.add_theme_font_size_override("normal_font_size", 13)
-				test_note_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
-				test_note_line.text = item["test_note"]
-				card.add_child(test_note_line)
+				test_button.tooltip_text = "Reveals whether this electronic item actually works. Required before it can be listed."
+				test_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				style_button(test_button, "action")
+				test_button.add_theme_font_size_override("font_size", 14)
+				actions.add_child(test_button)
 
-		var auth_button = Button.new()
 		if item["auth_attempted"]:
-			auth_button.text = "Authenticated\n%s" % item["auth_status"]
-			auth_button.disabled = true
+			card.add_child(make_completed_action_box("Authenticated — %s" % item["auth_status"], item["auth_note"]))
 		else:
+			var auth_button = Button.new()
 			auth_button.text = "Authenticate £%d | E6\nAccuracy: %.0f%%" % [int(authentication_cost(item)), authentication_accuracy(item) * 100.0]
 			auth_button.pressed.connect(Callable(self, "authenticate_item").bind(i))
 			auth_button.custom_minimum_size.y = 48
-		auth_button.tooltip_text = "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."
-		auth_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		style_button(auth_button, "action")
-		actions.add_child(auth_button)
-		if item["auth_attempted"] and item["auth_note"] != "":
-			var auth_note_line = RichTextLabel.new()
-			auth_note_line.bbcode_enabled = true
-			auth_note_line.fit_content = true
-			auth_note_line.scroll_active = false
-			auth_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			auth_note_line.add_theme_font_size_override("normal_font_size", 13)
-			auth_note_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
-			auth_note_line.text = item["auth_note"]
-			card.add_child(auth_note_line)
+			auth_button.tooltip_text = "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."
+			auth_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			style_button(auth_button, "action")
+			auth_button.add_theme_font_size_override("font_size", 14)
+			actions.add_child(auth_button)
+
 
 		if toolbox_level > 0 and item["tested"] and item["fault"]:
 			var repair_button = Button.new()
@@ -2139,7 +2154,7 @@ func add_listing_controls(card, index, item, potential):
 		live.fit_content = true
 		live.scroll_active = false
 		live.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		live.text = "LIVE LISTING £%.2f | Buyer Interest [color=%s]%s[/color]" % [item["listing"], buyer_interest_color(buyer_interest_label(item, float(item["listing"]))), buyer_interest_label(item, float(item["listing"]))]
+		live.text = "LIVE LISTING £%.2f" % item["listing"]
 		box.add_child(live)
 		var unlist = Button.new()
 		unlist.text = "Unlist"
@@ -2295,8 +2310,7 @@ func format_sale_estimate(item, price):
 	var interest = buyer_interest_score(item, price)
 	var chance = clamp(0.05 + interest * 0.47, 0.04, 0.55)
 	var expected_days = max(1, int(round(1.0 / chance)))
-	var label_text = buyer_interest_label(item, price)
-	return "Est. time to sell ~%d day%s at %d%% daily chance (Buyer Interest [color=%s]%s[/color])" % [expected_days, "" if expected_days == 1 else "s", int(round(chance * 100.0)), buyer_interest_color(label_text), label_text]
+	return "Est. time to sell ~%d day%s at %d%% daily chance." % [expected_days, "" if expected_days == 1 else "s"]
 
 func fault_is_known(item):
 	if item["testable"]:
@@ -2346,11 +2360,13 @@ func inventory_check_condition(index):
 	day_stats["research"] += 5.0
 	var before_check = estimate_identified_potential(item)
 	item["condition_checked"] = true
+	item["action_order"].append("condition")
 	var after_check = estimate_identified_potential(item)
 	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
 	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
 	var change_word = "increased" if after_center >= before_center else "decreased"
 	item["condition_price_note"] = "Condition Checked — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
+	update_highest_max(item, "condition", float(after_check[1]))
 	var message = "CONDITION CHECK COMPLETE — Condition %d/10." % item["condition"]
 	if item["testable"]:
 		message += " Function remains unknown until testing."
@@ -2377,7 +2393,9 @@ func inventory_basic_research(index):
 	current_time_minutes += 4
 	day_stats["research"] += 1.0
 	item["basic_researched"] = true
+	item["action_order"].append("research")
 	item["basic_comps"] = make_comps(item, false)
+	update_highest_max(item, "research", float(item["basic_comps_max"]))
 	show_inventory()
 
 func deep_research(index):
@@ -2397,6 +2415,7 @@ func deep_research(index):
 	current_time_minutes += 20
 	day_stats["research"] += 9.0
 	item["deep_researched"] = true
+	item["action_order"].append("deep_research")
 
 	var knowledge = float(category_knowledge.get(item["category"], 5))
 	var chance = clamp(0.28 + knowledge / 180.0, 0.28, 0.78)
@@ -2452,6 +2471,7 @@ func deep_research(index):
 		item["rare_variant_mult"] = rare_mult
 
 	item["research_note"] = "Deep Research — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] | Result: %s%s Range £%d–£%d -> £%d–£%d." % [chance * 100.0, roll * 100.0, reason, rare_text, before[0], before[1], after[0], after[1]]
+	update_highest_max(item, "deep_research", float(after[1]))
 	show_inventory()
 
 func test_item(index):
@@ -2471,6 +2491,7 @@ func test_item(index):
 	current_time_minutes += 10
 	day_stats["research"] += 2.0
 	item["tested"] = true
+	item["action_order"].append("test")
 
 	var result_text = "WORKING"
 	if item["fault"]:
@@ -2527,6 +2548,7 @@ func authenticate_item(index):
 	current_time_minutes += 15
 	day_stats["authentication"] += cost
 	item["auth_attempted"] = true
+	item["action_order"].append("authenticate")
 
 	var accuracy = authentication_accuracy(item)
 	var roll = rng.randf()
@@ -3038,6 +3060,24 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 17:30", "notes": [
+		"Reverted the box reordering from last update — Condition/Research/Deep Research/Test/Authenticate now stay in their original fixed positions again",
+		"Fixed: Condition checked on the STALL page (before buying) never actually recorded the price-change note — only the Inventory version did. Now both do, so the values genuinely carry over when you buy the item",
+		"Stall page now uses the same greyed-out box style as Inventory for Condition and Research results, instead of a bare line above the buttons",
+		"New: the action currently holding the highest max price value (across Condition, Research, and Deep Research) is now highlighted yellow — recalculated live as you do more actions, whichever action or page it happens on",
+	]},
+	{"version": "Latest — 09/09/2026 17:05", "notes": [
+		"Fixed: Condition/Research/Deep Research results were showing twice in Inventory (old lines above the actions row never got removed when the boxes were added) — removed the duplicates",
+		"Hidden-defect description ('No hidden defects found' / fault warning) now lives inside the Condition Checked box instead of its own separate line",
+		"Completed-action boxes (Condition/Research/Deep Research/Test/Authenticate) now stack most-recently-clicked first",
+		"Slightly larger text in these boxes, before and after completion",
+	]},
+	{"version": "Latest — 09/09/2026 16:40", "notes": [
+		"Fixed: blocked-action popup wasn't actually centering correctly — was positioning itself before the box's size had updated for the new text; now waits for layout to settle first",
+		"Fixed: press-and-hold tooltips on mobile stopped working after the popup rework — restored with their own small bottom bar, separate from the red error popup",
+		"Inventory cards decluttered: Buyer Interest now shows only next to Create Listing (was appearing 3 times), removed the redundant Unlisted/Listed text (tabs already show this)",
+		"Condition, Research, Deep Research, Test, and Authenticate now show their result INSIDE the greyed-out completed box, instead of as a separate line below it",
+	]},
 	{"version": "Latest — 09/09/2026 16:20", "notes": [
 		"Brought back the floating red center popup for the three blocked-action messages (not enough cash, not enough bag space, test-required) — everything else stays inline as before",
 	]},
