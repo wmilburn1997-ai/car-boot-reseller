@@ -180,6 +180,8 @@ var tooltip_saved_text = ""
 var total_haggled_savings = 0.0
 var inventory_tab = "unlisted"
 var fixer_used_today = false
+const SAVE_PATH = "user://savegame.json"
+var last_save_time = ""
 var package_insight_level = 0
 var persuasion_level = 0
 const PACKAGE_INSIGHT_MAX = 20
@@ -284,6 +286,7 @@ func _ready():
 		storage_icon = load("res://storage_icon.png")
 	rng.randomize()
 	reset_day_stats()
+	load_game()
 	generate_weekly_trends()
 	generate_day()
 	adjust_scale_for_device()
@@ -534,6 +537,32 @@ func show_more_menu():
 	title.add_theme_font_size_override("font_size", 20)
 	title.text = "MORE"
 	body.add_child(title)
+
+	var save_line = Label.new()
+	save_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	save_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	save_line.add_theme_font_size_override("font_size", 13)
+	save_line.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+	save_line.text = ("Last saved: %s" % last_save_time) if last_save_time != "" else "Not saved yet — plays automatically as you play."
+	body.add_child(save_line)
+
+	var save_panel = make_card()
+	body.add_child(save_panel)
+	var save_box = VBoxContainer.new()
+	save_box.add_theme_constant_override("separation", 3)
+	save_panel.add_child(save_box)
+	var save_header = Label.new()
+	save_header.add_theme_font_size_override("font_size", 15)
+	save_header.text = "Saved Progress"
+	save_box.add_child(save_header)
+	var save_summary = Label.new()
+	save_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	save_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	save_summary.add_theme_font_size_override("font_size", 13)
+	save_summary.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+	save_summary.text = "Cash: £%.2f\nDay: %d\nLevel %d — XP %d/%d\nInventory: %d items\nUpgrades: Bag %d, Storage %d, Toolbox %d, Inspect %d, Fees %d, Package Insight %d, Persuasion %d" % [cash, day, player_level, player_xp, xp_needed_for_level(player_level), inventory.size(), bag_level, storage_level, toolbox_level, eye_level, fee_level, package_insight_level, persuasion_level]
+	save_box.add_child(save_summary)
+
 	var more_row = HFlowContainer.new()
 	more_row.add_theme_constant_override("separation", 8)
 	body.add_child(more_row)
@@ -846,6 +875,70 @@ func fixer_gamble(amount):
 	else:
 		queue_popup("The Fixer's Gamble — LOST £%.0f. Better luck tomorrow." % amount)
 	show_stall()
+
+func get_save_data():
+	return {
+		"cash": cash,
+		"day": day,
+		"player_level": player_level,
+		"player_xp": player_xp,
+		"inventory": inventory,
+		"bag_level": bag_level,
+		"storage_level": storage_level,
+		"toolbox_level": toolbox_level,
+		"eye_level": eye_level,
+		"fee_level": fee_level,
+		"package_insight_level": package_insight_level,
+		"persuasion_level": persuasion_level,
+		"achievements": achievements,
+		"discovered_log": discovered_log,
+		"family_stats": family_stats,
+		"sold_history": sold_history,
+		"total_haggled_savings": total_haggled_savings,
+		"negative_days_streak": negative_days_streak,
+		"save_time": Time.get_datetime_string_from_system(false, true),
+	}
+
+func save_game():
+	var data = get_save_data()
+	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(JSON.stringify(data))
+	file.close()
+	last_save_time = str(data["save_time"])
+
+func load_game():
+	if not FileAccess.file_exists(SAVE_PATH):
+		return false
+	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return false
+	var text = file.get_as_text()
+	file.close()
+	var parsed = JSON.parse_string(text)
+	if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
+		return false
+	cash = float(parsed.get("cash", cash))
+	day = int(parsed.get("day", day))
+	player_level = int(parsed.get("player_level", player_level))
+	player_xp = int(parsed.get("player_xp", player_xp))
+	inventory = parsed.get("inventory", inventory)
+	bag_level = int(parsed.get("bag_level", bag_level))
+	storage_level = int(parsed.get("storage_level", storage_level))
+	toolbox_level = int(parsed.get("toolbox_level", toolbox_level))
+	eye_level = int(parsed.get("eye_level", eye_level))
+	fee_level = int(parsed.get("fee_level", fee_level))
+	package_insight_level = int(parsed.get("package_insight_level", package_insight_level))
+	persuasion_level = int(parsed.get("persuasion_level", persuasion_level))
+	achievements = parsed.get("achievements", achievements)
+	discovered_log = parsed.get("discovered_log", discovered_log)
+	family_stats = parsed.get("family_stats", family_stats)
+	sold_history = parsed.get("sold_history", sold_history)
+	total_haggled_savings = float(parsed.get("total_haggled_savings", total_haggled_savings))
+	negative_days_streak = int(parsed.get("negative_days_streak", negative_days_streak))
+	last_save_time = str(parsed.get("save_time", ""))
+	return true
 
 func xp_needed_for_level(level):
 	return int(100 + (level - 1) * 50)
@@ -1910,6 +2003,7 @@ func buy_item(index):
 	check_side_deal(stall["seller"])
 	add_xp(2)
 	queue_popup("Item Purchased! %s — £%.2f" % [item["name"], item["paid"]], "success")
+	save_game()
 	set_status("Bought %s for £%.2f. Carry used %d/%d." % [item["name"], item["paid"], carry_used, bag_upgrades[bag_level]["capacity"]])
 	show_stall()
 
@@ -2077,6 +2171,7 @@ func accept_special_offer():
 	register_collection(item)
 	add_xp(2)
 	queue_popup("Item Purchased! %s — £%.2f" % [item["name"], item["paid"]], "success")
+	save_game()
 	set_status("Took the special offer: %s for £%.2f." % [item["name"], item["paid"]])
 	pending_special_offer = null
 	show_stall()
@@ -2521,6 +2616,7 @@ func quick_sell_item(index):
 	var color = Color(0.55,0.85,0.58,1.0) if profit >= 0.0 else Color(0.92,0.55,0.45,1.0)
 	set_status("Quick Sold — £%.2f — Profit %+.2f" % [quick_price, profit], color)
 	queue_popup("Item Quick Sold: %s — £%.2f" % [item["name"], quick_price], "success")
+	save_game()
 	show_inventory()
 
 func format_sale_breakdown(item, price):
@@ -3033,6 +3129,7 @@ func resolve_item_sale(item, sale_chance):
 		fs_sale["highest_sold"] = max(float(fs_sale["highest_sold"]), sale_price)
 		fs_sale["lifetime_profit"] = float(fs_sale["lifetime_profit"]) + sale_profit
 	queue_popup("Item Sold: %s — £%.2f — Profit %+.2f" % [item["name"], sale_price, sale_profit], "success")
+	save_game()
 	if sale_price - item["paid"] > 0:
 		unlock_achievement("First Flip")
 	return "sold_removed"
@@ -3231,6 +3328,7 @@ func buy_scaling_upgrade(kind):
 	else:
 		persuasion_level += 1
 	set_status("UPGRADE PURCHASED.")
+	save_game()
 	show_shop()
 
 func add_upgrade_card(title, data, level, kind, target = null):
@@ -3310,9 +3408,17 @@ func buy_upgrade(kind):
 	else:
 		toolbox_level += 1
 	set_status("UPGRADE PURCHASED.")
+	save_game()
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 02:35", "notes": [
+		"Fixed: Total Log was counting distinct items (72) instead of all discoverable item+rarity combinations (360), inconsistent with how the category boxes count",
+		"Added a local save system using Godot's user:// storage, which persists in your browser — saves Cash, Day, Level/XP, Inventory, all Shop upgrades, Achievements, Collection Log progress, and Sold History",
+		"Auto-saves after buying, selling, quick selling, buying an upgrade, and ending the day — and loads automatically when the game starts",
+		"More tab now shows a live 'Last saved' line plus a summary of exactly what's saved",
+		"Stall-specific state (today's stock, energy, time of day) is NOT saved — loading resumes your progress but generates a fresh day, rather than trying to resume mid-day",
+	]},
 	{"version": "Latest — 10/09/2026 02:00", "notes": [
 		"Collection Log overhauled into a Pokedex-style system: one box per category (13 total) plus a GRAILS box for your rarest tier finds, each showing X/Y discovered, with an unclickable TOTAL LOG box showing how many of the 72 distinct items you've ever found",
 		"Each discovered item now shows real tracked stats: times found, best condition ever seen, cheapest ever bought, highest ever sold, specials discovered X/Y, highest rarity tier found, and lifetime profit — all newly tracked from this update onward",
@@ -3548,11 +3654,7 @@ func grails_discovery_count():
 	return [found, item_families.size()]
 
 func total_families_discovered():
-	var found = 0
-	for family in item_families:
-		if family_stats.has(family["name"]):
-			found += 1
-	return [found, item_families.size()]
+	return [discovered_log.size(), item_families.size() * rarity_table.size()]
 
 func render_family_stat_card(family, force_undiscovered = false):
 	var fam_name = family["name"]
@@ -3606,7 +3708,7 @@ func show_collection_log():
 	total_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	total_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	total_label.add_theme_font_size_override("font_size", 16)
-	total_label.text = "TOTAL LOG: %d/%d different items discovered" % [total_counts[0], total_counts[1]]
+	total_label.text = "TOTAL LOG: %d/%d discovered" % [total_counts[0], total_counts[1]]
 	total_panel.add_child(total_label)
 
 	var grid = HFlowContainer.new()
@@ -3774,6 +3876,7 @@ func end_day():
 		generate_weekly_trends()
 	reset_day_stats()
 	generate_day()
+	save_game()
 	update_header()
 
 func show_bankruptcy_screen():
