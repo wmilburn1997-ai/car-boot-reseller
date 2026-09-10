@@ -1117,7 +1117,7 @@ func generate_item(seller):
 		"highlight_action": "",
 		"highlight_color": "yellow",
 		"basic_comps_max": 0.0,
-		"locked_gamble_hint": 0.20,
+		"locked_gamble_hint": 0.10,
 		"dismissed": false
 	}
 
@@ -2130,11 +2130,11 @@ func show_inventory():
 		else:
 			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
 			var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
-			var real_rare_chance = 0.20
+			var real_rare_chance = 0.10
 			if item["basic_researched"]:
-				real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.03, 0.35)
+				real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.02, 0.18)
 			var deep_button = Button.new()
-			deep_button.text = "Deep Research £9 | E12\nDiscovery %.0f%% | Rare %.0f%%" % [deep_chance * 100.0, real_rare_chance * 100.0]
+			deep_button.text = "Deep Research £18 | E12\nDiscovery %.0f%% | Rare %.0f%%" % [deep_chance * 100.0, real_rare_chance * 100.0]
 			deep_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
 			deep_button.pressed.connect(Callable(self, "deep_research").bind(i))
 			deep_button.tooltip_text = "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."
@@ -2425,7 +2425,7 @@ func gamble_hint_chance(item):
 	var potential = estimate_identified_potential(item)
 	var center = (float(potential[0]) + float(potential[1])) / 2.0
 	var value_ratio = clamp(float(item["asking"]) / max(1.0, center), 0.3, 2.5)
-	return clamp(0.05 + (value_ratio - 0.8) * 0.20, 0.03, 0.35)
+	return clamp(0.03 + (value_ratio - 0.8) * 0.10, 0.02, 0.18)
 
 func estimate_identified_potential(item):
 	var center = float(item["true_value"]) * float(item["identified_mult"]) * float(current_trends.get(item["category"], 1.0))
@@ -2510,15 +2510,15 @@ func deep_research(index):
 	if item["deep_researched"]:
 		set_status("Deep Research has already been completed once.")
 		return
-	if cash < 9.0 or energy < 12:
-		set_status("Need £9 and E12.")
+	if cash < 18.0 or energy < 12:
+		set_status("Need £18 and E12.")
 		return
 	var before = estimate_identified_potential(item)
-	cash -= 9.0
-	item["extra_spend"] += 9.0
+	cash -= 18.0
+	item["extra_spend"] += 18.0
 	energy -= 12
 	current_time_minutes += 20
-	day_stats["research"] += 9.0
+	day_stats["research"] += 18.0
 	item["deep_researched"] = true
 	item["action_order"].append("deep_research")
 
@@ -2551,19 +2551,19 @@ func deep_research(index):
 	var rare_roll = rng.randf()
 	var rare_mult = 1.0
 	var rare_tier = ""
-	var total_chance = 0.20
+	var total_chance = 0.10
 	if item["basic_researched"]:
-		total_chance = clamp(float(item["locked_gamble_hint"]), 0.03, 0.35)
+		total_chance = clamp(float(item["locked_gamble_hint"]), 0.02, 0.18)
 	var exceptional_cut = total_chance * 0.05
 	var significant_cut = total_chance * 0.20
 	if rare_roll < exceptional_cut:
-		rare_mult = rng.randf_range(5.0, 10.0)
+		rare_mult = rng.randf_range(3.0, 5.0)
 		rare_tier = "EXCEPTIONAL rare variant"
 	elif rare_roll < exceptional_cut + significant_cut:
-		rare_mult = rng.randf_range(3.0, 5.0)
+		rare_mult = rng.randf_range(2.0, 2.8)
 		rare_tier = "significant rare variant"
 	elif rare_roll < total_chance:
-		rare_mult = rng.randf_range(2.0, 3.0)
+		rare_mult = rng.randf_range(1.4, 1.9)
 		rare_tier = "rare variant"
 	record_rng("Deep research rare-variant chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [total_chance * 100.0, rare_roll * 100.0, ("%s x%.1f" % [rare_tier, rare_mult]) if rare_mult > 1.0 else "no rare variant"])
 	if rare_mult > 1.0:
@@ -3165,6 +3165,12 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 09/09/2026 23:15", "notes": [
+		"Economy rebalance: simulated 40 days of play to find the actual runaway-wealth driver — it was Deep Research's rare-variant jackpot, which let players cheaply spam it on bargain-bought junk for near-free lottery odds",
+		"Deep Research cost raised £9 -> £18 (energy cost unchanged)",
+		"Rare-variant total chance roughly halved (was up to 35% on well-researched items, now up to 18%; default dropped from 20% to 10%), and the multiplier tiers softened (top tier was x5-10, now x3-5)",
+		"Simulated result: a skilled bargain-hunting player using haggling and Deep Research went from ~£300 to ~£2,800 average in 40 days before this change, now more like ~£1,350 — still a rewarding climb, not an exponential one",
+	]},
 	{"version": "Latest — 09/09/2026 22:45", "notes": [
 		"Reverted the energy icon rebuild from the previous update — it broke things",
 		"Replaced with a much simpler, zero-risk approach: the header now reads 'Energy 100/100' with a bold light-blue E, and every button showing an energy cost (Condition, Research, Deep Research, Test, Authenticate, Inspect, Offer, Dig Deeper, Repair) now has its whole text colored light blue instead — same visual cue, no custom rebuilding of how buttons work",
