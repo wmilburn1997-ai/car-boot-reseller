@@ -36,12 +36,12 @@ var category_knowledge = {
 }
 
 var seller_profiles = {
-	"Desperate Seller": {"knowledge":0.42, "haggle":0.23, "pricing":0.88, "fault":1.15, "fake":1.05, "side":0.005, "depth":18, "rarity_boost":0.80, "categories":["Clothing","Games","Pokemon","Electronics","Home","Garden & Outdoor"]},
-	"House Clearance": {"knowledge":0.28, "haggle":0.34, "pricing":0.90, "fault":1.30, "fake":0.90, "side":0.010, "depth":26, "rarity_boost":0.70, "categories":["Home","Vinyl","Cameras","Tools","Books","Collectables","Jewellery","Musical Instruments","Garden & Outdoor"]},
+	"Desperate Seller": {"knowledge":0.42, "haggle":0.23, "pricing":0.88, "fault":1.15, "fake":1.05, "side":0.010, "depth":18, "rarity_boost":0.80, "categories":["Clothing","Games","Pokemon","Electronics","Home","Garden & Outdoor"]},
+	"House Clearance": {"knowledge":0.28, "haggle":0.34, "pricing":0.90, "fault":1.30, "fake":0.90, "side":0.018, "depth":26, "rarity_boost":0.70, "categories":["Home","Vinyl","Cameras","Tools","Books","Collectables","Jewellery","Musical Instruments","Garden & Outdoor"]},
 	"Clueless Seller": {"knowledge":0.16, "haggle":0.38, "pricing":0.84, "fault":0.95, "fake":0.85, "side":0.002, "depth":15, "rarity_boost":0.55, "categories":["Games","Pokemon","Clothing","Books","Home","Collectables","Garden & Outdoor"]},
 	"Regular Seller": {"knowledge":0.60, "haggle":0.56, "pricing":0.98, "fault":1.00, "fake":1.00, "side":0.0015, "depth":14, "rarity_boost":1.00, "categories":["Clothing","Games","Tools","Home","Electronics","Books","Musical Instruments","Garden & Outdoor"]},
-	"Collector": {"knowledge":0.90, "haggle":0.78, "pricing":1.06, "fault":0.70, "fake":0.45, "side":0.003, "depth":10, "rarity_boost":1.45, "categories":["Vinyl","Cameras","Collectables","Jewellery","Games","Pokemon","Musical Instruments"]},
-	"Dodgy Seller": {"knowledge":0.48, "haggle":0.36, "pricing":0.82, "fault":1.55, "fake":2.40, "side":0.013, "depth":13, "rarity_boost":0.95, "categories":["Clothing","Pokemon","Electronics","Games","Jewellery"]},
+	"Collector": {"knowledge":0.90, "haggle":0.78, "pricing":1.06, "fault":0.70, "fake":0.45, "side":0.008, "depth":10, "rarity_boost":1.45, "categories":["Vinyl","Cameras","Collectables","Jewellery","Games","Pokemon","Musical Instruments"]},
+	"Dodgy Seller": {"knowledge":0.48, "haggle":0.36, "pricing":0.82, "fault":1.55, "fake":2.40, "side":0.022, "depth":13, "rarity_boost":0.95, "categories":["Clothing","Pokemon","Electronics","Games","Jewellery"]},
 	"Dealer": {"knowledge":0.95, "haggle":0.84, "pricing":1.10, "fault":0.65, "fake":0.55, "side":0.001, "depth":8, "rarity_boost":1.65, "categories":["Clothing","Games","Cameras","Vinyl","Collectables","Jewellery","Musical Instruments"]}
 }
 
@@ -177,8 +177,8 @@ var last_scroll_value = 0.0
 var current_screen_name = "show_stall"
 var tooltip_saved_text = ""
 var total_haggled_savings = 0.0
-var pending_instant_sale_banner = ""
 var inventory_tab = "unlisted"
+var fixer_used_today = false
 var package_insight_level = 0
 var persuasion_level = 0
 const PACKAGE_INSIGHT_MAX = 20
@@ -827,6 +827,25 @@ func _input(event):
 	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		active_scroll_container.scroll_vertical += int(-event.relative.y)
 
+func fixer_gamble(amount):
+	if fixer_used_today:
+		queue_popup("The Fixer only deals once a day. Come back tomorrow.")
+		return
+	if cash < amount:
+		queue_popup("Not enough cash.")
+		return
+	fixer_used_today = true
+	cash -= amount
+	var roll = rng.randf()
+	var won = roll < 0.47
+	record_rng("Fixer's Gamble: Wager £%.0f | Chance 47%% | Rolled: %.2f%% | Result: %s" % [amount, roll * 100.0, "WON" if won else "LOST"])
+	if won:
+		cash += amount * 2.0
+		queue_popup("The Fixer's Gamble — WON! £%.0f -> £%.0f" % [amount, amount * 2.0], "success")
+	else:
+		queue_popup("The Fixer's Gamble — LOST £%.0f. Better luck tomorrow." % amount)
+	show_stall()
+
 func xp_needed_for_level(level):
 	return int(100 + (level - 1) * 50)
 
@@ -839,6 +858,19 @@ func add_xp(amount):
 
 func set_status(text, color = null):
 	status_label.text = text
+
+var popup_queue = []
+
+func queue_popup(text, kind = "error"):
+	popup_queue.append({"text": text, "kind": kind})
+	if popup_queue.size() == 1 and (blocked_popup == null or not blocked_popup.visible):
+		_advance_popup_queue()
+
+func _advance_popup_queue():
+	if popup_queue.size() == 0:
+		return
+	var next_popup = popup_queue.pop_front()
+	show_blocked_popup(next_popup["text"], next_popup["kind"])
 
 func show_blocked_popup(text, kind = "error"):
 	if blocked_popup == null:
@@ -865,6 +897,8 @@ func _center_blocked_popup():
 func _hide_blocked_popup():
 	if blocked_popup != null:
 		blocked_popup.visible = false
+	if popup_queue.size() > 0:
+		_advance_popup_queue()
 
 func _show_status_overlay(auto_hide = true):
 	if status_panel == null:
@@ -988,6 +1022,7 @@ func get_season_name():
 func generate_day():
 	stalls.clear()
 	carry_used = 0
+	fixer_used_today = false
 	mystery_packages_left = rng.randi_range(0, 2)
 	daily_expenses = min(25.0, 6.50 + float(day - 1) * 0.25)
 	var seller_names = seller_profiles.keys()
@@ -1263,6 +1298,27 @@ func show_stall():
 		package_button.pressed.connect(buy_mystery_package)
 		title_row.add_child(package_button)
 
+	var fixer_row = HFlowContainer.new()
+	fixer_row.add_theme_constant_override("h_separation", 6)
+	fixer_row.add_theme_constant_override("v_separation", 6)
+	body.add_child(fixer_row)
+	var fixer_label = Label.new()
+	fixer_label.add_theme_font_size_override("font_size", 13)
+	fixer_label.add_theme_color_override("font_color", Color(0.75,0.55,0.95,1.0))
+	if fixer_used_today:
+		fixer_label.text = "The Fixer's Gamble (used today — back tomorrow):"
+	else:
+		fixer_label.text = "The Fixer's Gamble — 47% chance to double your cash, once a day:"
+	fixer_row.add_child(fixer_label)
+	for wager in [25, 75, 200]:
+		var fixer_button = Button.new()
+		fixer_button.text = "Gamble £%d" % wager
+		fixer_button.tooltip_text = "Wager £%d for a 47%% chance to walk away with £%d. Lose, and it's gone. One shot per day." % [wager, wager * 2]
+		fixer_button.disabled = fixer_used_today or cash < wager
+		style_button(fixer_button, "danger")
+		fixer_button.pressed.connect(Callable(self, "fixer_gamble").bind(wager))
+		fixer_row.add_child(fixer_button)
+
 	var info = Label.new()
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1270,6 +1326,16 @@ func show_stall():
 	info.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
 	info.text = "Revealed %d/%d  •  Crowd %d%%  •  Packs up %s  •  Carry %d/%d  •  Mystery packages %d" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"]), carry_used, bag_upgrades[bag_level]["capacity"], mystery_packages_left]
 	body.add_child(info)
+
+	if special_event_profiles.has(seller):
+		var stall_side_line = Label.new()
+		stall_side_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		stall_side_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stall_side_line.add_theme_font_size_override("font_size", 13)
+		stall_side_line.add_theme_color_override("font_color", Color(0.95,0.78,0.35,1.0))
+		var stall_side_chance = float(seller_profiles[seller]["side"]) * 100.0
+		stall_side_line.text = "~%.1f%% chance per purchase of a side deal: \"%s\"" % [stall_side_chance, special_event_profiles[seller]["title"]]
+		body.add_child(stall_side_line)
 
 
 	for i in range(stall["revealed"]):
@@ -1764,6 +1830,16 @@ func show_stall_list():
 			status_line.text = "Revealed %d/%d in stock  •  Crowd %d%%  •  Packs up %s" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"])]
 		info_box.add_child(status_line)
 
+		if special_event_profiles.has(stall["seller"]) and not packed and not banned:
+			var side_line = Label.new()
+			side_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			side_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			side_line.add_theme_font_size_override("font_size", 13)
+			side_line.add_theme_color_override("font_color", Color(0.95,0.78,0.35,1.0))
+			var side_chance = float(seller_profiles[stall["seller"]]["side"]) * 100.0
+			side_line.text = "~%.1f%% chance per purchase of a side deal: \"%s\"" % [side_chance, special_event_profiles[stall["seller"]]["title"]]
+			info_box.add_child(side_line)
+
 		var go_button = Button.new()
 		if i == current_stall_index:
 			go_button.text = "You're Here"
@@ -1810,10 +1886,10 @@ func buy_item(index):
 		set_status("They won't sell you this item today.")
 		return
 	if cash < item["asking"]:
-		show_blocked_popup("Not enough cash.")
+		queue_popup("Not enough cash.")
 		return
 	if not can_carry(item):
-		show_blocked_popup("Not enough space in your bag.")
+		queue_popup("Not enough space in your bag.")
 		return
 	if not can_store(item):
 		set_status("HOME STORAGE FULL — Upgrade storage in the Shop before buying more stock.")
@@ -1831,6 +1907,7 @@ func buy_item(index):
 	register_collection(item)
 	check_side_deal(stall["seller"])
 	add_xp(2)
+	queue_popup("Item Purchased! %s — £%.2f" % [item["name"], item["paid"]], "success")
 	set_status("Bought %s for £%.2f. Carry used %d/%d." % [item["name"], item["paid"], carry_used, bag_upgrades[bag_level]["capacity"]])
 	show_stall()
 
@@ -1982,6 +2059,7 @@ func accept_special_offer():
 	inventory.append(item)
 	register_collection(item)
 	add_xp(2)
+	queue_popup("Item Purchased! %s — £%.2f" % [item["name"], item["paid"]], "success")
 	set_status("Took the special offer: %s for £%.2f." % [item["name"], item["paid"]])
 	pending_special_offer = null
 	show_stall()
@@ -2039,17 +2117,6 @@ func show_inventory():
 	listed_tab.pressed.connect(Callable(self, "_switch_inventory_tab").bind("listed"))
 	tab_row.add_child(listed_tab)
 
-	if pending_instant_sale_banner != "":
-		var banner_panel = make_card()
-		body.add_child(banner_panel)
-		var banner_label = Label.new()
-		banner_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		banner_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		banner_label.add_theme_font_size_override("font_size", 15)
-		banner_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
-		banner_label.text = pending_instant_sale_banner
-		banner_panel.add_child(banner_label)
-		pending_instant_sale_banner = ""
 	if inventory.size() == 0:
 		var empty = Label.new()
 		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -2432,6 +2499,7 @@ func quick_sell_item(index):
 	inventory.remove_at(index)
 	var color = Color(0.55,0.85,0.58,1.0) if profit >= 0.0 else Color(0.92,0.55,0.45,1.0)
 	set_status("Quick Sold — £%.2f — Profit %+.2f" % [quick_price, profit], color)
+	queue_popup("Item Quick Sold: %s — £%.2f" % [item["name"], quick_price], "success")
 	show_inventory()
 
 func format_sale_breakdown(item, price):
@@ -2783,7 +2851,7 @@ func buyer_interest_score(item, price):
 	var span = max(1.0, high - low)
 	var position = clamp((price - low) / span, 0.0, 1.0)
 	var score = 0.92 - position * 0.70
-	score *= float(current_trends.get(item["category"], 1.0))
+	score *= lerp(1.0, float(current_trends.get(item["category"], 1.0)), 0.5)
 	if item["condition"] >= 8:
 		score *= 1.08
 	elif item["condition"] <= 4:
@@ -2831,7 +2899,7 @@ func create_listing(index, value_edit):
 		set_status("Confirmed counterfeit items cannot be listed normally.")
 		return
 	if item["testable"] and not item["tested"]:
-		show_blocked_popup("You need to test this item first.")
+		queue_popup("You need to test this item first.")
 		return
 	var potential = estimate_identified_potential(item)
 	var price = clamp(_parse_price(value_edit.text), float(potential[0]), float(potential[1]))
@@ -2842,20 +2910,20 @@ func create_listing(index, value_edit):
 	var result = resolve_item_sale(item, instant_chance)
 	if result == "sold_removed":
 		inventory.remove_at(index)
-		pending_instant_sale_banner = "SOLD INSTANTLY! %s went for £%.2f the moment you listed it — the price was too good to pass up." % [item["name"], price]
-		set_status(pending_instant_sale_banner, Color(0.55,0.85,0.58,1.0))
 	elif result == "returned":
 		set_status("Sold instantly, then returned — %s is back in your inventory, unlisted." % item["name"])
 	else:
-		show_blocked_popup("Item Listed!", "success")
+		queue_popup("Item Listed!", "success")
 		set_status("LISTED %s at £%.2f — Buyer Interest %s." % [item["name"], price, buyer_interest_label(item, price)])
 	show_inventory()
 
 func unlist_item(index):
 	if index >= inventory.size():
 		return
+	var item_name = inventory[index]["name"]
 	inventory[index]["listed"] = false
 	inventory[index]["listing"] = 0.0
+	queue_popup("Item Delisted: %s" % item_name)
 	set_status("Listing removed.")
 	show_inventory()
 
@@ -2936,6 +3004,7 @@ func resolve_item_sale(item, sale_chance):
 	carry_used = max(0, carry_used - size_units(item))
 	var sale_profit = net - float(item["paid"]) - float(item.get("extra_spend", 0.0))
 	add_xp(3 + (3 if sale_profit > 0.0 else 0))
+	queue_popup("Item Sold: %s — £%.2f — Profit %+.2f" % [item["name"], sale_price, sale_profit], "success")
 	if sale_price - item["paid"] > 0:
 		unlock_achievement("First Flip")
 	return "sold_removed"
@@ -3216,6 +3285,14 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 01:15", "notes": [
+		"Added popups: Item Purchased (green), Item Delisted (red), Item Quick Sold (green, shows actual price), Item Sold — item/price/profit (green) for both instant-sale and end-of-day sales",
+		"Removed the old separate instant-sale banner — it's now the same Item Sold popup as everything else",
+		"Multiple popups (e.g. several items selling at once during end-of-day) now queue and show one after another instead of overwriting each other",
+		"Trending was genuinely overpowered — it boosted both price AND sale speed with no downside. Price effect kept fully intact; its effect on sale speed halved",
+		"Side deals still exist and had real value (Collector's can boost an item's value up to 2.2x!) but were invisible and very rare — odds boosted and now shown directly on both the Stalls list and the individual stall page",
+		"New: The Fixer's Gamble — a big, visible, once-per-day double-or-nothing coinflip (47% chance) available on the stall page at £25/£75/£200 stakes",
+	]},
 	{"version": "Latest — 10/09/2026 00:20", "notes": [
 		"Fixed: Quick Sell never actually recorded the sale — it wasn't showing up in £ Sold at all",
 		"Testing an item and confirming it WORKS now gives a small value boost (+12%) — previously testing only ever revealed a penalty (fault) or nothing",
