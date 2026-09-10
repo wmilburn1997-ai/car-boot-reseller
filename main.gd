@@ -15,6 +15,7 @@ var stalls = []
 var inventory = []
 var sold_history = []
 var discovered_log = {}
+var family_stats = {}
 var achievements = {}
 var day_stats = {}
 var last_rng_line = "No RNG rolls yet."
@@ -1609,6 +1610,7 @@ func check_condition(index):
 	var before_check = estimate_identified_potential(item)
 	item["condition_checked"] = true
 	item["action_order"].append("condition")
+	update_family_condition(item)
 	var after_check = estimate_identified_potential(item)
 	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
 	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
@@ -1911,6 +1913,12 @@ func buy_item(index):
 	set_status("Bought %s for £%.2f. Carry used %d/%d." % [item["name"], item["paid"], carry_used, bag_upgrades[bag_level]["capacity"]])
 	show_stall()
 
+func update_family_condition(item):
+	if family_stats.has(item["name"]):
+		var fs = family_stats[item["name"]]
+		if int(item["condition"]) > int(fs["best_condition"]):
+			fs["best_condition"] = item["condition"]
+
 func register_collection(item):
 	var key = item["category"] + "|" + item["name"] + "|" + item["rarity"]
 	if not discovered_log.has(key):
@@ -1919,6 +1927,15 @@ func register_collection(item):
 		day_stats["rarest_one_in"] = max(day_stats["rarest_one_in"], item["one_in"])
 		if item["one_in"] >= 100:
 			unlock_achievement("Against the Odds")
+	if not family_stats.has(item["name"]):
+		family_stats[item["name"]] = {"category":item["category"], "times_found":0, "best_condition":0, "cheapest_bought":-1.0, "highest_sold":0.0, "lifetime_profit":0.0, "specials_found":{}, "highest_rarity":"Common", "highest_one_in":1}
+	var fs = family_stats[item["name"]]
+	fs["times_found"] += 1
+	if fs["cheapest_bought"] < 0.0 or float(item["asking"]) < fs["cheapest_bought"]:
+		fs["cheapest_bought"] = float(item["asking"])
+	if item["one_in"] > int(fs["highest_one_in"]):
+		fs["highest_one_in"] = item["one_in"]
+		fs["highest_rarity"] = item["rarity"]
 
 func check_side_deal(seller):
 	if not special_event_profiles.has(seller):
@@ -2496,6 +2513,10 @@ func quick_sell_item(index):
 	current_time_minutes += 2
 	carry_used = max(0, carry_used - size_units(item))
 	sold_history.append({"name":item["name"], "price":quick_price, "day":day, "condition":item["condition"], "condition_checked":item["condition_checked"], "paid":item["paid"], "fee":0.0, "postage":0.0, "insurance":0.0, "packaging":0.0, "extra_spend":float(item.get("extra_spend", 0.0))})
+	if family_stats.has(item["name"]):
+		var fs_quick = family_stats[item["name"]]
+		fs_quick["highest_sold"] = max(float(fs_quick["highest_sold"]), quick_price)
+		fs_quick["lifetime_profit"] = float(fs_quick["lifetime_profit"]) + profit
 	inventory.remove_at(index)
 	var color = Color(0.55,0.85,0.58,1.0) if profit >= 0.0 else Color(0.92,0.55,0.45,1.0)
 	set_status("Quick Sold — £%.2f — Profit %+.2f" % [quick_price, profit], color)
@@ -2580,6 +2601,7 @@ func inventory_check_condition(index):
 	var before_check = estimate_identified_potential(item)
 	item["condition_checked"] = true
 	item["action_order"].append("condition")
+	update_family_condition(item)
 	var after_check = estimate_identified_potential(item)
 	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
 	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
@@ -2649,6 +2671,8 @@ func deep_research(index):
 			item["special_discovered"] = true
 			if item["special_genuine"]:
 				item["identified_mult"] *= 1.55
+				if family_stats.has(item["name"]):
+					family_stats[item["name"]]["specials_found"][item["hidden_special"]] = true
 			else:
 				item["identified_mult"] *= 0.92
 			reason = "Possible hidden special: %s." % item["hidden_special"]
@@ -3004,6 +3028,10 @@ func resolve_item_sale(item, sale_chance):
 	carry_used = max(0, carry_used - size_units(item))
 	var sale_profit = net - float(item["paid"]) - float(item.get("extra_spend", 0.0))
 	add_xp(3 + (3 if sale_profit > 0.0 else 0))
+	if family_stats.has(item["name"]):
+		var fs_sale = family_stats[item["name"]]
+		fs_sale["highest_sold"] = max(float(fs_sale["highest_sold"]), sale_price)
+		fs_sale["lifetime_profit"] = float(fs_sale["lifetime_profit"]) + sale_profit
 	queue_popup("Item Sold: %s — £%.2f — Profit %+.2f" % [item["name"], sale_price, sale_profit], "success")
 	if sale_price - item["paid"] > 0:
 		unlock_achievement("First Flip")
@@ -3285,6 +3313,11 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 02:00", "notes": [
+		"Collection Log overhauled into a Pokedex-style system: one box per category (13 total) plus a GRAILS box for your rarest tier finds, each showing X/Y discovered, with an unclickable TOTAL LOG box showing how many of the 72 distinct items you've ever found",
+		"Each discovered item now shows real tracked stats: times found, best condition ever seen, cheapest ever bought, highest ever sold, specials discovered X/Y, highest rarity tier found, and lifetime profit — all newly tracked from this update onward",
+		"Undiscovered items show as ??? until you've owned at least one",
+	]},
 	{"version": "Latest — 10/09/2026 01:15", "notes": [
 		"Added popups: Item Purchased (green), Item Delisted (red), Item Quick Sold (green, shows actual price), Item Sold — item/price/profit (green) for both instant-sale and end-of-day sales",
 		"Removed the old separate instant-sale banner — it's now the same Item Sold popup as everything else",
@@ -3486,42 +3519,157 @@ func show_sold_history():
 		line.text = "%s | Condition %s | Sold £%.2f | [color=%s]Profit £%+.2f[/color] | Day %d" % [sale["name"], sold_condition_text, sale["price"], profit_color, profit, sale["day"]]
 		body.add_child(line)
 
+func get_category_list():
+	var cats = []
+	for family in item_families:
+		if not cats.has(family["category"]):
+			cats.append(family["category"])
+	cats.sort()
+	return cats
+
+func category_discovery_count(category):
+	var found = 0
+	var total = 0
+	for family in item_families:
+		if family["category"] != category:
+			continue
+		for tier_row in rarity_table:
+			total += 1
+			var key = category + "|" + family["name"] + "|" + tier_row["tier"]
+			if discovered_log.has(key):
+				found += 1
+	return [found, total]
+
+func grails_discovery_count():
+	var found = 0
+	for family in item_families:
+		if family_stats.has(family["name"]) and family_stats[family["name"]]["highest_rarity"] == "Grail":
+			found += 1
+	return [found, item_families.size()]
+
+func total_families_discovered():
+	var found = 0
+	for family in item_families:
+		if family_stats.has(family["name"]):
+			found += 1
+	return [found, item_families.size()]
+
+func render_family_stat_card(family, force_undiscovered = false):
+	var fam_name = family["name"]
+	var panel = make_card()
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	panel.add_child(box)
+	if force_undiscovered or not family_stats.has(fam_name):
+		var unknown_label = Label.new()
+		unknown_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		unknown_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		unknown_label.add_theme_font_size_override("font_size", 16)
+		unknown_label.add_theme_color_override("font_color", Color(0.42,0.47,0.55,1.0))
+		unknown_label.text = "???"
+		box.add_child(unknown_label)
+		return panel
+	var fs = family_stats[fam_name]
+	var header = Label.new()
+	header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_theme_font_size_override("font_size", 16)
+	header.text = fam_name
+	box.add_child(header)
+	var condition_text = "Unknown" if int(fs["best_condition"]) == 0 else "%d/10" % int(fs["best_condition"])
+	var cheapest_text = "—" if float(fs["cheapest_bought"]) < 0.0 else "£%.0f" % float(fs["cheapest_bought"])
+	var specials_total = family.get("specials", []).size()
+	var stats_label = Label.new()
+	stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stats_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_label.add_theme_font_size_override("font_size", 13)
+	stats_label.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+	stats_label.text = "Found: %d\nBest condition: %s\nCheapest bought: %s\nHighest sold: £%.0f\nSpecials discovered: %d/%d\nRarity: %s\nLifetime profit: £%+.0f" % [int(fs["times_found"]), condition_text, cheapest_text, float(fs["highest_sold"]), fs["specials_found"].size(), specials_total, fs["highest_rarity"], float(fs["lifetime_profit"])]
+	box.add_child(stats_label)
+	return panel
+
 func show_collection_log():
 	current_screen_name = "show_collection_log"
 	clear_body()
 	update_header()
-	var total_possible = item_families.size() * rarity_table.size()
 	var title = Label.new()
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", 20)
-	title.text = " COLLECTION LOG — %d/%d discovered" % [discovered_log.size(), total_possible]
+	title.text = "COLLECTION LOG"
 	body.add_child(title)
 
+	var total_counts = total_families_discovered()
+	var total_panel = make_card()
+	body.add_child(total_panel)
+	var total_label = Label.new()
+	total_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	total_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	total_label.add_theme_font_size_override("font_size", 16)
+	total_label.text = "TOTAL LOG: %d/%d different items discovered" % [total_counts[0], total_counts[1]]
+	total_panel.add_child(total_label)
 
-	var entries = []
+	var grid = HFlowContainer.new()
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	body.add_child(grid)
+
+	for category in get_category_list():
+		var counts = category_discovery_count(category)
+		var cat_button = Button.new()
+		cat_button.text = "%s\n%d/%d" % [category, counts[0], counts[1]]
+		cat_button.custom_minimum_size = Vector2(150, 56)
+		style_button(cat_button, "action")
+		cat_button.pressed.connect(Callable(self, "show_collection_category").bind(category))
+		grid.add_child(cat_button)
+
+	var grail_counts = grails_discovery_count()
+	var grail_button = Button.new()
+	grail_button.text = "GRAILS\n%d/%d" % [grail_counts[0], grail_counts[1]]
+	grail_button.custom_minimum_size = Vector2(150, 56)
+	style_button(grail_button, "danger")
+	grail_button.pressed.connect(show_collection_grails)
+	grid.add_child(grail_button)
+
+func show_collection_category(category):
+	current_screen_name = "show_collection_log"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	var counts = category_discovery_count(category)
+	title.text = "%s — %d/%d discovered" % [category, counts[0], counts[1]]
+	body.add_child(title)
+	var back_button = Button.new()
+	back_button.text = "Back to Collection Log"
+	style_button(back_button, "nav")
+	back_button.pressed.connect(show_collection_log)
+	body.add_child(back_button)
 	for family in item_families:
-		for tier_row in rarity_table:
-			var key = family["category"] + "|" + family["name"] + "|" + tier_row["tier"]
-			if discovered_log.has(key):
-				var found = discovered_log[key]
-				entries.append({"discovered":true, "name":found["name"], "category":found["category"], "rarity":found["rarity"], "one_in":found["one_in"]})
-			else:
-				entries.append({"discovered":false, "name":"???", "category":family["category"], "rarity":tier_row["tier"], "one_in":int(tier_row["one_in"])})
-	entries.sort_custom(Callable(self, "sort_log"))
+		if family["category"] == category:
+			body.add_child(render_family_stat_card(family))
 
-	for entry in entries:
-		var odds = "Common"
-		if entry["one_in"] > 1:
-			odds = "%s — 1/%d" % [entry["rarity"], entry["one_in"]]
-		var line = Label.new()
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var prefix = "" if entry["discovered"] else "· "
-		line.text = "%s%s | %s | %s" % [prefix, entry["name"], entry["category"], odds]
-		if not entry["discovered"]:
-			line.add_theme_color_override("font_color", Color(0.42,0.47,0.55,1.0))
-		body.add_child(line)
+func show_collection_grails():
+	current_screen_name = "show_collection_log"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	var grail_counts = grails_discovery_count()
+	title.text = "GRAILS — %d/%d found" % [grail_counts[0], grail_counts[1]]
+	body.add_child(title)
+	var back_button = Button.new()
+	back_button.text = "Back to Collection Log"
+	style_button(back_button, "nav")
+	back_button.pressed.connect(show_collection_log)
+	body.add_child(back_button)
+	for family in item_families:
+		var hit_grail = family_stats.has(family["name"]) and family_stats[family["name"]]["highest_rarity"] == "Grail"
+		body.add_child(render_family_stat_card(family, not hit_grail))
 
 func sort_log(a, b):
 	return int(a["one_in"]) > int(b["one_in"])
@@ -3669,6 +3817,7 @@ func restart_game():
 	inventory.clear()
 	sold_history.clear()
 	discovered_log.clear()
+	family_stats.clear()
 	achievements.clear()
 	negative_days_streak = 0
 	bag_level = 0
