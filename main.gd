@@ -6,7 +6,8 @@ var rng = RandomNumberGenerator.new()
 var day = 1
 var cash = 300.0
 var energy = 100
-var reputation = 50
+var player_level = 1
+var player_xp = 0
 var current_time_minutes = 7 * 60
 var daily_expenses = 6.50
 var current_stall_index = 0
@@ -35,13 +36,13 @@ var category_knowledge = {
 }
 
 var seller_profiles = {
-	"Desperate Seller": {"knowledge":0.42, "haggle":0.23, "pricing":0.88, "fault":1.15, "fake":1.05, "side":0.005, "depth":18, "categories":["Clothing","Games","Pokemon","Electronics","Home","Garden & Outdoor"]},
-	"House Clearance": {"knowledge":0.28, "haggle":0.34, "pricing":0.90, "fault":1.30, "fake":0.90, "side":0.010, "depth":26, "categories":["Home","Vinyl","Cameras","Tools","Books","Collectables","Jewellery","Musical Instruments","Garden & Outdoor"]},
-	"Clueless Seller": {"knowledge":0.16, "haggle":0.38, "pricing":0.84, "fault":0.95, "fake":0.85, "side":0.002, "depth":15, "categories":["Games","Pokemon","Clothing","Books","Home","Collectables","Garden & Outdoor"]},
-	"Regular Seller": {"knowledge":0.60, "haggle":0.56, "pricing":0.98, "fault":1.00, "fake":1.00, "side":0.0015, "depth":14, "categories":["Clothing","Games","Tools","Home","Electronics","Books","Musical Instruments","Garden & Outdoor"]},
-	"Collector": {"knowledge":0.90, "haggle":0.78, "pricing":1.06, "fault":0.70, "fake":0.45, "side":0.003, "depth":10, "categories":["Vinyl","Cameras","Collectables","Jewellery","Games","Pokemon","Musical Instruments"]},
-	"Dodgy Seller": {"knowledge":0.48, "haggle":0.36, "pricing":0.82, "fault":1.55, "fake":2.40, "side":0.013, "depth":13, "categories":["Clothing","Pokemon","Electronics","Games","Jewellery"]},
-	"Dealer": {"knowledge":0.95, "haggle":0.84, "pricing":1.10, "fault":0.65, "fake":0.55, "side":0.001, "depth":8, "categories":["Clothing","Games","Cameras","Vinyl","Collectables","Jewellery","Musical Instruments"]}
+	"Desperate Seller": {"knowledge":0.42, "haggle":0.23, "pricing":0.88, "fault":1.15, "fake":1.05, "side":0.005, "depth":18, "rarity_boost":0.80, "categories":["Clothing","Games","Pokemon","Electronics","Home","Garden & Outdoor"]},
+	"House Clearance": {"knowledge":0.28, "haggle":0.34, "pricing":0.90, "fault":1.30, "fake":0.90, "side":0.010, "depth":26, "rarity_boost":0.70, "categories":["Home","Vinyl","Cameras","Tools","Books","Collectables","Jewellery","Musical Instruments","Garden & Outdoor"]},
+	"Clueless Seller": {"knowledge":0.16, "haggle":0.38, "pricing":0.84, "fault":0.95, "fake":0.85, "side":0.002, "depth":15, "rarity_boost":0.55, "categories":["Games","Pokemon","Clothing","Books","Home","Collectables","Garden & Outdoor"]},
+	"Regular Seller": {"knowledge":0.60, "haggle":0.56, "pricing":0.98, "fault":1.00, "fake":1.00, "side":0.0015, "depth":14, "rarity_boost":1.00, "categories":["Clothing","Games","Tools","Home","Electronics","Books","Musical Instruments","Garden & Outdoor"]},
+	"Collector": {"knowledge":0.90, "haggle":0.78, "pricing":1.06, "fault":0.70, "fake":0.45, "side":0.003, "depth":10, "rarity_boost":1.45, "categories":["Vinyl","Cameras","Collectables","Jewellery","Games","Pokemon","Musical Instruments"]},
+	"Dodgy Seller": {"knowledge":0.48, "haggle":0.36, "pricing":0.82, "fault":1.55, "fake":2.40, "side":0.013, "depth":13, "rarity_boost":0.95, "categories":["Clothing","Pokemon","Electronics","Games","Jewellery"]},
+	"Dealer": {"knowledge":0.95, "haggle":0.84, "pricing":1.10, "fault":0.65, "fake":0.55, "side":0.001, "depth":8, "rarity_boost":1.65, "categories":["Clothing","Games","Cameras","Vinyl","Collectables","Jewellery","Musical Instruments"]}
 }
 
 var item_families = [
@@ -157,6 +158,7 @@ var storage_icon
 var blocked_popup
 var blocked_popup_label
 var blocked_popup_timer
+var blocked_popup_style
 var tooltip_is_held = false
 
 
@@ -384,7 +386,7 @@ func build_ui():
 	secondary_row.add_theme_constant_override("separation", 5)
 	header_vbox.add_child(secondary_row)
 	add_stat_chip(secondary_row, "energy", "Energy left today. Most actions cost some; it refills to 100 at the start of each day.", true)
-	add_stat_chip(secondary_row, "rep", "Reputation. Clean sales raise it, returns lower it. Higher reputation nudges Buyer Interest up slightly.", true)
+	add_stat_chip(secondary_row, "level", "Player Level and XP. Earned from buying, selling, profitable sales, repairs, authentication, and rare finds.", true)
 	add_stat_chip(secondary_row, "listed", "Number of items you currently have listed for sale.", true)
 	add_stat_chip(secondary_row, "day", "In-game day and current time. The car boot closes at 12:00.", true)
 	var end_day_button = Button.new()
@@ -489,6 +491,7 @@ func build_ui():
 	blocked_popup.visible = false
 	blocked_popup.z_index = 100
 	var blocked_style = StyleBoxFlat.new()
+	blocked_popup_style = blocked_style
 	blocked_style.bg_color = Color(0.16,0.05,0.05,0.97)
 	blocked_style.border_width_left = 2
 	blocked_style.border_width_top = 2
@@ -824,12 +827,29 @@ func _input(event):
 	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		active_scroll_container.scroll_vertical += int(-event.relative.y)
 
+func xp_needed_for_level(level):
+	return int(100 + (level - 1) * 50)
+
+func add_xp(amount):
+	player_xp += amount
+	while player_xp >= xp_needed_for_level(player_level):
+		player_xp -= xp_needed_for_level(player_level)
+		player_level += 1
+		set_status("LEVEL UP! Level %d" % player_level, Color(0.95,0.84,0.62,1.0))
+
 func set_status(text, color = null):
 	status_label.text = text
 
-func show_blocked_popup(text):
+func show_blocked_popup(text, kind = "error"):
 	if blocked_popup == null:
 		return
+	if blocked_popup_style != null:
+		if kind == "success":
+			blocked_popup_style.bg_color = Color(0.05,0.14,0.07,0.97)
+			blocked_popup_style.border_color = Color(0.35,0.72,0.40,1.0)
+		else:
+			blocked_popup_style.bg_color = Color(0.16,0.05,0.05,0.97)
+			blocked_popup_style.border_color = Color(0.75,0.35,0.32,1.0)
 	blocked_popup_label.text = text
 	blocked_popup.visible = true
 	blocked_popup.move_to_front()
@@ -887,7 +907,7 @@ func update_header():
 		stat_labels["energy"].add_theme_color_override("default_color", Color(0.90,0.78,0.45,1.0))
 	else:
 		stat_labels["energy"].add_theme_color_override("default_color", Color(0.92,0.95,1.0,1.0))
-	stat_labels["rep"].text = "Rep %d" % reputation
+	stat_labels["level"].text = "LVL %d | XP %d/%d" % [player_level, player_xp, xp_needed_for_level(player_level)]
 	stat_labels["carry"].text = "Carry %d/%d" % [carry_used, bag["capacity"]]
 	stat_labels["storage"].text = "Storage %d/%d" % [inventory_space_used(), storage["capacity"]]
 	stat_labels["listed"].text = "Listed %d" % listed_count
@@ -1000,13 +1020,23 @@ func generate_item(seller):
 		candidates = item_families
 	var base = candidates[rng.randi_range(0, candidates.size() - 1)].duplicate(true)
 
-	var rarity_roll = rng.randf()
+	var rarity_boost = float(profile.get("rarity_boost", 1.0))
+	var rarity_weights = []
+	for i in range(rarity_table.size()):
+		var w = float(rarity_table[i]["chance"])
+		if i > 0:
+			w *= rarity_boost
+		rarity_weights.append(w)
+	var total_weight = 0.0
+	for w in rarity_weights:
+		total_weight += w
+	var rarity_roll = rng.randf() * total_weight
 	var rarity = rarity_table[0]
 	var cumulative = 0.0
-	for row in rarity_table:
-		cumulative += row["chance"]
+	for i in range(rarity_table.size()):
+		cumulative += rarity_weights[i]
 		if rarity_roll <= cumulative:
-			rarity = row
+			rarity = rarity_table[i]
 			break
 
 	var rarity_mult = 1.0
@@ -1270,7 +1300,7 @@ func show_stall():
 		name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_line.add_theme_font_size_override("font_size", 16)
-		name_line.text = "%s%s  •  £%.0f  •  Space %d" % [rarity_text, item["name"], item["asking"], size_units(item)]
+		name_line.text = "%s%s  •  £%.0f  •  Carry Space - %d Slots" % [rarity_text, item["name"], item["asking"], size_units(item)]
 		name_row.add_child(name_line)
 		var dismiss_button = Button.new()
 		dismiss_button.text = "×"
@@ -1281,12 +1311,18 @@ func show_stall():
 		dismiss_button.pressed.connect(Callable(self, "dismiss_stall_item").bind(i))
 		name_row.add_child(dismiss_button)
 
-		var state_line = Label.new()
-		state_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var state_line = RichTextLabel.new()
+		state_line.bbcode_enabled = true
+		state_line.fit_content = true
+		state_line.scroll_active = false
 		state_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		state_line.add_theme_font_size_override("font_size", 14)
-		state_line.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
-		state_line.text = "%s  •  Condition: %s  •  Function: %s" % [item["category"], condition_text, function_text_value]
+		state_line.add_theme_font_size_override("normal_font_size", 14)
+		state_line.add_theme_color_override("default_color", Color(0.62,0.68,0.76,1.0))
+		var stall_trend_mult = float(current_trends.get(item["category"], 1.0))
+		var stall_trend_suffix = ""
+		if stall_trend_mult >= 1.10:
+			stall_trend_suffix = "  •  [color=#b088e8][b]TRENDING[/b][/color]"
+		state_line.text = "%s  •  Condition: %s  •  Function: %s%s" % [item["category"], condition_text, function_text_value, stall_trend_suffix]
 		card.add_child(state_line)
 
 		if item["quick_look_done"] and item["quick_look_note"] != "":
@@ -1794,6 +1830,7 @@ func buy_item(index):
 	stall["revealed"] = min(stall["revealed"], stall["stock"].size())
 	register_collection(item)
 	check_side_deal(stall["seller"])
+	add_xp(2)
 	set_status("Bought %s for £%.2f. Carry used %d/%d." % [item["name"], item["paid"], carry_used, bag_upgrades[bag_level]["capacity"]])
 	show_stall()
 
@@ -1886,7 +1923,7 @@ func show_special_offer():
 	name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_line.add_theme_font_size_override("font_size", 16)
-	name_line.text = "%s%s  •  %s  •  £%.0f  •  Space %d" % [rarity_text, item["name"], item["category"], item["asking"], size_units(item)]
+	name_line.text = "%s%s  •  %s  •  £%.0f  •  Carry Space - %d Slots" % [rarity_text, item["name"], item["category"], item["asking"], size_units(item)]
 	card.add_child(name_line)
 
 	var function_text_value = "N/A"
@@ -1944,6 +1981,7 @@ func accept_special_offer():
 	carry_used += size_units(item)
 	inventory.append(item)
 	register_collection(item)
+	add_xp(2)
 	set_status("Took the special offer: %s for £%.2f." % [item["name"], item["paid"]])
 	pending_special_offer = null
 	show_stall()
@@ -2043,12 +2081,18 @@ func show_inventory():
 		head.text = "%d. %s  •  Paid £%.2f" % [i + 1, item["name"], item["paid"]]
 		card.add_child(head)
 
-		var badge_line = Label.new()
-		badge_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var badge_line = RichTextLabel.new()
+		badge_line.bbcode_enabled = true
+		badge_line.fit_content = true
+		badge_line.scroll_active = false
 		badge_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		badge_line.add_theme_font_size_override("font_size", 14)
-		badge_line.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
-		badge_line.text = "%s  •  Space %d  •  Trend %+.0f%%" % [item["category"], size_units(item), (float(current_trends.get(item["category"], 1.0)) - 1.0) * 100.0]
+		badge_line.add_theme_font_size_override("normal_font_size", 14)
+		badge_line.add_theme_color_override("default_color", Color(0.62,0.68,0.76,1.0))
+		var trend_mult = float(current_trends.get(item["category"], 1.0))
+		var trend_suffix = ""
+		if trend_mult >= 1.10:
+			trend_suffix = "  •  [color=#b088e8][b]TRENDING[/b][/color]"
+		badge_line.text = "%s  •  Carry Space - %d Slots  •  Trend %+.0f%%%s" % [item["category"], size_units(item), (trend_mult - 1.0) * 100.0, trend_suffix]
 		card.add_child(badge_line)
 
 		var potential = estimate_identified_potential(item)
@@ -2384,6 +2428,7 @@ func quick_sell_item(index):
 	cash += quick_price
 	current_time_minutes += 2
 	carry_used = max(0, carry_used - size_units(item))
+	sold_history.append({"name":item["name"], "price":quick_price, "day":day, "condition":item["condition"], "condition_checked":item["condition_checked"], "paid":item["paid"], "fee":0.0, "postage":0.0, "insurance":0.0, "packaging":0.0, "extra_spend":float(item.get("extra_spend", 0.0))})
 	inventory.remove_at(index)
 	var color = Color(0.55,0.85,0.58,1.0) if profit >= 0.0 else Color(0.92,0.55,0.45,1.0)
 	set_status("Quick Sold — £%.2f — Profit %+.2f" % [quick_price, profit], color)
@@ -2435,6 +2480,8 @@ func estimate_identified_potential(item):
 		center *= 0.88
 	if item["fault"] and fault_is_known(item):
 		center *= fault_multiplier(item["fault_severity"])
+	if item["testable"] and item["tested"] and not item["fault"]:
+		center *= 1.12
 	var spread_low = 0.68
 	var spread_high = 1.28
 	if item["basic_researched"]:
@@ -2574,6 +2621,7 @@ func deep_research(index):
 		item["rare_variant_roll_pct"] = rare_roll * 100.0
 		item["rare_variant_tier"] = rare_tier
 		item["rare_variant_mult"] = rare_mult
+		add_xp(10)
 
 	item["research_note"] = "Deep Research — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] | Result: %s%s Range £%d–£%d -> £%d–£%d." % [chance * 100.0, roll * 100.0, reason, rare_text, before[0], before[1], after[0], after[1]]
 	apply_price_highlight(item, "deep_research", float(before[1]), float(after[1]))
@@ -2671,6 +2719,7 @@ func authenticate_item(index):
 	else:
 		item["auth_status"] = "Inconclusive"
 	item["auth_note"] = "%s — %s" % [line, item["auth_status"]]
+	add_xp(3)
 	set_status("AUTHENTICATION COMPLETE — %s. This one-time attempt cannot be rerolled." % item["auth_status"])
 	show_inventory()
 
@@ -2724,6 +2773,7 @@ func repair_item(index):
 		else:
 			item["fault_severity"] = "Moderate"
 	item["repair_note"] = "Repair — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — %s. %s" % [chance * 100.0, roll * 100.0, ("SUCCESS" if success else "FAILED"), function_status(item)]
+	add_xp(3)
 	show_inventory()
 
 func buyer_interest_score(item, price):
@@ -2744,7 +2794,6 @@ func buyer_interest_score(item, price):
 		score *= 0.88
 	if item["one_in"] >= 500:
 		score *= 1.08
-	score *= lerp(0.92, 1.08, float(reputation) / 100.0)
 	var checks_done = 0
 	var checks_total = 4
 	if item["condition_checked"]:
@@ -2798,6 +2847,7 @@ func create_listing(index, value_edit):
 	elif result == "returned":
 		set_status("Sold instantly, then returned — %s is back in your inventory, unlisted." % item["name"])
 	else:
+		show_blocked_popup("Item Listed!", "success")
 		set_status("LISTED %s at £%.2f — Buyer Interest %s." % [item["name"], price, buyer_interest_label(item, price)])
 	show_inventory()
 
@@ -2879,12 +2929,13 @@ func resolve_item_sale(item, sale_chance):
 	record_rng("Buyer return chance: %.2f%% | Rolled: %.2f%% | Result: %s" % [return_chance * 100.0, return_roll * 100.0, "RETURN" if returned else "NO RETURN"])
 	if returned:
 		cash -= sale_price
-		reputation = max(0, reputation - 3)
 		day_stats["returns"] += 1
 		item["listed"] = false
 		return "returned"
 	sold_history.append({"name":item["name"], "price":sale_price, "day":day, "condition":item["condition"], "condition_checked":item["condition_checked"], "paid":item["paid"], "fee":costs["fee"], "postage":costs["postage"], "insurance":costs["insurance"], "packaging":costs["packaging"], "extra_spend":float(item.get("extra_spend", 0.0))})
 	carry_used = max(0, carry_used - size_units(item))
+	var sale_profit = net - float(item["paid"]) - float(item.get("extra_spend", 0.0))
+	add_xp(3 + (3 if sale_profit > 0.0 else 0))
 	if sale_price - item["paid"] > 0:
 		unlock_achievement("First Flip")
 	return "sold_removed"
@@ -3165,6 +3216,21 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 00:20", "notes": [
+		"Fixed: Quick Sell never actually recorded the sale — it wasn't showing up in £ Sold at all",
+		"Testing an item and confirming it WORKS now gives a small value boost (+12%) — previously testing only ever revealed a penalty (fault) or nothing",
+		"Seller risk/reward rebalanced: low-margin sellers (Clueless Seller, House Clearance) now have meaningfully worse odds of anything rare (previously identical odds to every other seller); high-margin/expert sellers (Dealer, Collector) now have notably better odds — Dealer's rare-tier odds are roughly 3x Clueless Seller's",
+		"Creating a listing now shows a green 'Item Listed!' popup, same style as the existing blocked-action popups",
+		"Item cards now say 'Carry Space - X Slots' instead of just 'Space X'",
+		"Trends already affected both price and sale speed — now made visible with a purple TRENDING badge on items in a hot category (+10% or more), shown on both the stall page and Inventory",
+	]},
+	{"version": "Latest — 09/09/2026 23:45", "notes": [
+		"Replaced Reputation with a Level/XP system — starts at Level 1, 0 XP, shown compactly as 'LVL 1 | XP 0/100' in the header",
+		"XP from normal play: +2 buying, +3 selling (+3 more if the sale was actually profitable), +3 repairing, +3 authenticating, +10 for a Deep Research rare-variant find",
+		"XP needed per level rises each time (100, 150, 200...) so it can't be easily farmed",
+		"'LEVEL UP! Level X' shows through the existing status message system",
+		"No unlocks or gameplay bonuses tied to Level yet — Reputation's old mechanical bonus to Buyer Interest has been removed entirely, not replaced",
+	]},
 	{"version": "Latest — 09/09/2026 23:15", "notes": [
 		"Economy rebalance: simulated 40 days of play to find the actual runaway-wealth driver — it was Deep Research's rare-variant jackpot, which let players cheaply spam it on bargain-bought junk for near-free lottery odds",
 		"Deep Research cost raised £9 -> £18 (energy cost unchanged)",
@@ -3517,7 +3583,8 @@ func restart_game():
 	day = 1
 	cash = 300.0
 	energy = 100
-	reputation = 50
+	player_level = 1
+	player_xp = 0
 	current_time_minutes = 7 * 60
 	daily_expenses = 6.50
 	current_stall_index = 0
