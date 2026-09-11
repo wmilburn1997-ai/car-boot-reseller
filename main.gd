@@ -763,16 +763,20 @@ func apply_price_highlight(item, action_key, before_max, after_max):
 	item["highlight_action"] = action_key
 	item["highlight_color"] = "gold" if after_max < before_max else "yellow"
 
-func add_help_button(parent, button):
-	if button.tooltip_text == "":
-		return
-	var help_btn = Button.new()
-	help_btn.text = "?"
-	help_btn.custom_minimum_size = Vector2(28, 28)
-	style_button(help_btn, "nav")
-	help_btn.add_theme_font_size_override("font_size", 13)
-	help_btn.pressed.connect(Callable(self, "queue_popup").bind(button.tooltip_text, "info"))
-	parent.add_child(help_btn)
+func wrap_button_with_help(button, help_text):
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(button)
+	if help_text != "":
+		var help_btn = Button.new()
+		help_btn.text = "?"
+		help_btn.custom_minimum_size = Vector2(28, 28)
+		style_button(help_btn, "nav")
+		help_btn.add_theme_font_size_override("font_size", 13)
+		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
+		row.add_child(help_btn)
+	return row
 
 func apply_button_icon(button, icon_tex):
 	if icon_tex != null:
@@ -787,7 +791,7 @@ func get_highlight_color(item, action_key):
 		return "#d4af37"
 	return "#f0d060"
 
-func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8dcff", header_icon = null):
+func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8dcff", header_icon = null, help_text = ""):
 	var panel = PanelContainer.new()
 	var sb = StyleBoxFlat.new()
 	sb.bg_color = Color(0.09,0.10,0.12,1.0)
@@ -824,7 +828,16 @@ func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8d
 	header.text = header_text
 	header.add_theme_font_size_override("font_size", 15)
 	header.add_theme_color_override("font_color", Color(0.58,0.63,0.70,1.0))
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header_row.add_child(header)
+	if help_text != "":
+		var help_btn = Button.new()
+		help_btn.text = "?"
+		help_btn.custom_minimum_size = Vector2(28, 28)
+		style_button(help_btn, "nav")
+		help_btn.add_theme_font_size_override("font_size", 13)
+		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
+		header_row.add_child(help_btn)
 	if note_bbcode_text != "":
 		var note = RichTextLabel.new()
 		note.bbcode_enabled = true
@@ -1150,11 +1163,13 @@ func generate_day():
 	daily_expenses = min(25.0, 6.50 + float(day - 1) * 0.25)
 	var seller_names = seller_profiles.keys()
 	var count = rng.randi_range(6, 8)
+	var used_names_today = {}
 	for i in range(count):
 		var seller = seller_names[rng.randi_range(0, seller_names.size() - 1)]
 		var profile = seller_profiles[seller]
 		var stall = {
 			"seller": seller,
+			"seller_display_name": pick_unique_seller_name(seller, used_names_today),
 			"stock": [],
 			"revealed": 0,
 			"packing_minute": rng.randi_range(10 * 60 + 45, 12 * 60),
@@ -1353,6 +1368,9 @@ func inventory_space_used():
 
 func show_stall():
 	current_screen_name = "show_stall"
+	if page_scroll != null:
+		last_scroll_value = page_scroll.scroll_vertical
+		call_deferred("_restore_scroll", page_scroll)
 	clear_body()
 	update_header()
 	if pending_special_offer != null:
@@ -1368,20 +1386,21 @@ func show_stall():
 
 	var stall = stalls[current_stall_index]
 	var seller = stall["seller"]
+	var seller_display = stall["seller_display_name"]
 	if current_time_minutes >= stall["packing_minute"] or bool(stall.get("banned_today", false)):
 		var packed_title = Label.new()
 		packed_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		packed_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		packed_title.add_theme_font_size_override("font_size", 20)
-		packed_title.text = "STALL %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display_name(seller)]
+		packed_title.text = "STALL %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display]
 		body.add_child(packed_title)
 		var packed = Label.new()
 		packed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		packed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if bool(stall.get("banned_today", false)):
-			packed.text = "You've been kicked off %s's stall for the rest of the day." % seller_display_name(seller)
+			packed.text = "You've been kicked off %s's stall for the rest of the day." % seller_display
 		else:
-			packed.text = "%s has already packed up and left for the day." % seller_display_name(seller)
+			packed.text = "%s has already packed up and left for the day." % seller_display
 		body.add_child(packed)
 		var back_note = Label.new()
 		back_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1397,7 +1416,7 @@ func show_stall():
 
 	var title = Label.new()
 	title.add_theme_font_size_override("font_size", 18)
-	title.text = "Stall %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display_name(seller)]
+	title.text = "Stall %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display]
 	title_row.add_child(title)
 
 	var browse = Button.new()
@@ -1532,11 +1551,11 @@ func show_stall():
 					stall_condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
 				else:
 					stall_condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
-			card.add_child(make_completed_action_box("Condition Checked", stall_condition_note, get_highlight_color(item, "condition"), condition_icon))
+			card.add_child(make_completed_action_box("Condition Checked", stall_condition_note, get_highlight_color(item, "condition"), condition_icon, "Reveals the exact Condition score for certain. This is the only reliable way to know it before buying — and, for non-electronic items, the only way to know about hidden defects at all."))
 
 		if item["basic_researched"]:
 			var stall_research_note = "Researched Prices: %s  •  [color=#e08fd0]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
-			card.add_child(make_completed_action_box("Researched", stall_research_note, get_highlight_color(item, "research"), research_icon))
+			card.add_child(make_completed_action_box("Researched", stall_research_note, get_highlight_color(item, "research"), research_icon, "Shows real sold-price comparables for this exact item. Evidence to weigh, not a guaranteed value — one-time only."))
 
 		var top_row = HFlowContainer.new()
 		top_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1661,8 +1680,7 @@ func show_stall():
 			condition_button.add_theme_font_size_override("font_size", 14)
 			condition_button.pressed.connect(Callable(self, "check_condition").bind(i))
 			apply_button_icon(condition_button, condition_icon)
-			actions.add_child(condition_button)
-			add_help_button(actions, condition_button)
+			actions.add_child(wrap_button_with_help(condition_button, condition_button.tooltip_text))
 
 		if not item["basic_researched"]:
 			var research_button = Button.new()
@@ -1674,8 +1692,7 @@ func show_stall():
 			research_button.add_theme_font_size_override("font_size", 14)
 			research_button.pressed.connect(Callable(self, "prebuy_research").bind(i))
 			apply_button_icon(research_button, research_icon)
-			actions.add_child(research_button)
-			add_help_button(actions, research_button)
+			actions.add_child(wrap_button_with_help(research_button, research_button.tooltip_text))
 
 	footer_label.text = ""
 
@@ -1739,7 +1756,8 @@ func check_condition(index):
 	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
 	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
 	var change_word = "increased" if after_center >= before_center else "decreased"
-	item["condition_price_note"] = "Condition Checked — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
+	var reveal_roll = rng.randf()
+	item["condition_price_note"] = "[color=#e08fd0]Chance 100%% | Rolled %.2f%%[/color] | Result: Revealed — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [reveal_roll * 100.0, item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
 	apply_price_highlight(item, "condition", float(before_check[1]), float(after_check[1]))
 	var message = "CONDITION CHECK COMPLETE — Condition %d/10." % item["condition"]
 	if item["testable"]:
@@ -1822,11 +1840,12 @@ func haggle_item(index, value_edit):
 	var stall = stalls[current_stall_index]
 	var item = stall["stock"][index]
 	var seller = stall["seller"]
+	var seller_display = stall["seller_display_name"]
 	if item["haggle_attempted"]:
 		set_status("You already made your one haggle attempt on this item.")
 		return
 	if bool(stall.get("banned_today", false)):
-		set_status("%s won't deal with you again today." % seller_display_name(seller))
+		set_status("%s won't deal with you again today." % seller_display)
 		return
 	if energy < 2:
 		set_status("Need E2 to haggle.")
@@ -1945,7 +1964,7 @@ func show_stall_list():
 		name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_line.add_theme_font_size_override("font_size", 15)
-		name_line.text = "Stall %d — %s%s" % [i + 1, seller_display_name(stall["seller"]), here_tag]
+		name_line.text = "Stall %d — %s%s" % [i + 1, stall["seller_display_name"], here_tag]
 		if packed:
 			name_line.add_theme_color_override("font_color", Color(0.5,0.5,0.55,1.0))
 		info_box.add_child(name_line)
@@ -2010,7 +2029,7 @@ func buy_item(index):
 	if index >= stall["revealed"]:
 		return
 	if bool(stall.get("banned_today", false)):
-		set_status("%s won't deal with you again today." % seller_display_name(stall["seller"]))
+		set_status("%s won't deal with you again today." % stall["seller_display_name"])
 		return
 	var item = stall["stock"][index]
 	if bool(item.get("seller_refuses", false)):
@@ -2036,7 +2055,7 @@ func buy_item(index):
 	stall["stock"].remove_at(index)
 	stall["revealed"] = min(stall["revealed"], stall["stock"].size())
 	register_collection(item)
-	check_side_deal(stall["seller"])
+	check_side_deal(stall["seller"], stall["seller_display_name"])
 	add_xp(2)
 	queue_popup("Item Purchased! %s — £%.2f" % [item["name"], item["paid"]], "success")
 	save_game()
@@ -2067,7 +2086,7 @@ func register_collection(item):
 		fs["highest_one_in"] = item["one_in"]
 		fs["highest_rarity"] = item["rarity"]
 
-func check_side_deal(seller):
+func check_side_deal(seller, display_name):
 	if not special_event_profiles.has(seller):
 		return
 	if pending_special_offer != null:
@@ -2077,11 +2096,11 @@ func check_side_deal(seller):
 	var result = roll < chance
 	record_rng("Side deal chance: %s | Rolled: %.2f%% | Result: %s" % [chance_text(chance), roll * 100.0, "TRIGGERED" if result else "MISS"])
 	if result:
-		pending_special_offer = generate_special_offer(seller)
-		status_label.text += " \"%s\" — %s has a special offer for you." % [special_event_profiles[seller]["title"], seller_display_name(seller)]
+		pending_special_offer = generate_special_offer(seller, display_name)
+		status_label.text += " \"%s\" — %s has a special offer for you." % [special_event_profiles[seller]["title"], display_name]
 		unlock_achievement("Actually Mate...")
 
-func generate_special_offer(seller):
+func generate_special_offer(seller, display_name):
 	var profile = special_event_profiles[seller]
 	var item = generate_item(seller)
 	var value_mult = rng.randf_range(float(profile["value_mult"][0]), float(profile["value_mult"][1]))
@@ -2106,7 +2125,7 @@ func generate_special_offer(seller):
 	if profile.has("fake_bonus"):
 		item["fake_chance"] = clamp(float(item["fake_chance"]) + float(profile["fake_bonus"]), 0.0, 0.85)
 		item["authentic"] = rng.randf() > item["fake_chance"]
-	return {"seller":seller, "title":profile["title"], "flavor":profile["flavor"], "item":item}
+	return {"seller":seller, "seller_display_name":display_name, "title":profile["title"], "flavor":profile["flavor"], "item":item}
 
 func show_special_offer():
 	current_screen_name = "show_special_offer"
@@ -2122,7 +2141,7 @@ func show_special_offer():
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", 20)
-	title.text = "SPECIAL OFFER — %s (%s)" % [offer["title"], seller_display_name(offer["seller"])]
+	title.text = "SPECIAL OFFER — %s (%s)" % [offer["title"], offer["seller_display_name"]]
 	body.add_child(title)
 
 	var flavor = Label.new()
@@ -2232,6 +2251,9 @@ func show_inventory_fresh():
 
 func show_inventory():
 	current_screen_name = "show_inventory"
+	if page_scroll != null:
+		last_scroll_value = page_scroll.scroll_vertical
+		call_deferred("_restore_scroll", page_scroll)
 	clear_body()
 	update_header()
 	var title = Label.new()
@@ -2354,7 +2376,7 @@ func show_inventory():
 					condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
 				else:
 					condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
-			card.add_child(make_completed_action_box("Condition Checked", condition_note, get_highlight_color(item, "condition"), condition_icon))
+			card.add_child(make_completed_action_box("Condition Checked", condition_note, get_highlight_color(item, "condition"), condition_icon, "Reveals the exact Condition score, and — for non-electronic items — any hidden defect. Only reliable way to know for sure if you skipped it before buying."))
 			actions.add_child(Control.new())
 		else:
 			var inv_condition_button = Button.new()
@@ -2366,11 +2388,10 @@ func show_inventory():
 			inv_condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(inv_condition_button, "action")
 			inv_condition_button.add_theme_font_size_override("font_size", 14)
-			actions.add_child(inv_condition_button)
-			add_help_button(actions, inv_condition_button)
+			actions.add_child(wrap_button_with_help(inv_condition_button, inv_condition_button.tooltip_text))
 
 		if item["basic_researched"]:
-			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], get_highlight_color(item, "research"), research_icon))
+			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], get_highlight_color(item, "research"), research_icon, "Sold-price comparables for this item. Evidence only, one-time."))
 			actions.add_child(Control.new())
 		else:
 			var basic_button = Button.new()
@@ -2382,14 +2403,13 @@ func show_inventory():
 			basic_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(basic_button, "action")
 			basic_button.add_theme_font_size_override("font_size", 14)
-			actions.add_child(basic_button)
-			add_help_button(actions, basic_button)
+			actions.add_child(wrap_button_with_help(basic_button, basic_button.tooltip_text))
 
 		if item["deep_researched"]:
 			var deep_note = item["research_note"]
 			if item["rare_variant_hit"]:
 				deep_note += "\nRARE VARIANT — [color=#e08fd0]rolled %.2f%%[/color] (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
-			card.add_child(make_completed_action_box("Deep Researched", deep_note, get_highlight_color(item, "deep_research"), deep_research_icon))
+			card.add_child(make_completed_action_box("Deep Researched", deep_note, get_highlight_color(item, "deep_research"), deep_research_icon, "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."))
 			actions.add_child(Control.new())
 		else:
 			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
@@ -2410,12 +2430,11 @@ func show_inventory():
 				deep_button.icon = deep_research_icon
 				deep_button.add_theme_constant_override("icon_max_width", 32)
 				deep_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			actions.add_child(deep_button)
-			add_help_button(actions, deep_button)
+			actions.add_child(wrap_button_with_help(deep_button, deep_button.tooltip_text))
 
 		if item["testable"]:
 			if item["tested"]:
-				card.add_child(make_completed_action_box("Tested", item["test_note"], "#b8dcff", test_icon))
+				card.add_child(make_completed_action_box("Tested", item["test_note"], "#b8dcff", test_icon, "Reveals whether this electronic item actually works. Required before it can be listed."))
 				actions.add_child(Control.new())
 			else:
 				var test_button = Button.new()
@@ -2428,11 +2447,10 @@ func show_inventory():
 				test_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				style_button(test_button, "action")
 				test_button.add_theme_font_size_override("font_size", 14)
-				actions.add_child(test_button)
-				add_help_button(actions, test_button)
+				actions.add_child(wrap_button_with_help(test_button, test_button.tooltip_text))
 
 		if item["auth_attempted"]:
-			card.add_child(make_completed_action_box("Authenticated — %s" % item["auth_status"], item["auth_note"], "#b8dcff", authenticate_icon))
+			card.add_child(make_completed_action_box("Authenticated — %s" % item["auth_status"], item["auth_note"], "#b8dcff", authenticate_icon, "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."))
 			actions.add_child(Control.new())
 		else:
 			var auth_button = Button.new()
@@ -2445,8 +2463,7 @@ func show_inventory():
 			auth_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(auth_button, "action")
 			auth_button.add_theme_font_size_override("font_size", 14)
-			actions.add_child(auth_button)
-			add_help_button(actions, auth_button)
+			actions.add_child(wrap_button_with_help(auth_button, auth_button.tooltip_text))
 
 
 		if toolbox_level > 0 and item["tested"] and item["fault"]:
@@ -2593,12 +2610,6 @@ func add_listing_controls(card, index, item, potential):
 
 	box.add_child(interest)
 
-	var list_button = Button.new()
-	list_button.text = "Create Listing"
-	list_button.pressed.connect(Callable(self, "create_listing").bind(index, value_edit))
-	style_button(list_button, "buy")
-	box.add_child(list_button)
-
 	var guide = Label.new()
 	if item["deep_researched"]:
 		guide.text = "Researched range"
@@ -2608,6 +2619,14 @@ func add_listing_controls(card, index, item, potential):
 
 	card.add_child(breakdown)
 
+	var list_button = Button.new()
+	list_button.text = "Create Listing"
+	list_button.pressed.connect(Callable(self, "create_listing").bind(index, value_edit))
+	list_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_button.custom_minimum_size.y = 44
+	style_button(list_button, "buy")
+	card.add_child(list_button)
+
 	var quick_sell_row = HBoxContainer.new()
 	quick_sell_row.add_theme_constant_override("separation", 8)
 	card.add_child(quick_sell_row)
@@ -2616,7 +2635,6 @@ func add_listing_controls(card, index, item, potential):
 	var quick_sell_high = max(1.0, round(float(potential[0]) * 0.75))
 	quick_sell_button.text = "Quick Sell £%d-%d" % [quick_sell_low, quick_sell_high]
 	quick_sell_button.tooltip_text = "Instant cash, no listing wait — but well below market value. Rarely, a great buy can still turn a small profit."
-	quick_sell_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	style_button(quick_sell_button, "danger")
 	quick_sell_button.pressed.connect(Callable(self, "quick_sell_item").bind(index))
 	quick_sell_row.add_child(quick_sell_button)
@@ -2753,7 +2771,8 @@ func inventory_check_condition(index):
 	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
 	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
 	var change_word = "increased" if after_center >= before_center else "decreased"
-	item["condition_price_note"] = "Condition Checked — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
+	var reveal_roll = rng.randf()
+	item["condition_price_note"] = "[color=#e08fd0]Chance 100%% | Rolled %.2f%%[/color] | Result: Revealed — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [reveal_roll * 100.0, item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
 	apply_price_highlight(item, "condition", float(before_check[1]), float(after_check[1]))
 	var message = "CONDITION CHECK COMPLETE — Condition %d/10." % item["condition"]
 	if item["testable"]:
@@ -3464,6 +3483,16 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 04:20", "notes": [
+		"Fixed ? help buttons to also show before pressing, not just in the completed box — now grouped together with each action button in a shared row so they can't separate via layout wrapping",
+	]},
+	{"version": "Latest — 10/09/2026 04:00", "notes": [
+		"Fixed a real bug in the ? help buttons that could have broken the game (a parenthesis mistake on my end) — moved them inside the completed action boxes at the right side, as requested, and removed the outside ones entirely",
+		"Found and fixed the actual cause of the scroll drift: per-render scroll position restoration had stopped firing after an earlier architecture change. Note: since the completed box is genuinely taller than the button it replaces, content below it will still shift down somewhat — that's an inherent trade-off of showing more detail, not something further fixable without a much bigger redesign",
+		"Condition now shows a Chance/Rolled line like other actions — shown honestly as 100% chance (checking Condition is a guaranteed reveal, not a real gamble), with a genuine rolled number for visual consistency",
+		"Sellers of the same type no longer share the same name within a day (e.g. two Dodgy Sellers now get different first names) — each stall gets a name assigned uniquely at day-start",
+		"Create Listing is now the larger, more prominent button; Quick Sell is smaller and in its own separate row",
+	]},
 	{"version": "Latest — 10/09/2026 03:10", "notes": [
 		"Achievements progress bars redesigned: green fill, milestones properly spread out and wrapping instead of cramped on one line",
 		"Added a new Total Lifetime Profit progress bar alongside Total Haggled Savings",
@@ -3690,18 +3719,40 @@ func show_sold_history():
 		line.text = "%s | Condition %s | Sold £%.2f | [color=%s]Profit £%+.2f[/color] | Day %d" % [sale["name"], sold_condition_text, sale["price"], profit_color, profit, sale["day"]]
 		body.add_child(line)
 
-var seller_display_names = {
-	"Desperate Seller": "Stephen the Desperate Seller",
-	"House Clearance": "Barry's House Clearance",
-	"Clueless Seller": "Sandra the Clueless Seller",
-	"Regular Seller": "Dave the Regular Seller",
-	"Collector": "Arran the Collector",
-	"Dodgy Seller": "Kyle the Dodgy Seller",
-	"Dealer": "Will the Dealer",
+var seller_first_name_pools = {
+	"Desperate Seller": ["Stephen", "Colin", "Trevor"],
+	"House Clearance": ["Barry", "Malcolm", "Derek"],
+	"Clueless Seller": ["Sandra", "Karen", "Doreen"],
+	"Regular Seller": ["Dave", "Paul", "Steve"],
+	"Collector": ["Arran", "Julian", "Marcus"],
+	"Dodgy Seller": ["Kyle", "Wayne", "Vinnie"],
+	"Dealer": ["Will", "Terry", "Frank"],
+}
+var seller_name_templates = {
+	"Desperate Seller": "%s the Desperate Seller",
+	"House Clearance": "%s's House Clearance",
+	"Clueless Seller": "%s the Clueless Seller",
+	"Regular Seller": "%s the Regular Seller",
+	"Collector": "%s the Collector",
+	"Dodgy Seller": "%s the Dodgy Seller",
+	"Dealer": "%s the Dealer",
 }
 
+func pick_unique_seller_name(seller, used_names_today):
+	var pool = seller_first_name_pools.get(seller, [seller])
+	var template = seller_name_templates.get(seller, "%s")
+	var shuffled = pool.duplicate()
+	shuffled.shuffle()
+	for first_name in shuffled:
+		if not used_names_today.has(first_name):
+			used_names_today[first_name] = true
+			return template % first_name
+	var fallback_name = pool[0] + " " + str(used_names_today.size() + 1)
+	used_names_today[fallback_name] = true
+	return template % fallback_name
+
 func seller_display_name(seller):
-	return seller_display_names.get(seller, seller)
+	return seller
 
 func get_category_list():
 	var cats = []
