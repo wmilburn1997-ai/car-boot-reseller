@@ -771,8 +771,8 @@ func wrap_button_with_help(button, help_text):
 	if help_text != "":
 		var help_btn = Button.new()
 		help_btn.text = "?"
-		help_btn.custom_minimum_size = Vector2(28, 28)
 		style_button(help_btn, "nav")
+		help_btn.custom_minimum_size = Vector2(28, 28)
 		help_btn.add_theme_font_size_override("font_size", 13)
 		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
 		row.add_child(help_btn)
@@ -833,8 +833,8 @@ func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8d
 	if help_text != "":
 		var help_btn = Button.new()
 		help_btn.text = "?"
-		help_btn.custom_minimum_size = Vector2(28, 28)
 		style_button(help_btn, "nav")
+		help_btn.custom_minimum_size = Vector2(28, 28)
 		help_btn.add_theme_font_size_override("font_size", 13)
 		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
 		header_row.add_child(help_btn)
@@ -1513,9 +1513,9 @@ func show_stall():
 		var dismiss_button = Button.new()
 		dismiss_button.text = "×"
 		dismiss_button.tooltip_text = "Not interested — hide this item for the rest of this stall visit. Free, no time cost. It's still there for anyone else, and dismissing doesn't affect the real item pool."
+		style_button(dismiss_button, "nav")
 		dismiss_button.custom_minimum_size = Vector2(52, 52)
 		dismiss_button.add_theme_font_size_override("font_size", 26)
-		style_button(dismiss_button, "nav")
 		dismiss_button.pressed.connect(Callable(self, "dismiss_stall_item").bind(i))
 		name_row.add_child(dismiss_button)
 
@@ -2377,7 +2377,9 @@ func show_inventory():
 				else:
 					condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
 			card.add_child(make_completed_action_box("Condition Checked", condition_note, get_highlight_color(item, "condition"), condition_icon, "Reveals the exact Condition score, and — for non-electronic items — any hidden defect. Only reliable way to know for sure if you skipped it before buying."))
-			actions.add_child(Control.new())
+			var placeholder = Control.new()
+			placeholder.custom_minimum_size = Vector2(0, 48)
+			actions.add_child(placeholder)
 		else:
 			var inv_condition_button = Button.new()
 			inv_condition_button.text = "Condition £5 | E4"
@@ -2392,7 +2394,9 @@ func show_inventory():
 
 		if item["basic_researched"]:
 			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], get_highlight_color(item, "research"), research_icon, "Sold-price comparables for this item. Evidence only, one-time."))
-			actions.add_child(Control.new())
+			var placeholder = Control.new()
+			placeholder.custom_minimum_size = Vector2(0, 48)
+			actions.add_child(placeholder)
 		else:
 			var basic_button = Button.new()
 			basic_button.text = "Research £1 | E2"
@@ -2410,7 +2414,9 @@ func show_inventory():
 			if item["rare_variant_hit"]:
 				deep_note += "\nRARE VARIANT — [color=#e08fd0]rolled %.2f%%[/color] (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
 			card.add_child(make_completed_action_box("Deep Researched", deep_note, get_highlight_color(item, "deep_research"), deep_research_icon, "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."))
-			actions.add_child(Control.new())
+			var placeholder = Control.new()
+			placeholder.custom_minimum_size = Vector2(0, 48)
+			actions.add_child(placeholder)
 		else:
 			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
 			var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
@@ -2435,33 +2441,37 @@ func show_inventory():
 		if item["testable"]:
 			if item["tested"]:
 				card.add_child(make_completed_action_box("Tested", item["test_note"], "#b8dcff", test_icon, "Reveals whether this electronic item actually works. Required before it can be listed."))
-				actions.add_child(Control.new())
+				var placeholder = Control.new()
+				placeholder.custom_minimum_size = Vector2(0, 48)
+				actions.add_child(placeholder)
 			else:
 				var test_button = Button.new()
 				test_button.text = "Test £2 | E5\nFault chance: %.0f%%" % (float(item["fault_chance"]) * 100.0)
 				test_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
 				test_button.pressed.connect(Callable(self, "test_item").bind(i))
 				apply_button_icon(test_button, test_icon)
-				test_button.custom_minimum_size.y = 48
 				test_button.tooltip_text = "Reveals whether this electronic item actually works. Required before it can be listed."
 				test_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				style_button(test_button, "action")
+				test_button.custom_minimum_size.y = 48
 				test_button.add_theme_font_size_override("font_size", 14)
 				actions.add_child(wrap_button_with_help(test_button, test_button.tooltip_text))
 
 		if item["auth_attempted"]:
 			card.add_child(make_completed_action_box("Authenticated — %s" % item["auth_status"], item["auth_note"], "#b8dcff", authenticate_icon, "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."))
-			actions.add_child(Control.new())
+			var placeholder = Control.new()
+			placeholder.custom_minimum_size = Vector2(0, 48)
+			actions.add_child(placeholder)
 		else:
 			var auth_button = Button.new()
 			auth_button.text = "Authenticate £%d | E6\nAccuracy: %.0f%%" % [int(authentication_cost(item)), authentication_accuracy(item) * 100.0]
 			auth_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
 			auth_button.pressed.connect(Callable(self, "authenticate_item").bind(i))
 			apply_button_icon(auth_button, authenticate_icon)
-			auth_button.custom_minimum_size.y = 48
 			auth_button.tooltip_text = "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."
 			auth_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			style_button(auth_button, "action")
+			auth_button.custom_minimum_size.y = 48
 			auth_button.add_theme_font_size_override("font_size", 14)
 			actions.add_child(wrap_button_with_help(auth_button, auth_button.tooltip_text))
 
@@ -2623,8 +2633,8 @@ func add_listing_controls(card, index, item, potential):
 	list_button.text = "Create Listing"
 	list_button.pressed.connect(Callable(self, "create_listing").bind(index, value_edit))
 	list_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list_button.custom_minimum_size.y = 44
 	style_button(list_button, "buy")
+	list_button.custom_minimum_size.y = 44
 	card.add_child(list_button)
 
 	var quick_sell_row = HBoxContainer.new()
@@ -3483,6 +3493,11 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 04:45", "notes": [
+		"Found the real bug behind several issues at once: style_button() unconditionally resets button height to 36px and font size to 13, and several of my recent additions were setting their custom size BEFORE calling style_button(), silently undoing it. This affected: the X dismiss button (was actually still 36px despite the code saying 52px), the Test/Authenticate buttons (were being squished from their intended 48px to 36px, likely a real contributor to the 'boxes moving' issue since their size was inconsistent), Create Listing's prominence, the ? help buttons, and the Collection Log category/Grails boxes",
+		"Fixed all 7 instances by reordering — style_button() now always runs first, custom sizing after",
+		"Also gave the invisible placeholder (used to stop the button row reflowing) a proper matching height instead of zero, which should further help with layout stability",
+	]},
 	{"version": "Latest — 10/09/2026 04:20", "notes": [
 		"Fixed ? help buttons to also show before pressing, not just in the completed box — now grouped together with each action button in a shared row so they can't separate via layout wrapping",
 	]},
@@ -3849,16 +3864,16 @@ func show_collection_log():
 		var counts = category_discovery_count(category)
 		var cat_button = Button.new()
 		cat_button.text = "%s\n%d/%d" % [category, counts[0], counts[1]]
-		cat_button.custom_minimum_size = Vector2(150, 56)
 		style_button(cat_button, "action")
+		cat_button.custom_minimum_size = Vector2(150, 56)
 		cat_button.pressed.connect(Callable(self, "show_collection_category").bind(category))
 		grid.add_child(cat_button)
 
 	var grail_counts = grails_discovery_count()
 	var grail_button = Button.new()
 	grail_button.text = "GRAILS\n%d/%d" % [grail_counts[0], grail_counts[1]]
-	grail_button.custom_minimum_size = Vector2(150, 56)
 	style_button(grail_button, "danger")
+	grail_button.custom_minimum_size = Vector2(150, 56)
 	grail_button.pressed.connect(show_collection_grails)
 	grid.add_child(grail_button)
 
