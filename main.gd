@@ -178,6 +178,7 @@ var last_scroll_value = 0.0
 var current_screen_name = "show_stall"
 var tooltip_saved_text = ""
 var total_haggled_savings = 0.0
+var total_lifetime_profit = 0.0
 var inventory_tab = "unlisted"
 var fixer_used_today = false
 const SAVE_PATH = "user://savegame.json"
@@ -546,6 +547,13 @@ func show_more_menu():
 	save_line.text = ("Last saved: %s" % last_save_time) if last_save_time != "" else "Not saved yet — plays automatically as you play."
 	body.add_child(save_line)
 
+	var manual_save_button = Button.new()
+	manual_save_button.text = "Save Now"
+	manual_save_button.tooltip_text = "Manually save your progress right now, on top of the automatic saves."
+	style_button(manual_save_button, "buy")
+	manual_save_button.pressed.connect(Callable(self, "manual_save"))
+	body.add_child(manual_save_button)
+
 	var save_panel = make_card()
 	body.add_child(save_panel)
 	var save_box = VBoxContainer.new()
@@ -755,6 +763,17 @@ func apply_price_highlight(item, action_key, before_max, after_max):
 	item["highlight_action"] = action_key
 	item["highlight_color"] = "gold" if after_max < before_max else "yellow"
 
+func add_help_button(parent, button):
+	if button.tooltip_text == "":
+		return
+	var help_btn = Button.new()
+	help_btn.text = "?"
+	help_btn.custom_minimum_size = Vector2(28, 28)
+	style_button(help_btn, "nav")
+	help_btn.add_theme_font_size_override("font_size", 13)
+	help_btn.pressed.connect(Callable(self, "queue_popup").bind(button.tooltip_text, "info"))
+	parent.add_child(help_btn)
+
 func apply_button_icon(button, icon_tex):
 	if icon_tex != null:
 		button.icon = icon_tex
@@ -895,9 +914,15 @@ func get_save_data():
 		"family_stats": family_stats,
 		"sold_history": sold_history,
 		"total_haggled_savings": total_haggled_savings,
+		"total_lifetime_profit": total_lifetime_profit,
 		"negative_days_streak": negative_days_streak,
 		"save_time": Time.get_datetime_string_from_system(false, true),
 	}
+
+func manual_save():
+	save_game()
+	queue_popup("Game Saved!", "success")
+	show_more_menu()
 
 func save_game():
 	var data = get_save_data()
@@ -936,6 +961,7 @@ func load_game():
 	family_stats = parsed.get("family_stats", family_stats)
 	sold_history = parsed.get("sold_history", sold_history)
 	total_haggled_savings = float(parsed.get("total_haggled_savings", total_haggled_savings))
+	total_lifetime_profit = float(parsed.get("total_lifetime_profit", total_lifetime_profit))
 	negative_days_streak = int(parsed.get("negative_days_streak", negative_days_streak))
 	last_save_time = str(parsed.get("save_time", ""))
 	return true
@@ -973,6 +999,9 @@ func show_blocked_popup(text, kind = "error"):
 		if kind == "success":
 			blocked_popup_style.bg_color = Color(0.05,0.14,0.07,0.97)
 			blocked_popup_style.border_color = Color(0.35,0.72,0.40,1.0)
+		elif kind == "info":
+			blocked_popup_style.bg_color = Color(0.06,0.09,0.15,0.97)
+			blocked_popup_style.border_color = Color(0.35,0.55,0.80,1.0)
 		else:
 			blocked_popup_style.bg_color = Color(0.16,0.05,0.05,0.97)
 			blocked_popup_style.border_color = Color(0.75,0.35,0.32,1.0)
@@ -1344,15 +1373,15 @@ func show_stall():
 		packed_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		packed_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		packed_title.add_theme_font_size_override("font_size", 20)
-		packed_title.text = "STALL %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller]
+		packed_title.text = "STALL %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display_name(seller)]
 		body.add_child(packed_title)
 		var packed = Label.new()
 		packed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		packed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if bool(stall.get("banned_today", false)):
-			packed.text = "You've been kicked off %s's stall for the rest of the day." % seller
+			packed.text = "You've been kicked off %s's stall for the rest of the day." % seller_display_name(seller)
 		else:
-			packed.text = "%s has already packed up and left for the day." % seller
+			packed.text = "%s has already packed up and left for the day." % seller_display_name(seller)
 		body.add_child(packed)
 		var back_note = Label.new()
 		back_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1368,7 +1397,7 @@ func show_stall():
 
 	var title = Label.new()
 	title.add_theme_font_size_override("font_size", 18)
-	title.text = "Stall %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller]
+	title.text = "Stall %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display_name(seller)]
 	title_row.add_child(title)
 
 	var browse = Button.new()
@@ -1465,8 +1494,8 @@ func show_stall():
 		var dismiss_button = Button.new()
 		dismiss_button.text = "×"
 		dismiss_button.tooltip_text = "Not interested — hide this item for the rest of this stall visit. Free, no time cost. It's still there for anyone else, and dismissing doesn't affect the real item pool."
-		dismiss_button.custom_minimum_size = Vector2(44, 44)
-		dismiss_button.add_theme_font_size_override("font_size", 20)
+		dismiss_button.custom_minimum_size = Vector2(52, 52)
+		dismiss_button.add_theme_font_size_override("font_size", 26)
 		style_button(dismiss_button, "nav")
 		dismiss_button.pressed.connect(Callable(self, "dismiss_stall_item").bind(i))
 		name_row.add_child(dismiss_button)
@@ -1633,6 +1662,7 @@ func show_stall():
 			condition_button.pressed.connect(Callable(self, "check_condition").bind(i))
 			apply_button_icon(condition_button, condition_icon)
 			actions.add_child(condition_button)
+			add_help_button(actions, condition_button)
 
 		if not item["basic_researched"]:
 			var research_button = Button.new()
@@ -1645,6 +1675,7 @@ func show_stall():
 			research_button.pressed.connect(Callable(self, "prebuy_research").bind(i))
 			apply_button_icon(research_button, research_icon)
 			actions.add_child(research_button)
+			add_help_button(actions, research_button)
 
 	footer_label.text = ""
 
@@ -1795,7 +1826,7 @@ func haggle_item(index, value_edit):
 		set_status("You already made your one haggle attempt on this item.")
 		return
 	if bool(stall.get("banned_today", false)):
-		set_status("%s won't deal with you again today." % seller)
+		set_status("%s won't deal with you again today." % seller_display_name(seller))
 		return
 	if energy < 2:
 		set_status("Need E2 to haggle.")
@@ -1848,6 +1879,11 @@ func browse_stall():
 	stall["revealed"] = min(stall["stock"].size(), stall["revealed"] + rng.randi_range(2, 4))
 	rival_pressure(float(stall["crowd"]) * 0.35)
 	show_stall()
+	call_deferred("_scroll_to_bottom")
+
+func _scroll_to_bottom():
+	if page_scroll != null:
+		page_scroll.scroll_vertical = int(page_scroll.get_v_scroll_bar().max_value)
 
 func next_stall():
 	current_time_minutes += 5
@@ -1909,7 +1945,7 @@ func show_stall_list():
 		name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_line.add_theme_font_size_override("font_size", 15)
-		name_line.text = "Stall %d — %s%s" % [i + 1, stall["seller"], here_tag]
+		name_line.text = "Stall %d — %s%s" % [i + 1, seller_display_name(stall["seller"]), here_tag]
 		if packed:
 			name_line.add_theme_color_override("font_color", Color(0.5,0.5,0.55,1.0))
 		info_box.add_child(name_line)
@@ -1974,7 +2010,7 @@ func buy_item(index):
 	if index >= stall["revealed"]:
 		return
 	if bool(stall.get("banned_today", false)):
-		set_status("%s won't deal with you again today." % stall["seller"])
+		set_status("%s won't deal with you again today." % seller_display_name(stall["seller"]))
 		return
 	var item = stall["stock"][index]
 	if bool(item.get("seller_refuses", false)):
@@ -2042,7 +2078,7 @@ func check_side_deal(seller):
 	record_rng("Side deal chance: %s | Rolled: %.2f%% | Result: %s" % [chance_text(chance), roll * 100.0, "TRIGGERED" if result else "MISS"])
 	if result:
 		pending_special_offer = generate_special_offer(seller)
-		status_label.text += " \"%s\" — %s has a special offer for you." % [special_event_profiles[seller]["title"], seller]
+		status_label.text += " \"%s\" — %s has a special offer for you." % [special_event_profiles[seller]["title"], seller_display_name(seller)]
 		unlock_achievement("Actually Mate...")
 
 func generate_special_offer(seller):
@@ -2086,7 +2122,7 @@ func show_special_offer():
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", 20)
-	title.text = "SPECIAL OFFER — %s (%s)" % [offer["title"], offer["seller"]]
+	title.text = "SPECIAL OFFER — %s (%s)" % [offer["title"], seller_display_name(offer["seller"])]
 	body.add_child(title)
 
 	var flavor = Label.new()
@@ -2319,6 +2355,7 @@ func show_inventory():
 				else:
 					condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
 			card.add_child(make_completed_action_box("Condition Checked", condition_note, get_highlight_color(item, "condition"), condition_icon))
+			actions.add_child(Control.new())
 		else:
 			var inv_condition_button = Button.new()
 			inv_condition_button.text = "Condition £5 | E4"
@@ -2330,9 +2367,11 @@ func show_inventory():
 			style_button(inv_condition_button, "action")
 			inv_condition_button.add_theme_font_size_override("font_size", 14)
 			actions.add_child(inv_condition_button)
+			add_help_button(actions, inv_condition_button)
 
 		if item["basic_researched"]:
 			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], get_highlight_color(item, "research"), research_icon))
+			actions.add_child(Control.new())
 		else:
 			var basic_button = Button.new()
 			basic_button.text = "Research £1 | E2"
@@ -2344,12 +2383,14 @@ func show_inventory():
 			style_button(basic_button, "action")
 			basic_button.add_theme_font_size_override("font_size", 14)
 			actions.add_child(basic_button)
+			add_help_button(actions, basic_button)
 
 		if item["deep_researched"]:
 			var deep_note = item["research_note"]
 			if item["rare_variant_hit"]:
 				deep_note += "\nRARE VARIANT — [color=#e08fd0]rolled %.2f%%[/color] (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
 			card.add_child(make_completed_action_box("Deep Researched", deep_note, get_highlight_color(item, "deep_research"), deep_research_icon))
+			actions.add_child(Control.new())
 		else:
 			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
 			var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
@@ -2370,10 +2411,12 @@ func show_inventory():
 				deep_button.add_theme_constant_override("icon_max_width", 32)
 				deep_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			actions.add_child(deep_button)
+			add_help_button(actions, deep_button)
 
 		if item["testable"]:
 			if item["tested"]:
 				card.add_child(make_completed_action_box("Tested", item["test_note"], "#b8dcff", test_icon))
+				actions.add_child(Control.new())
 			else:
 				var test_button = Button.new()
 				test_button.text = "Test £2 | E5\nFault chance: %.0f%%" % (float(item["fault_chance"]) * 100.0)
@@ -2386,9 +2429,11 @@ func show_inventory():
 				style_button(test_button, "action")
 				test_button.add_theme_font_size_override("font_size", 14)
 				actions.add_child(test_button)
+				add_help_button(actions, test_button)
 
 		if item["auth_attempted"]:
 			card.add_child(make_completed_action_box("Authenticated — %s" % item["auth_status"], item["auth_note"], "#b8dcff", authenticate_icon))
+			actions.add_child(Control.new())
 		else:
 			var auth_button = Button.new()
 			auth_button.text = "Authenticate £%d | E6\nAccuracy: %.0f%%" % [int(authentication_cost(item)), authentication_accuracy(item) * 100.0]
@@ -2401,6 +2446,7 @@ func show_inventory():
 			style_button(auth_button, "action")
 			auth_button.add_theme_font_size_override("font_size", 14)
 			actions.add_child(auth_button)
+			add_help_button(actions, auth_button)
 
 
 		if toolbox_level > 0 and item["tested"] and item["fault"]:
@@ -2553,15 +2599,6 @@ func add_listing_controls(card, index, item, potential):
 	style_button(list_button, "buy")
 	box.add_child(list_button)
 
-	var quick_sell_button = Button.new()
-	var quick_sell_low = max(1.0, round(float(potential[0]) * 0.45))
-	var quick_sell_high = max(1.0, round(float(potential[0]) * 0.75))
-	quick_sell_button.text = "Quick Sell £%d-%d" % [quick_sell_low, quick_sell_high]
-	quick_sell_button.tooltip_text = "Instant cash, no listing wait — but well below market value. Rarely, a great buy can still turn a small profit."
-	style_button(quick_sell_button, "danger")
-	quick_sell_button.pressed.connect(Callable(self, "quick_sell_item").bind(index))
-	box.add_child(quick_sell_button)
-
 	var guide = Label.new()
 	if item["deep_researched"]:
 		guide.text = "Researched range"
@@ -2570,6 +2607,19 @@ func add_listing_controls(card, index, item, potential):
 	box.add_child(guide)
 
 	card.add_child(breakdown)
+
+	var quick_sell_row = HBoxContainer.new()
+	quick_sell_row.add_theme_constant_override("separation", 8)
+	card.add_child(quick_sell_row)
+	var quick_sell_button = Button.new()
+	var quick_sell_low = max(1.0, round(float(potential[0]) * 0.45))
+	var quick_sell_high = max(1.0, round(float(potential[0]) * 0.75))
+	quick_sell_button.text = "Quick Sell £%d-%d" % [quick_sell_low, quick_sell_high]
+	quick_sell_button.tooltip_text = "Instant cash, no listing wait — but well below market value. Rarely, a great buy can still turn a small profit."
+	quick_sell_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(quick_sell_button, "danger")
+	quick_sell_button.pressed.connect(Callable(self, "quick_sell_item").bind(index))
+	quick_sell_row.add_child(quick_sell_button)
 
 func _parse_price(text):
 	var cleaned = text.strip_edges()
@@ -2612,6 +2662,7 @@ func quick_sell_item(index):
 		var fs_quick = family_stats[item["name"]]
 		fs_quick["highest_sold"] = max(float(fs_quick["highest_sold"]), quick_price)
 		fs_quick["lifetime_profit"] = float(fs_quick["lifetime_profit"]) + profit
+	total_lifetime_profit += profit
 	inventory.remove_at(index)
 	var color = Color(0.55,0.85,0.58,1.0) if profit >= 0.0 else Color(0.92,0.55,0.45,1.0)
 	set_status("Quick Sold — £%.2f — Profit %+.2f" % [quick_price, profit], color)
@@ -3128,6 +3179,7 @@ func resolve_item_sale(item, sale_chance):
 		var fs_sale = family_stats[item["name"]]
 		fs_sale["highest_sold"] = max(float(fs_sale["highest_sold"]), sale_price)
 		fs_sale["lifetime_profit"] = float(fs_sale["lifetime_profit"]) + sale_profit
+	total_lifetime_profit += sale_profit
 	queue_popup("Item Sold: %s — £%.2f — Profit %+.2f" % [item["name"], sale_price, sale_profit], "success")
 	save_game()
 	if sale_price - item["paid"] > 0:
@@ -3412,6 +3464,19 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 03:10", "notes": [
+		"Achievements progress bars redesigned: green fill, milestones properly spread out and wrapping instead of cramped on one line",
+		"Added a new Total Lifetime Profit progress bar alongside Total Haggled Savings",
+		"Completed action boxes (Condition/Research/Deep Research/Test/Authenticate) should no longer shift position when you click another one — the button row now keeps a stable slot instead of reflowing",
+		"Added a small ? help button next to each action button, showing its explanation via a popup",
+		"Increased the item-dismiss × button size further (44px -> 52px)",
+		"Pressing Dig Deeper now scrolls down to the newly revealed items automatically",
+		"Sellers now have first names (e.g. 'Stephen the Desperate Seller', 'Arran the Collector') shown everywhere their name appears — purely cosmetic, doesn't affect the underlying seller type or odds",
+		"Moved Quick Sell into its own row, away from Create Listing, to prevent accidental mis-clicks",
+	]},
+	{"version": "Latest — 10/09/2026 02:45", "notes": [
+		"Added a manual 'Save Now' button in the More tab, with a confirmation popup — on top of the existing automatic saves",
+	]},
 	{"version": "Latest — 10/09/2026 02:35", "notes": [
 		"Fixed: Total Log was counting distinct items (72) instead of all discoverable item+rarity combinations (360), inconsistent with how the category boxes count",
 		"Added a local save system using Godot's user:// storage, which persists in your browser — saves Cash, Day, Level/XP, Inventory, all Shop upgrades, Achievements, Collection Log progress, and Sold History",
@@ -3625,6 +3690,19 @@ func show_sold_history():
 		line.text = "%s | Condition %s | Sold £%.2f | [color=%s]Profit £%+.2f[/color] | Day %d" % [sale["name"], sold_condition_text, sale["price"], profit_color, profit, sale["day"]]
 		body.add_child(line)
 
+var seller_display_names = {
+	"Desperate Seller": "Stephen the Desperate Seller",
+	"House Clearance": "Barry's House Clearance",
+	"Clueless Seller": "Sandra the Clueless Seller",
+	"Regular Seller": "Dave the Regular Seller",
+	"Collector": "Arran the Collector",
+	"Dodgy Seller": "Kyle the Dodgy Seller",
+	"Dealer": "Will the Dealer",
+}
+
+func seller_display_name(seller):
+	return seller_display_names.get(seller, seller)
+
 func get_category_list():
 	var cats = []
 	for family in item_families:
@@ -3776,6 +3854,54 @@ func show_collection_grails():
 func sort_log(a, b):
 	return int(a["one_in"]) > int(b["one_in"])
 
+func make_progress_bar_section(title_text, current_value, max_value, milestones):
+	var container = VBoxContainer.new()
+	container.add_theme_constant_override("separation", 6)
+
+	var title_label = Label.new()
+	title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.add_theme_font_size_override("font_size", 15)
+	title_label.text = title_text
+	container.add_child(title_label)
+
+	var bar = ProgressBar.new()
+	bar.min_value = 0
+	bar.max_value = max_value
+	bar.value = clamp(current_value, 0, max_value)
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 22)
+	var fill_style = StyleBoxFlat.new()
+	fill_style.bg_color = Color(0.35,0.75,0.40,1.0)
+	fill_style.corner_radius_top_left = 6
+	fill_style.corner_radius_top_right = 6
+	fill_style.corner_radius_bottom_left = 6
+	fill_style.corner_radius_bottom_right = 6
+	bar.add_theme_stylebox_override("fill", fill_style)
+	var bg_style = StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.10,0.12,0.15,1.0)
+	bg_style.corner_radius_top_left = 6
+	bg_style.corner_radius_top_right = 6
+	bg_style.corner_radius_bottom_left = 6
+	bg_style.corner_radius_bottom_right = 6
+	bar.add_theme_stylebox_override("background", bg_style)
+	container.add_child(bar)
+
+	var milestone_row = HFlowContainer.new()
+	milestone_row.add_theme_constant_override("h_separation", 16)
+	milestone_row.add_theme_constant_override("v_separation", 4)
+	milestone_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.add_child(milestone_row)
+	for m in milestones:
+		var reached = current_value >= m
+		var label_text = "£%d" % int(m) if m < 1000.0 else "£%dk" % int(m / 1000.0)
+		var m_label = Label.new()
+		m_label.add_theme_font_size_override("font_size", 12)
+		m_label.text = ("X " if reached else "- ") + label_text
+		m_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0) if reached else Color(0.50,0.55,0.62,1.0))
+		milestone_row.add_child(m_label)
+	return container
+
 func show_achievements():
 	current_screen_name = "show_achievements"
 	clear_body()
@@ -3787,32 +3913,9 @@ func show_achievements():
 	title.text = "ACHIEVEMENTS"
 	body.add_child(title)
 
-	var haggle_title = Label.new()
-	haggle_title.add_theme_font_size_override("font_size", 15)
-	haggle_title.text = "Total Haggled Savings: £%.2f / £100,000" % total_haggled_savings
-	body.add_child(haggle_title)
+	body.add_child(make_progress_bar_section("Total Haggled Savings: £%.2f / £100,000" % total_haggled_savings, total_haggled_savings, 100000, [100.0, 500.0, 1000.0, 5000.0, 10000.0, 25000.0, 50000.0, 100000.0]))
 
-	var haggle_bar = ProgressBar.new()
-	haggle_bar.min_value = 0
-	haggle_bar.max_value = 100000
-	haggle_bar.value = clamp(total_haggled_savings, 0, 100000)
-	haggle_bar.show_percentage = false
-	haggle_bar.custom_minimum_size = Vector2(0, 22)
-	body.add_child(haggle_bar)
-
-	var milestones = [100.0, 500.0, 1000.0, 5000.0, 10000.0, 25000.0, 50000.0, 100000.0]
-	var milestone_parts = []
-	for m in milestones:
-		var reached = total_haggled_savings >= m
-		var label_text = "£%d" % int(m) if m < 1000.0 else "£%dk" % int(m / 1000.0)
-		milestone_parts.append(("X" if reached else "-") + label_text)
-	var milestone_line = Label.new()
-	milestone_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	milestone_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	milestone_line.add_theme_font_size_override("font_size", 12)
-	milestone_line.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
-	milestone_line.text = "  ".join(milestone_parts)
-	body.add_child(milestone_line)
+	body.add_child(make_progress_bar_section("Total Lifetime Profit: £%.2f / £50,000" % total_lifetime_profit, total_lifetime_profit, 50000, [250.0, 1000.0, 2500.0, 5000.0, 10000.0, 25000.0, 50000.0]))
 
 	var all_achievements = ["First Flip", "Against the Odds", "Should've Known Better", "Better Than Nothing", "Actually Mate...", "Car Boot King"]
 	for achievement in all_achievements:
