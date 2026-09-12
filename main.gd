@@ -355,6 +355,22 @@ func build_ui():
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
+	var pattern_size = 28
+	var pattern_img = Image.create(pattern_size, pattern_size, false, Image.FORMAT_RGBA8)
+	pattern_img.fill(Color(0, 0, 0, 0))
+	var dot_color = Color(1, 1, 1, 0.035)
+	pattern_img.set_pixel(3, 3, dot_color)
+	pattern_img.set_pixel(4, 3, dot_color)
+	pattern_img.set_pixel(3, 4, dot_color)
+	pattern_img.set_pixel(4, 4, dot_color)
+	var pattern_tex = ImageTexture.create_from_image(pattern_img)
+	var pattern_rect = TextureRect.new()
+	pattern_rect.texture = pattern_tex
+	pattern_rect.stretch_mode = TextureRect.STRETCH_TILE
+	pattern_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pattern_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(pattern_rect)
+
 	root_vbox = VBoxContainer.new()
 	root_vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root_vbox.add_theme_constant_override("separation", 8)
@@ -750,6 +766,9 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 	sb.content_margin_right = 6 if compact else 12
 	sb.content_margin_top = 2 if compact else 5
 	sb.content_margin_bottom = 2 if compact else 5
+	sb.shadow_color = Color(0.0,0.0,0.0,0.25)
+	sb.shadow_size = 3
+	sb.shadow_offset = Vector2(0, 2)
 	pill.add_theme_stylebox_override("panel", sb)
 	pill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pill.size_flags_stretch_ratio = 1.0
@@ -827,18 +846,22 @@ func style_button(button, kind):
 	var normal = StyleBoxFlat.new()
 	var hover = StyleBoxFlat.new()
 	var pressed = StyleBoxFlat.new()
+	var accent_border = Color(0.35,0.40,0.48,0.4)
 	if kind == "buy":
 		normal.bg_color = Color(0.09,0.30,0.22,1.0)
 		hover.bg_color = Color(0.11,0.40,0.28,1.0)
 		pressed.bg_color = Color(0.07,0.24,0.18,1.0)
+		accent_border = Color(0.25,0.65,0.45,0.5)
 	elif kind == "danger":
 		normal.bg_color = Color(0.34,0.10,0.12,1.0)
 		hover.bg_color = Color(0.46,0.13,0.16,1.0)
 		pressed.bg_color = Color(0.26,0.07,0.09,1.0)
+		accent_border = Color(0.65,0.30,0.30,0.5)
 	elif kind == "action":
 		normal.bg_color = Color(0.10,0.20,0.35,1.0)
 		hover.bg_color = Color(0.13,0.27,0.46,1.0)
 		pressed.bg_color = Color(0.08,0.16,0.29,1.0)
+		accent_border = Color(0.30,0.50,0.75,0.5)
 	else:
 		normal.bg_color = Color(0.12,0.14,0.18,1.0)
 		hover.bg_color = Color(0.18,0.21,0.27,1.0)
@@ -852,6 +875,14 @@ func style_button(button, kind):
 		sb.content_margin_right = 6
 		sb.content_margin_top = 6
 		sb.content_margin_bottom = 6
+		sb.border_width_top = 1
+		sb.border_color = accent_border
+	normal.shadow_color = Color(0.0,0.0,0.0,0.30)
+	normal.shadow_size = 3
+	normal.shadow_offset = Vector2(0, 2)
+	hover.shadow_color = Color(0.0,0.0,0.0,0.35)
+	hover.shadow_size = 4
+	hover.shadow_offset = Vector2(0, 2)
 	button.custom_minimum_size.y = 36
 	button.add_theme_font_size_override("font_size", 13)
 	button.add_theme_stylebox_override("normal", normal)
@@ -989,20 +1020,23 @@ func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8d
 func make_card():
 	var panel = PanelContainer.new()
 	var sb = StyleBoxFlat.new()
-	sb.bg_color = Color(0.065,0.078,0.10,1.0)
-	sb.border_width_left = 1
+	sb.bg_color = Color(0.07,0.084,0.108,1.0)
+	sb.border_width_left = 3
 	sb.border_width_top = 1
 	sb.border_width_right = 1
 	sb.border_width_bottom = 1
-	sb.border_color = Color(0.13,0.17,0.22,1.0)
-	sb.corner_radius_top_left = 8
-	sb.corner_radius_top_right = 8
-	sb.corner_radius_bottom_left = 8
-	sb.corner_radius_bottom_right = 8
-	sb.content_margin_left = 8
-	sb.content_margin_right = 8
-	sb.content_margin_top = 6
-	sb.content_margin_bottom = 6
+	sb.border_color = Color(0.30,0.44,0.62,0.55)
+	sb.corner_radius_top_left = 10
+	sb.corner_radius_top_right = 10
+	sb.corner_radius_bottom_left = 10
+	sb.corner_radius_bottom_right = 10
+	sb.content_margin_left = 12
+	sb.content_margin_right = 10
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	sb.shadow_color = Color(0.0,0.0,0.0,0.25)
+	sb.shadow_size = 5
+	sb.shadow_offset = Vector2(0, 2)
 	panel.add_theme_stylebox_override("panel", sb)
 	return panel
 
@@ -3716,6 +3750,13 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 07:00", "notes": [
+		"Visual refresh: added a subtle repeating dot-grid pattern behind everything instead of flat black",
+		"Cards now have a soft drop shadow and a colored accent stripe on the left edge instead of a flat uniform border",
+		"Buttons now have a subtle top-edge accent color (matching their type — green for buy, red for danger, blue for actions) and a soft shadow that flattens when pressed, for a more tactile feel",
+		"Top stat pills (Cash/Carry/Storage) got the same subtle shadow treatment for consistency",
+		"This was a styling-only pass — no gameplay, balance, or layout logic changed",
+	]},
 	{"version": "Latest — 10/09/2026 06:35", "notes": [
 		"Individual Daily Challenges now actually give a reward on completion (+£15, +8 XP each) — previously only completing ALL of them gave anything, which wasn't clearly shown. Each challenge now displays its reward directly, and the big bonus for completing all of them is on top of these",
 		"Achievement progress bars (Haggled Savings, Total Profit) now have their own distinct accent colors matching the Level Unlocks bar's style — pink for Haggled Savings, gold for Total Profit",
