@@ -763,17 +763,38 @@ func apply_price_highlight(item, action_key, before_max, after_max):
 	item["highlight_action"] = action_key
 	item["highlight_color"] = "gold" if after_max < before_max else "yellow"
 
+func flatten_button_corner(button, side):
+	for state in ["normal", "hover", "pressed"]:
+		var sb = button.get_theme_stylebox(state)
+		if sb != null and sb is StyleBoxFlat:
+			if side == "right":
+				sb.corner_radius_top_right = 0
+				sb.corner_radius_bottom_right = 0
+			elif side == "left":
+				sb.corner_radius_top_left = 0
+				sb.corner_radius_bottom_left = 0
+
 func wrap_button_with_help(button, help_text):
 	var row = HBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
+	row.add_theme_constant_override("separation", 0)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flatten_button_corner(button, "right")
 	row.add_child(button)
 	if help_text != "":
 		var help_btn = Button.new()
 		help_btn.text = "?"
-		style_button(help_btn, "nav")
-		help_btn.custom_minimum_size = Vector2(28, 28)
+		help_btn.custom_minimum_size = Vector2(36, 0)
+		help_btn.size_flags_vertical = Control.SIZE_FILL
 		help_btn.add_theme_font_size_override("font_size", 13)
+		for state in ["normal", "hover", "pressed"]:
+			var src = button.get_theme_stylebox(state)
+			if src != null and src is StyleBoxFlat:
+				var copy = src.duplicate()
+				copy.corner_radius_top_left = 0
+				copy.corner_radius_bottom_left = 0
+				copy.corner_radius_top_right = 6
+				copy.corner_radius_bottom_right = 6
+				help_btn.add_theme_stylebox_override(state, copy)
 		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
 		row.add_child(help_btn)
 	return row
@@ -3493,6 +3514,9 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 05:00", "notes": [
+		"Pre-press ? buttons now visually merge with their action button (matching color, no gap, flattened inner corners) instead of looking like two separate boxes side by side — matches how the completed-box ? already looked",
+	]},
 	{"version": "Latest — 10/09/2026 04:45", "notes": [
 		"Found the real bug behind several issues at once: style_button() unconditionally resets button height to 36px and font size to 13, and several of my recent additions were setting their custom size BEFORE calling style_button(), silently undoing it. This affected: the X dismiss button (was actually still 36px despite the code saying 52px), the Test/Authenticate buttons (were being squished from their intended 48px to 36px, likely a real contributor to the 'boxes moving' issue since their size was inconsistent), Create Listing's prominence, the ? help buttons, and the Collection Log category/Grails boxes",
 		"Fixed all 7 instances by reordering — style_button() now always runs first, custom sizing after",
