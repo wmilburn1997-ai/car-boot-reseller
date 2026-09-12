@@ -355,14 +355,13 @@ func build_ui():
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	var pattern_size = 28
+	var pattern_size = 22
 	var pattern_img = Image.create(pattern_size, pattern_size, false, Image.FORMAT_RGBA8)
 	pattern_img.fill(Color(0, 0, 0, 0))
-	var dot_color = Color(1, 1, 1, 0.035)
-	pattern_img.set_pixel(3, 3, dot_color)
-	pattern_img.set_pixel(4, 3, dot_color)
-	pattern_img.set_pixel(3, 4, dot_color)
-	pattern_img.set_pixel(4, 4, dot_color)
+	var dot_color = Color(0.55, 0.70, 0.95, 0.10)
+	for dx in range(3):
+		for dy in range(3):
+			pattern_img.set_pixel(3 + dx, 3 + dy, dot_color)
 	var pattern_tex = ImageTexture.create_from_image(pattern_img)
 	var pattern_rect = TextureRect.new()
 	pattern_rect.texture = pattern_tex
@@ -754,10 +753,10 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 		border = Color(0.72,0.50,0.18,1.0)
 	sb.bg_color = bg
 	sb.border_color = border
-	sb.border_width_left = 1
-	sb.border_width_top = 1
-	sb.border_width_right = 1
-	sb.border_width_bottom = 1
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
 	sb.corner_radius_top_left = 10
 	sb.corner_radius_top_right = 10
 	sb.corner_radius_bottom_left = 10
@@ -766,8 +765,8 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 	sb.content_margin_right = 6 if compact else 12
 	sb.content_margin_top = 2 if compact else 5
 	sb.content_margin_bottom = 2 if compact else 5
-	sb.shadow_color = Color(0.0,0.0,0.0,0.25)
-	sb.shadow_size = 3
+	sb.shadow_color = Color(0.0,0.0,0.0,0.35)
+	sb.shadow_size = 5
 	sb.shadow_offset = Vector2(0, 2)
 	pill.add_theme_stylebox_override("panel", sb)
 	pill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -846,25 +845,25 @@ func style_button(button, kind):
 	var normal = StyleBoxFlat.new()
 	var hover = StyleBoxFlat.new()
 	var pressed = StyleBoxFlat.new()
-	var accent_border = Color(0.35,0.40,0.48,0.4)
+	var accent_border = Color(0.35,0.62,0.68,0.65)
 	if kind == "buy":
 		normal.bg_color = Color(0.09,0.30,0.22,1.0)
 		hover.bg_color = Color(0.11,0.40,0.28,1.0)
 		pressed.bg_color = Color(0.07,0.24,0.18,1.0)
-		accent_border = Color(0.25,0.65,0.45,0.5)
+		accent_border = Color(0.35,0.80,0.55,0.85)
 	elif kind == "danger":
 		normal.bg_color = Color(0.34,0.10,0.12,1.0)
 		hover.bg_color = Color(0.46,0.13,0.16,1.0)
 		pressed.bg_color = Color(0.26,0.07,0.09,1.0)
-		accent_border = Color(0.65,0.30,0.30,0.5)
+		accent_border = Color(0.85,0.40,0.38,0.85)
 	elif kind == "action":
 		normal.bg_color = Color(0.10,0.20,0.35,1.0)
 		hover.bg_color = Color(0.13,0.27,0.46,1.0)
 		pressed.bg_color = Color(0.08,0.16,0.29,1.0)
-		accent_border = Color(0.30,0.50,0.75,0.5)
+		accent_border = Color(0.40,0.65,0.95,0.85)
 	else:
-		normal.bg_color = Color(0.12,0.14,0.18,1.0)
-		hover.bg_color = Color(0.18,0.21,0.27,1.0)
+		normal.bg_color = Color(0.12,0.15,0.19,1.0)
+		hover.bg_color = Color(0.19,0.23,0.29,1.0)
 		pressed.bg_color = Color(0.08,0.10,0.14,1.0)
 	for sb in [normal, hover, pressed]:
 		sb.corner_radius_top_left = 6
@@ -875,14 +874,14 @@ func style_button(button, kind):
 		sb.content_margin_right = 6
 		sb.content_margin_top = 6
 		sb.content_margin_bottom = 6
-		sb.border_width_top = 1
+		sb.border_width_top = 2
 		sb.border_color = accent_border
-	normal.shadow_color = Color(0.0,0.0,0.0,0.30)
-	normal.shadow_size = 3
-	normal.shadow_offset = Vector2(0, 2)
-	hover.shadow_color = Color(0.0,0.0,0.0,0.35)
-	hover.shadow_size = 4
-	hover.shadow_offset = Vector2(0, 2)
+	normal.shadow_color = Color(0.0,0.0,0.0,0.40)
+	normal.shadow_size = 5
+	normal.shadow_offset = Vector2(0, 3)
+	hover.shadow_color = Color(0.0,0.0,0.0,0.45)
+	hover.shadow_size = 6
+	hover.shadow_offset = Vector2(0, 3)
 	button.custom_minimum_size.y = 36
 	button.add_theme_font_size_override("font_size", 13)
 	button.add_theme_stylebox_override("normal", normal)
@@ -961,20 +960,23 @@ func get_highlight_color(item, action_key):
 func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8dcff", header_icon = null, help_text = ""):
 	var panel = PanelContainer.new()
 	var sb = StyleBoxFlat.new()
-	sb.bg_color = Color(0.09,0.10,0.12,1.0)
-	sb.border_width_left = 1
+	sb.bg_color = Color(0.095,0.11,0.135,1.0)
+	sb.border_width_left = 5
 	sb.border_width_top = 1
 	sb.border_width_right = 1
 	sb.border_width_bottom = 1
-	sb.border_color = Color(0.20,0.22,0.26,1.0)
-	sb.corner_radius_top_left = 6
-	sb.corner_radius_top_right = 6
-	sb.corner_radius_bottom_left = 6
-	sb.corner_radius_bottom_right = 6
+	sb.border_color = Color(0.45,0.65,0.90,0.80)
+	sb.corner_radius_top_left = 8
+	sb.corner_radius_top_right = 8
+	sb.corner_radius_bottom_left = 8
+	sb.corner_radius_bottom_right = 8
 	sb.content_margin_left = 10
 	sb.content_margin_right = 10
 	sb.content_margin_top = 8
 	sb.content_margin_bottom = 8
+	sb.shadow_color = Color(0.0,0.0,0.0,0.35)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(0, 2)
 	panel.add_theme_stylebox_override("panel", sb)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var box = VBoxContainer.new()
@@ -1020,12 +1022,12 @@ func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8d
 func make_card():
 	var panel = PanelContainer.new()
 	var sb = StyleBoxFlat.new()
-	sb.bg_color = Color(0.07,0.084,0.108,1.0)
-	sb.border_width_left = 3
+	sb.bg_color = Color(0.075,0.090,0.118,1.0)
+	sb.border_width_left = 5
 	sb.border_width_top = 1
 	sb.border_width_right = 1
 	sb.border_width_bottom = 1
-	sb.border_color = Color(0.30,0.44,0.62,0.55)
+	sb.border_color = Color(0.35,0.55,0.85,0.85)
 	sb.corner_radius_top_left = 10
 	sb.corner_radius_top_right = 10
 	sb.corner_radius_bottom_left = 10
@@ -1034,9 +1036,9 @@ func make_card():
 	sb.content_margin_right = 10
 	sb.content_margin_top = 8
 	sb.content_margin_bottom = 8
-	sb.shadow_color = Color(0.0,0.0,0.0,0.25)
-	sb.shadow_size = 5
-	sb.shadow_offset = Vector2(0, 2)
+	sb.shadow_color = Color(0.0,0.0,0.0,0.40)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 3)
 	panel.add_theme_stylebox_override("panel", sb)
 	return panel
 
@@ -3750,6 +3752,13 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 07:20", "notes": [
+		"Turned up the visual refresh significantly — the first pass was too subtle to actually notice on a real screen",
+		"Nav buttons (Stall/Stalls/Inventory/etc.) now get their own teal accent instead of barely-there gray — these are the most-seen buttons in the whole game, so this should be the most noticeable change",
+		"Cards and completed-action boxes (Condition Checked, Research, etc.) now have a much bolder colored left stripe and stronger drop shadow",
+		"Background dot pattern is denser, bigger, and tinted blue instead of a barely-visible white speck",
+		"Stat pills got thicker borders and a stronger shadow too",
+	]},
 	{"version": "Latest — 10/09/2026 07:00", "notes": [
 		"Visual refresh: added a subtle repeating dot-grid pattern behind everything instead of flat black",
 		"Cards now have a soft drop shadow and a colored accent stripe on the left edge instead of a flat uniform border",
