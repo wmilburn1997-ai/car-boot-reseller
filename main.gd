@@ -3752,52 +3752,55 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
-	{"version": "Latest — 10/09/2026 07:20", "notes": [
+	{"version": "v40", "notes": [
+		"Patch note timestamps were never actually accurate — they were plausible-looking but fabricated, since there's no reliable way to know the exact real-world date/time when each change was made. Switched to simple sequential version numbers (v1, v2, v3...) instead, which don't claim precision that was never real",
+	]},
+	{"version": "v39", "notes": [
 		"Turned up the visual refresh significantly — the first pass was too subtle to actually notice on a real screen",
 		"Nav buttons (Stall/Stalls/Inventory/etc.) now get their own teal accent instead of barely-there gray — these are the most-seen buttons in the whole game, so this should be the most noticeable change",
 		"Cards and completed-action boxes (Condition Checked, Research, etc.) now have a much bolder colored left stripe and stronger drop shadow",
 		"Background dot pattern is denser, bigger, and tinted blue instead of a barely-visible white speck",
 		"Stat pills got thicker borders and a stronger shadow too",
 	]},
-	{"version": "Latest — 10/09/2026 07:00", "notes": [
+	{"version": "v38", "notes": [
 		"Visual refresh: added a subtle repeating dot-grid pattern behind everything instead of flat black",
 		"Cards now have a soft drop shadow and a colored accent stripe on the left edge instead of a flat uniform border",
 		"Buttons now have a subtle top-edge accent color (matching their type — green for buy, red for danger, blue for actions) and a soft shadow that flattens when pressed, for a more tactile feel",
 		"Top stat pills (Cash/Carry/Storage) got the same subtle shadow treatment for consistency",
 		"This was a styling-only pass — no gameplay, balance, or layout logic changed",
 	]},
-	{"version": "Latest — 10/09/2026 06:35", "notes": [
+	{"version": "v37", "notes": [
 		"Individual Daily Challenges now actually give a reward on completion (+£15, +8 XP each) — previously only completing ALL of them gave anything, which wasn't clearly shown. Each challenge now displays its reward directly, and the big bonus for completing all of them is on top of these",
 		"Achievement progress bars (Haggled Savings, Total Profit) now have their own distinct accent colors matching the Level Unlocks bar's style — pink for Haggled Savings, gold for Total Profit",
 	]},
-	{"version": "Latest — 10/09/2026 06:10", "notes": [
+	{"version": "v36", "notes": [
 		"Fixed: Daily Challenges could ask you to Repair items before you'd bought Repair Tools, making it impossible to complete — now skipped until you've actually unlocked it",
 		"Raised base fault chance across the board by roughly 40% (e.g. average Electronics went from ~20% to ~28% chance of a fault) — Condition and Seller-type still scale it up or down from there as before",
 	]},
-	{"version": "Latest — 10/09/2026 05:45", "notes": [
+	{"version": "v35", "notes": [
 		"Added Daily Challenges: 3-5 random challenges each day (buy/sell/research/haggle/rarity-based), visible in the More tab showing live X/Y progress. Completing all of them in one day gives a bonus: +£75 and +30 XP",
 		"Added Level Unlocks screen in the More tab, showing your current Level, XP progress bar, and XP needed for next level",
 		"Level now has real effects for the first time: Level 3 = +1 Mystery Package/day, Level 5 = Fixer's Gamble gets a £350 stake option, Level 8 = Dig Deeper reveals 1 extra item, Level 12 = -10% daily upkeep, Level 15 = Fixer's Gamble usable twice a day",
 	]},
-	{"version": "Latest — 10/09/2026 05:00", "notes": [
+	{"version": "v34", "notes": [
 		"Pre-press ? buttons now visually merge with their action button (matching color, no gap, flattened inner corners) instead of looking like two separate boxes side by side — matches how the completed-box ? already looked",
 	]},
-	{"version": "Latest — 10/09/2026 04:45", "notes": [
+	{"version": "v33", "notes": [
 		"Found the real bug behind several issues at once: style_button() unconditionally resets button height to 36px and font size to 13, and several of my recent additions were setting their custom size BEFORE calling style_button(), silently undoing it. This affected: the X dismiss button (was actually still 36px despite the code saying 52px), the Test/Authenticate buttons (were being squished from their intended 48px to 36px, likely a real contributor to the 'boxes moving' issue since their size was inconsistent), Create Listing's prominence, the ? help buttons, and the Collection Log category/Grails boxes",
 		"Fixed all 7 instances by reordering — style_button() now always runs first, custom sizing after",
 		"Also gave the invisible placeholder (used to stop the button row reflowing) a proper matching height instead of zero, which should further help with layout stability",
 	]},
-	{"version": "Latest — 10/09/2026 04:20", "notes": [
+	{"version": "v32", "notes": [
 		"Fixed ? help buttons to also show before pressing, not just in the completed box — now grouped together with each action button in a shared row so they can't separate via layout wrapping",
 	]},
-	{"version": "Latest — 10/09/2026 04:00", "notes": [
+	{"version": "v31", "notes": [
 		"Fixed a real bug in the ? help buttons that could have broken the game (a parenthesis mistake on my end) — moved them inside the completed action boxes at the right side, as requested, and removed the outside ones entirely",
 		"Found and fixed the actual cause of the scroll drift: per-render scroll position restoration had stopped firing after an earlier architecture change. Note: since the completed box is genuinely taller than the button it replaces, content below it will still shift down somewhat — that's an inherent trade-off of showing more detail, not something further fixable without a much bigger redesign",
 		"Condition now shows a Chance/Rolled line like other actions — shown honestly as 100% chance (checking Condition is a guaranteed reveal, not a real gamble), with a genuine rolled number for visual consistency",
 		"Sellers of the same type no longer share the same name within a day (e.g. two Dodgy Sellers now get different first names) — each stall gets a name assigned uniquely at day-start",
 		"Create Listing is now the larger, more prominent button; Quick Sell is smaller and in its own separate row",
 	]},
-	{"version": "Latest — 10/09/2026 03:10", "notes": [
+	{"version": "v30", "notes": [
 		"Achievements progress bars redesigned: green fill, milestones properly spread out and wrapping instead of cramped on one line",
 		"Added a new Total Lifetime Profit progress bar alongside Total Haggled Savings",
 		"Completed action boxes (Condition/Research/Deep Research/Test/Authenticate) should no longer shift position when you click another one — the button row now keeps a stable slot instead of reflowing",
@@ -3807,22 +3810,22 @@ var patch_notes = [
 		"Sellers now have first names (e.g. 'Stephen the Desperate Seller', 'Arran the Collector') shown everywhere their name appears — purely cosmetic, doesn't affect the underlying seller type or odds",
 		"Moved Quick Sell into its own row, away from Create Listing, to prevent accidental mis-clicks",
 	]},
-	{"version": "Latest — 10/09/2026 02:45", "notes": [
+	{"version": "v29", "notes": [
 		"Added a manual 'Save Now' button in the More tab, with a confirmation popup — on top of the existing automatic saves",
 	]},
-	{"version": "Latest — 10/09/2026 02:35", "notes": [
+	{"version": "v28", "notes": [
 		"Fixed: Total Log was counting distinct items (72) instead of all discoverable item+rarity combinations (360), inconsistent with how the category boxes count",
 		"Added a local save system using Godot's user:// storage, which persists in your browser — saves Cash, Day, Level/XP, Inventory, all Shop upgrades, Achievements, Collection Log progress, and Sold History",
 		"Auto-saves after buying, selling, quick selling, buying an upgrade, and ending the day — and loads automatically when the game starts",
 		"More tab now shows a live 'Last saved' line plus a summary of exactly what's saved",
 		"Stall-specific state (today's stock, energy, time of day) is NOT saved — loading resumes your progress but generates a fresh day, rather than trying to resume mid-day",
 	]},
-	{"version": "Latest — 10/09/2026 02:00", "notes": [
+	{"version": "v27", "notes": [
 		"Collection Log overhauled into a Pokedex-style system: one box per category (13 total) plus a GRAILS box for your rarest tier finds, each showing X/Y discovered, with an unclickable TOTAL LOG box showing how many of the 72 distinct items you've ever found",
 		"Each discovered item now shows real tracked stats: times found, best condition ever seen, cheapest ever bought, highest ever sold, specials discovered X/Y, highest rarity tier found, and lifetime profit — all newly tracked from this update onward",
 		"Undiscovered items show as ??? until you've owned at least one",
 	]},
-	{"version": "Latest — 10/09/2026 01:15", "notes": [
+	{"version": "v26", "notes": [
 		"Added popups: Item Purchased (green), Item Delisted (red), Item Quick Sold (green, shows actual price), Item Sold — item/price/profit (green) for both instant-sale and end-of-day sales",
 		"Removed the old separate instant-sale banner — it's now the same Item Sold popup as everything else",
 		"Multiple popups (e.g. several items selling at once during end-of-day) now queue and show one after another instead of overwriting each other",
@@ -3830,7 +3833,7 @@ var patch_notes = [
 		"Side deals still exist and had real value (Collector's can boost an item's value up to 2.2x!) but were invisible and very rare — odds boosted and now shown directly on both the Stalls list and the individual stall page",
 		"New: The Fixer's Gamble — a big, visible, once-per-day double-or-nothing coinflip (47% chance) available on the stall page at £25/£75/£200 stakes",
 	]},
-	{"version": "Latest — 10/09/2026 00:20", "notes": [
+	{"version": "v25", "notes": [
 		"Fixed: Quick Sell never actually recorded the sale — it wasn't showing up in £ Sold at all",
 		"Testing an item and confirming it WORKS now gives a small value boost (+12%) — previously testing only ever revealed a penalty (fault) or nothing",
 		"Seller risk/reward rebalanced: low-margin sellers (Clueless Seller, House Clearance) now have meaningfully worse odds of anything rare (previously identical odds to every other seller); high-margin/expert sellers (Dealer, Collector) now have notably better odds — Dealer's rare-tier odds are roughly 3x Clueless Seller's",
@@ -3838,102 +3841,102 @@ var patch_notes = [
 		"Item cards now say 'Carry Space - X Slots' instead of just 'Space X'",
 		"Trends already affected both price and sale speed — now made visible with a purple TRENDING badge on items in a hot category (+10% or more), shown on both the stall page and Inventory",
 	]},
-	{"version": "Latest — 09/09/2026 23:45", "notes": [
+	{"version": "v24", "notes": [
 		"Replaced Reputation with a Level/XP system — starts at Level 1, 0 XP, shown compactly as 'LVL 1 | XP 0/100' in the header",
 		"XP from normal play: +2 buying, +3 selling (+3 more if the sale was actually profitable), +3 repairing, +3 authenticating, +10 for a Deep Research rare-variant find",
 		"XP needed per level rises each time (100, 150, 200...) so it can't be easily farmed",
 		"'LEVEL UP! Level X' shows through the existing status message system",
 		"No unlocks or gameplay bonuses tied to Level yet — Reputation's old mechanical bonus to Buyer Interest has been removed entirely, not replaced",
 	]},
-	{"version": "Latest — 09/09/2026 23:15", "notes": [
+	{"version": "v23", "notes": [
 		"Economy rebalance: simulated 40 days of play to find the actual runaway-wealth driver — it was Deep Research's rare-variant jackpot, which let players cheaply spam it on bargain-bought junk for near-free lottery odds",
 		"Deep Research cost raised £9 -> £18 (energy cost unchanged)",
 		"Rare-variant total chance roughly halved (was up to 35% on well-researched items, now up to 18%; default dropped from 20% to 10%), and the multiplier tiers softened (top tier was x5-10, now x3-5)",
 		"Simulated result: a skilled bargain-hunting player using haggling and Deep Research went from ~£300 to ~£2,800 average in 40 days before this change, now more like ~£1,350 — still a rewarding climb, not an exponential one",
 	]},
-	{"version": "Latest — 09/09/2026 22:45", "notes": [
+	{"version": "v22", "notes": [
 		"Reverted the energy icon rebuild from the previous update — it broke things",
 		"Replaced with a much simpler, zero-risk approach: the header now reads 'Energy 100/100' with a bold light-blue E, and every button showing an energy cost (Condition, Research, Deep Research, Test, Authenticate, Inspect, Offer, Dig Deeper, Repair) now has its whole text colored light blue instead — same visual cue, no custom rebuilding of how buttons work",
 	]},
-	{"version": "Latest — 09/09/2026 21:25", "notes": [
+	{"version": "v21", "notes": [
 		"Replaced the hand-drawn Cash/Carry/Storage header icons with proper pixel-art versions, widened the chip padding slightly to fit them comfortably",
 	]},
-	{"version": "Latest — 09/09/2026 21:10", "notes": [
+	{"version": "v20", "notes": [
 		"Added the Inspect icon — same treatment as the other action icons, shown on the button in both its active and completed states",
 	]},
-	{"version": "Latest — 09/09/2026 18:45", "notes": [
+	{"version": "v19", "notes": [
 		"Added icons for Condition, Research, Test, and Authenticate — same 32×32 crisp pixel-art treatment as Deep Research, shown on both the active button and its completed result box, on the stall page and Inventory alike",
 	]},
-	{"version": "Latest — 09/09/2026 18:25", "notes": [
+	{"version": "v18", "notes": [
 		"Fixed a real crash in Inventory: format_sale_estimate() was missing an argument for its daily-chance percentage, left over from an earlier edit — this was throwing a red error every time the Inventory listing screen rendered",
 	]},
-	{"version": "Latest — 09/09/2026 18:10", "notes": [
+	{"version": "v17", "notes": [
 		"Added a Deep Research icon (32×32, crisp pixel-art filtering) next to the Deep Research text — shown consistently on the button itself and on its completed result box",
 	]},
-	{"version": "Latest — 09/09/2026 17:50", "notes": [
+	{"version": "v16", "notes": [
 		"Highlight system redesigned: whichever action (Condition/Research/Deep Research) most recently ran now always takes the highlight, colored yellow if it increased the price or gold if it decreased it — replacing the old 'highest ever' comparison",
 	]},
-	{"version": "Latest — 09/09/2026 17:30", "notes": [
+	{"version": "v15", "notes": [
 		"Reverted the box reordering from last update — Condition/Research/Deep Research/Test/Authenticate now stay in their original fixed positions again",
 		"Fixed: Condition checked on the STALL page (before buying) never actually recorded the price-change note — only the Inventory version did. Now both do, so the values genuinely carry over when you buy the item",
 		"Stall page now uses the same greyed-out box style as Inventory for Condition and Research results, instead of a bare line above the buttons",
 		"New: the action currently holding the highest max price value (across Condition, Research, and Deep Research) is now highlighted yellow — recalculated live as you do more actions, whichever action or page it happens on",
 	]},
-	{"version": "Latest — 09/09/2026 17:05", "notes": [
+	{"version": "v14", "notes": [
 		"Fixed: Condition/Research/Deep Research results were showing twice in Inventory (old lines above the actions row never got removed when the boxes were added) — removed the duplicates",
 		"Hidden-defect description ('No hidden defects found' / fault warning) now lives inside the Condition Checked box instead of its own separate line",
 		"Completed-action boxes (Condition/Research/Deep Research/Test/Authenticate) now stack most-recently-clicked first",
 		"Slightly larger text in these boxes, before and after completion",
 	]},
-	{"version": "Latest — 09/09/2026 16:40", "notes": [
+	{"version": "v13", "notes": [
 		"Fixed: blocked-action popup wasn't actually centering correctly — was positioning itself before the box's size had updated for the new text; now waits for layout to settle first",
 		"Fixed: press-and-hold tooltips on mobile stopped working after the popup rework — restored with their own small bottom bar, separate from the red error popup",
 		"Inventory cards decluttered: Buyer Interest now shows only next to Create Listing (was appearing 3 times), removed the redundant Unlisted/Listed text (tabs already show this)",
 		"Condition, Research, Deep Research, Test, and Authenticate now show their result INSIDE the greyed-out completed box, instead of as a separate line below it",
 	]},
-	{"version": "Latest — 09/09/2026 16:20", "notes": [
+	{"version": "v12", "notes": [
 		"Brought back the floating red center popup for the three blocked-action messages (not enough cash, not enough bag space, test-required) — everything else stays inline as before",
 	]},
-	{"version": "Latest — 09/09/2026 16:05", "notes": [
+	{"version": "v11", "notes": [
 		"Fixed: Deep Research note was missing the actual rolled value — now shows Chance/Rolled/Result like everywhere else",
 		"Fixed: blocked-action messages (not enough cash, not enough bag space, test-required) had genuinely stopped showing anywhere after the popup removal — now shown inline on the relevant item card",
 	]},
-	{"version": "Latest — 09/09/2026 15:45", "notes": [
+	{"version": "v10", "notes": [
 		"Removed all floating popups/toasts entirely — action results now appear inline in the item card instead",
 		"Unified coloring: normal result text blue, any RNG/chance/rolled-percentage text pink — applies to Inspect, Research, Condition, Offers, Testing, Authentication, Repairs, and rare-variant rolls",
 		"Offers and Repairs now show a persistent inline result for the first time (previously only a temporary message)",
 	]},
-	{"version": "Latest — 09/09/2026 15:20", "notes": [
+	{"version": "v9", "notes": [
 		"Removed swipe-to-dismiss on mobile (kept just the × button, made bigger and easier to tap on both mobile and desktop)",
 		"Blocked-action messages now use exact short wording: 'Not enough cash.', 'Not enough space in your bag.', 'You need to test this item first.'",
 		"Inventory split into UNLISTED / LISTED tabs with live counts — always opens on Unlisted; listing/unlisting moves items between tabs immediately",
 	]},
-	{"version": "Latest — 09/09/2026 14:50", "notes": [
+	{"version": "v8", "notes": [
 		"Swipe left to dismiss a stall item on mobile (session-only, doesn't touch the real item pool, free — no Energy or time cost)",
 		"Added a small × button next to every stall item for the same dismiss action on desktop",
 	]},
-	{"version": "Latest — 09/09/2026 14:30", "notes": [
+	{"version": "v7", "notes": [
 		"Authenticate button now shows its accuracy % before pressing, and the actual Chance/Rolled/Result outcome on the button itself afterward — matching Test and Deep Research",
 	]},
-	{"version": "Latest — 09/09/2026 14:10", "notes": [
+	{"version": "v6", "notes": [
 		"The exact Inspect result (e.g. 'Looks rough', 'Looks unusually clean') now persists into the Inventory card if the item was inspected before buying",
 	]},
-	{"version": "Latest — 09/09/2026 13:50", "notes": [
+	{"version": "v5", "notes": [
 		"£ Sold tab now shows a Profit column, calculated from the actual realised sale after fees/postage/packaging/paid/research spend — green if positive, red if negative",
 	]},
-	{"version": "Latest — 08/09/2026 22:28", "notes": [
+	{"version": "v4", "notes": [
 		"Polished the main mobile navigation: Stall, Stalls, Inventory, £ Sold, Shop and More now fill the full row cleanly with no wasted space",
 		"Stall, Stalls and especially Inventory have been given more room while all six navigation buttons remain on one line",
 	]},
-	{"version": "Latest — 08/09/2026 22:45", "notes": [
+	{"version": "v3", "notes": [
 		"Reclaimed mobile screen space: status/help and Last RNG no longer reserve a permanent footer area",
 		"Button hold-help and RNG results now appear in a temporary bottom overlay and automatically disappear after 4 seconds",
 	]},
-	{"version": "Latest — 08/09/2026 22:34", "notes": [
+	{"version": "v2", "notes": [
 		"Improved mobile readability: increased smaller gameplay, research, condition, sale-breakdown and RNG text sizes",
 		"Energy, Rep, Listed and Day are now larger and centred in the second HUD row; End Day text increased to match",
 	]},
-	{"version": "Latest — 08/09/2026 21:56", "notes": [
+	{"version": "v1", "notes": [
 		"Header spacing polished for mobile: Cash, Carry and Storage now fill the entire first row evenly; Energy, Rep, Listed, Day and End Day fill the entire second row evenly",
 	]},
 	{"version": "Previous Update — 08/09/2026 21:39", "notes": [
