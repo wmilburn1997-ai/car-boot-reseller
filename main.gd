@@ -180,7 +180,9 @@ var tooltip_saved_text = ""
 var total_haggled_savings = 0.0
 var total_lifetime_profit = 0.0
 var inventory_tab = "unlisted"
-var fixer_used_today = false
+var fixer_uses_today = 0
+var daily_challenges = []
+var daily_challenge_bonus_given = false
 const SAVE_PATH = "user://savegame.json"
 var last_save_time = ""
 var package_insight_level = 0
@@ -530,6 +532,117 @@ func build_ui():
 
 	update_header()
 
+func show_daily_challenges():
+	current_screen_name = "show_daily_challenges"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "DAILY CHALLENGES"
+	body.add_child(title)
+
+	var completed = daily_challenges_completed_count()
+	var bonus_panel = make_card()
+	body.add_child(bonus_panel)
+	var bonus_label = RichTextLabel.new()
+	bonus_label.bbcode_enabled = true
+	bonus_label.fit_content = true
+	bonus_label.scroll_active = false
+	bonus_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bonus_label.add_theme_font_size_override("normal_font_size", 14)
+	if daily_challenge_bonus_given:
+		bonus_label.text = "[color=#8cd98f][b]Bonus claimed today: +£75 and +30 XP![/b][/color]"
+	else:
+		bonus_label.text = "[color=#e8c15a][b]Complete all %d challenges today for a big bonus: +£75 and +30 XP![/b][/color]" % daily_challenges.size()
+	bonus_panel.add_child(bonus_label)
+
+	for c in daily_challenges:
+		var done = check_daily_challenge(c)
+		var card = make_card()
+		body.add_child(card)
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		card.add_child(row)
+		var check_label = Label.new()
+		check_label.text = "[DONE]" if done else "[ ]"
+		check_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0) if done else Color(0.50,0.55,0.62,1.0))
+		row.add_child(check_label)
+		var desc_label = Label.new()
+		desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var progress_val = float(day_stats.get(c["type"], 0))
+		var target_val = float(c["target"])
+		desc_label.text = "%s (%d/%d)" % [c["desc"], int(min(progress_val, target_val)), int(target_val)]
+		if done:
+			desc_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+		row.add_child(desc_label)
+
+var level_unlock_tiers = [
+	{"level": 3, "desc": "+1 Mystery Package available each day"},
+	{"level": 5, "desc": "The Fixer's Gamble unlocks a bigger £350 stake"},
+	{"level": 8, "desc": "Dig Deeper reveals 1 extra item each time"},
+	{"level": 12, "desc": "Daily upkeep reduced by 10%"},
+	{"level": 15, "desc": "The Fixer's Gamble can be used twice a day"},
+]
+
+func show_level_unlocks():
+	current_screen_name = "show_level_unlocks"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "LEVEL UNLOCKS"
+	body.add_child(title)
+
+	var progress_panel = make_card()
+	body.add_child(progress_panel)
+	var progress_box = VBoxContainer.new()
+	progress_box.add_theme_constant_override("separation", 4)
+	progress_panel.add_child(progress_box)
+	var level_label = Label.new()
+	level_label.add_theme_font_size_override("font_size", 16)
+	level_label.text = "Level %d" % player_level
+	progress_box.add_child(level_label)
+	var xp_needed = xp_needed_for_level(player_level)
+	var xp_bar = ProgressBar.new()
+	xp_bar.min_value = 0
+	xp_bar.max_value = xp_needed
+	xp_bar.value = clamp(player_xp, 0, xp_needed)
+	xp_bar.show_percentage = false
+	xp_bar.custom_minimum_size = Vector2(0, 20)
+	var fill_style = StyleBoxFlat.new()
+	fill_style.bg_color = Color(0.55,0.45,0.85,1.0)
+	fill_style.corner_radius_top_left = 6
+	fill_style.corner_radius_top_right = 6
+	fill_style.corner_radius_bottom_left = 6
+	fill_style.corner_radius_bottom_right = 6
+	xp_bar.add_theme_stylebox_override("fill", fill_style)
+	progress_box.add_child(xp_bar)
+	var xp_label = Label.new()
+	xp_label.add_theme_font_size_override("font_size", 13)
+	xp_label.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+	xp_label.text = "XP %d/%d — %d XP to Level %d" % [player_xp, xp_needed, xp_needed - player_xp, player_level + 1]
+	progress_box.add_child(xp_label)
+
+	for tier in level_unlock_tiers:
+		var unlocked = player_level >= tier["level"]
+		var card = make_card()
+		body.add_child(card)
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		card.add_child(row)
+		var status_label = Label.new()
+		status_label.text = "[UNLOCKED]" if unlocked else "[LEVEL %d]" % tier["level"]
+		status_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0) if unlocked else Color(0.50,0.55,0.62,1.0))
+		row.add_child(status_label)
+		var desc_label = Label.new()
+		desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		desc_label.text = tier["desc"]
+		if unlocked:
+			desc_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+		row.add_child(desc_label)
+
 func show_more_menu():
 	current_screen_name = "show_more_menu"
 	clear_body()
@@ -574,6 +687,8 @@ func show_more_menu():
 	var more_row = HFlowContainer.new()
 	more_row.add_theme_constant_override("separation", 8)
 	body.add_child(more_row)
+	add_nav_button(more_row, "Daily Challenges %d/%d" % [daily_challenges_completed_count(), daily_challenges.size()], Callable(self, "show_daily_challenges"))
+	add_nav_button(more_row, "Level Unlocks", Callable(self, "show_level_unlocks"))
 	add_nav_button(more_row, "Trends", Callable(self, "show_trends"))
 	add_nav_button(more_row, "Collection", Callable(self, "show_collection_log"))
 	add_nav_button(more_row, "Achievements", Callable(self, "show_achievements"))
@@ -910,14 +1025,17 @@ func _input(event):
 	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 		active_scroll_container.scroll_vertical += int(-event.relative.y)
 
+func fixer_max_uses():
+	return 2 if player_level >= 15 else 1
+
 func fixer_gamble(amount):
-	if fixer_used_today:
-		queue_popup("The Fixer only deals once a day. Come back tomorrow.")
+	if fixer_uses_today >= fixer_max_uses():
+		queue_popup("The Fixer is done dealing for today. Come back tomorrow.")
 		return
 	if cash < amount:
 		queue_popup("Not enough cash.")
 		return
-	fixer_used_today = true
+	fixer_uses_today += 1
 	cash -= amount
 	var roll = rng.randf()
 	var won = roll < 0.47
@@ -1000,6 +1118,48 @@ func load_game():
 	last_save_time = str(parsed.get("save_time", ""))
 	return true
 
+func generate_daily_challenges():
+	var templates = [
+		{"desc_fmt": "Buy %d items today", "type": "items_bought", "min": 2, "max": 5},
+		{"desc_fmt": "Sell %d items today", "type": "items_sold", "min": 2, "max": 4},
+		{"desc_fmt": "Earn £%d in sales revenue today", "type": "sales_revenue", "min": 50, "max": 200},
+		{"desc_fmt": "Check Condition on %d items today", "type": "condition_checks", "min": 2, "max": 4},
+		{"desc_fmt": "Research %d items today", "type": "researches_done", "min": 2, "max": 4},
+		{"desc_fmt": "Deep Research %d items today", "type": "deep_researches_done", "min": 1, "max": 2},
+		{"desc_fmt": "Authenticate %d items today", "type": "authentications_done", "min": 1, "max": 2},
+		{"desc_fmt": "Repair %d items today", "type": "repairs_done", "min": 1, "max": 2},
+		{"desc_fmt": "Make %d profitable sales today", "type": "profitable_sales", "min": 1, "max": 3},
+		{"desc_fmt": "Successfully haggle %d times today", "type": "successful_haggles", "min": 1, "max": 3},
+		{"desc_fmt": "Find something at least 1-in-%d rare today", "type": "rarest_one_in", "min": 20, "max": 80},
+	]
+	templates.shuffle()
+	var count = rng.randi_range(3, 5)
+	daily_challenges.clear()
+	for i in range(min(count, templates.size())):
+		var t = templates[i]
+		var target = rng.randi_range(t["min"], t["max"])
+		daily_challenges.append({"desc": t["desc_fmt"] % target, "type": t["type"], "target": target})
+	daily_challenge_bonus_given = false
+
+func check_daily_challenge(challenge):
+	return float(day_stats.get(challenge["type"], 0)) >= float(challenge["target"])
+
+func daily_challenges_completed_count():
+	var count = 0
+	for c in daily_challenges:
+		if check_daily_challenge(c):
+			count += 1
+	return count
+
+func check_daily_challenge_bonus():
+	if daily_challenge_bonus_given or daily_challenges.size() == 0:
+		return
+	if daily_challenges_completed_count() >= daily_challenges.size():
+		daily_challenge_bonus_given = true
+		cash += 75.0
+		add_xp(30)
+		queue_popup("ALL DAILY CHALLENGES COMPLETE! +£75 and +30 XP!", "success")
+
 func xp_needed_for_level(level):
 	return int(100 + (level - 1) * 50)
 
@@ -1079,6 +1239,7 @@ func _restore_scroll(scroll):
 		scroll.scroll_vertical = int(last_scroll_value)
 
 func update_header():
+	check_daily_challenge_bonus()
 	var listed_count = 0
 	for item in inventory:
 		if item["listed"]:
@@ -1134,12 +1295,22 @@ func reset_day_stats():
 		"returns": 0,
 		"collection_adds": 0,
 		"rarest_one_in": 1,
+		"condition_checks": 0,
+		"researches_done": 0,
+		"deep_researches_done": 0,
+		"authentications_done": 0,
+		"repairs_done": 0,
+		"profitable_sales": 0,
+		"successful_haggles": 0,
 		"rng_events": []
 	}
 
 func compute_upkeep():
 	var tier_sum = bag_level + storage_level + toolbox_level + eye_level + fee_level
-	return float(tier_sum) * 1.75
+	var upkeep = float(tier_sum) * 1.75
+	if player_level >= 12:
+		upkeep *= 0.9
+	return upkeep
 
 func generate_weekly_trends():
 	current_week = int((day - 1) / 7) + 1
@@ -1179,8 +1350,9 @@ func get_season_name():
 func generate_day():
 	stalls.clear()
 	carry_used = 0
-	fixer_used_today = false
-	mystery_packages_left = rng.randi_range(0, 2)
+	fixer_uses_today = 0
+	generate_daily_challenges()
+	mystery_packages_left = rng.randi_range(0, 2) + (1 if player_level >= 3 else 0)
 	daily_expenses = min(25.0, 6.50 + float(day - 1) * 0.25)
 	var seller_names = seller_profiles.keys()
 	var count = rng.randi_range(6, 8)
@@ -1468,16 +1640,20 @@ func show_stall():
 	var fixer_label = Label.new()
 	fixer_label.add_theme_font_size_override("font_size", 13)
 	fixer_label.add_theme_color_override("font_color", Color(0.75,0.55,0.95,1.0))
-	if fixer_used_today:
-		fixer_label.text = "The Fixer's Gamble (used today — back tomorrow):"
+	var fixer_done_today = fixer_uses_today >= fixer_max_uses()
+	if fixer_done_today:
+		fixer_label.text = "The Fixer's Gamble (done for today — back tomorrow):"
 	else:
-		fixer_label.text = "The Fixer's Gamble — 47% chance to double your cash, once a day:"
+		fixer_label.text = "The Fixer's Gamble — 47%% chance to double your cash (%d/%d used today):" % [fixer_uses_today, fixer_max_uses()]
 	fixer_row.add_child(fixer_label)
-	for wager in [25, 75, 200]:
+	var fixer_wagers = [25, 75, 200]
+	if player_level >= 5:
+		fixer_wagers.append(350)
+	for wager in fixer_wagers:
 		var fixer_button = Button.new()
 		fixer_button.text = "Gamble £%d" % wager
-		fixer_button.tooltip_text = "Wager £%d for a 47%% chance to walk away with £%d. Lose, and it's gone. One shot per day." % [wager, wager * 2]
-		fixer_button.disabled = fixer_used_today or cash < wager
+		fixer_button.tooltip_text = "Wager £%d for a 47%% chance to walk away with £%d. Lose, and it's gone." % [wager, wager * 2]
+		fixer_button.disabled = fixer_done_today or cash < wager
 		style_button(fixer_button, "danger")
 		fixer_button.pressed.connect(Callable(self, "fixer_gamble").bind(wager))
 		fixer_row.add_child(fixer_button)
@@ -1773,6 +1949,7 @@ func check_condition(index):
 	item["condition_checked"] = true
 	item["action_order"].append("condition")
 	update_family_condition(item)
+	day_stats["condition_checks"] += 1
 	var after_check = estimate_identified_potential(item)
 	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
 	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
@@ -1804,6 +1981,7 @@ func prebuy_research(index):
 	energy -= 2
 	current_time_minutes += 4
 	day_stats["research"] += 1.0
+	day_stats["researches_done"] += 1
 	var research_before = estimate_identified_potential(item)
 	item["basic_researched"] = true
 	item["basic_comps"] = make_comps(item, false)
@@ -1885,6 +2063,7 @@ func haggle_item(index, value_edit):
 		item["asking"] = target_price
 		item["haggle_result"] = "accepted"
 		item["haggle_savings"] = asking - target_price
+		day_stats["successful_haggles"] += 1
 		item["haggle_note"] = "Offer £%.0f — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — Accepted." % [target_price, chance * 100.0, roll * 100.0]
 		show_stall()
 		return
@@ -1916,7 +2095,7 @@ func browse_stall():
 		return
 	energy -= 4
 	current_time_minutes += 8
-	stall["revealed"] = min(stall["stock"].size(), stall["revealed"] + rng.randi_range(2, 4))
+	stall["revealed"] = min(stall["stock"].size(), stall["revealed"] + rng.randi_range(2, 4) + (1 if player_level >= 8 else 0))
 	rival_pressure(float(stall["crowd"]) * 0.35)
 	show_stall()
 	call_deferred("_scroll_to_bottom")
@@ -2712,6 +2891,8 @@ func quick_sell_item(index):
 		fs_quick["highest_sold"] = max(float(fs_quick["highest_sold"]), quick_price)
 		fs_quick["lifetime_profit"] = float(fs_quick["lifetime_profit"]) + profit
 	total_lifetime_profit += profit
+	if profit > 0.0:
+		day_stats["profitable_sales"] += 1
 	inventory.remove_at(index)
 	var color = Color(0.55,0.85,0.58,1.0) if profit >= 0.0 else Color(0.92,0.55,0.45,1.0)
 	set_status("Quick Sold — £%.2f — Profit %+.2f" % [quick_price, profit], color)
@@ -2798,6 +2979,7 @@ func inventory_check_condition(index):
 	item["condition_checked"] = true
 	item["action_order"].append("condition")
 	update_family_condition(item)
+	day_stats["condition_checks"] += 1
 	var after_check = estimate_identified_potential(item)
 	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
 	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
@@ -2830,6 +3012,7 @@ func inventory_basic_research(index):
 	energy -= 2
 	current_time_minutes += 4
 	day_stats["research"] += 1.0
+	day_stats["researches_done"] += 1
 	var research_before = estimate_identified_potential(item)
 	item["basic_researched"] = true
 	item["action_order"].append("research")
@@ -2853,6 +3036,7 @@ func deep_research(index):
 	energy -= 12
 	current_time_minutes += 20
 	day_stats["research"] += 18.0
+	day_stats["deep_researches_done"] += 1
 	item["deep_researched"] = true
 	item["action_order"].append("deep_research")
 
@@ -2989,6 +3173,7 @@ func authenticate_item(index):
 	energy -= 6
 	current_time_minutes += 15
 	day_stats["authentication"] += cost
+	day_stats["authentications_done"] += 1
 	item["auth_attempted"] = true
 	item["action_order"].append("authenticate")
 
@@ -3040,6 +3225,7 @@ func repair_item(index):
 	energy -= 10
 	current_time_minutes += 30
 	day_stats["repairs"] += cost
+	day_stats["repairs_done"] += 1
 	item["repair_attempted"] = true
 
 	var base_chance = 0.62
@@ -3230,6 +3416,8 @@ func resolve_item_sale(item, sale_chance):
 		fs_sale["highest_sold"] = max(float(fs_sale["highest_sold"]), sale_price)
 		fs_sale["lifetime_profit"] = float(fs_sale["lifetime_profit"]) + sale_profit
 	total_lifetime_profit += sale_profit
+	if sale_profit > 0.0:
+		day_stats["profitable_sales"] += 1
 	queue_popup("Item Sold: %s — £%.2f — Profit %+.2f" % [item["name"], sale_price, sale_profit], "success")
 	save_game()
 	if sale_price - item["paid"] > 0:
@@ -3514,6 +3702,11 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 05:45", "notes": [
+		"Added Daily Challenges: 3-5 random challenges each day (buy/sell/research/haggle/rarity-based), visible in the More tab showing live X/Y progress. Completing all of them in one day gives a bonus: +£75 and +30 XP",
+		"Added Level Unlocks screen in the More tab, showing your current Level, XP progress bar, and XP needed for next level",
+		"Level now has real effects for the first time: Level 3 = +1 Mystery Package/day, Level 5 = Fixer's Gamble gets a £350 stake option, Level 8 = Dig Deeper reveals 1 extra item, Level 12 = -10% daily upkeep, Level 15 = Fixer's Gamble usable twice a day",
+	]},
 	{"version": "Latest — 10/09/2026 05:00", "notes": [
 		"Pre-press ? buttons now visually merge with their action button (matching color, no gap, flattened inner corners) instead of looking like two separate boxes side by side — matches how the completed-box ? already looked",
 	]},
