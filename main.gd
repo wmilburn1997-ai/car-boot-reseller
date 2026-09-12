@@ -1135,10 +1135,15 @@ func generate_daily_challenges():
 	templates.shuffle()
 	var count = rng.randi_range(3, 5)
 	daily_challenges.clear()
-	for i in range(min(count, templates.size())):
-		var t = templates[i]
+	var added = 0
+	for t in templates:
+		if added >= count:
+			break
+		if t["type"] == "repairs_done" and toolbox_level <= 0:
+			continue
 		var target = rng.randi_range(t["min"], t["max"])
 		daily_challenges.append({"desc": t["desc_fmt"] % target, "type": t["type"], "target": target})
+		added += 1
 	daily_challenge_bonus_given = false
 
 func check_daily_challenge(challenge):
@@ -1518,31 +1523,31 @@ func generate_item(seller):
 	}
 
 func get_fault_chance(name, category, condition, seller_mult):
-	var base = 0.10
+	var base = 0.15
 	if name == "Nintendo DS Lite":
-		base = 0.17
-	elif name == "Game Boy Advance":
-		base = 0.13
-	elif name == "Digital Compact Camera":
-		base = 0.20
-	elif name == "35mm Film Camera":
-		base = 0.15
-	elif name == "Vintage SLR Camera":
-		base = 0.14
-	elif name == "35mm Lens":
-		base = 0.11
-	elif name == "Mini Hi-Fi":
 		base = 0.24
-	elif name == "Portable CD Player":
-		base = 0.22
-	elif name == "Cordless Drill":
-		base = 0.16
-	elif name == "Vintage Wristwatch":
-		base = 0.14
-	elif category == "Games":
-		base = 0.12
-	elif category == "Electronics":
+	elif name == "Game Boy Advance":
+		base = 0.18
+	elif name == "Digital Compact Camera":
+		base = 0.28
+	elif name == "35mm Film Camera":
+		base = 0.21
+	elif name == "Vintage SLR Camera":
 		base = 0.20
+	elif name == "35mm Lens":
+		base = 0.16
+	elif name == "Mini Hi-Fi":
+		base = 0.33
+	elif name == "Portable CD Player":
+		base = 0.30
+	elif name == "Cordless Drill":
+		base = 0.22
+	elif name == "Vintage Wristwatch":
+		base = 0.20
+	elif category == "Games":
+		base = 0.17
+	elif category == "Electronics":
+		base = 0.28
 	var condition_mod = float(7 - condition) * 0.018
 	return clamp((base + condition_mod) * seller_mult, 0.02, 0.70)
 
@@ -3702,6 +3707,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 06:10", "notes": [
+		"Fixed: Daily Challenges could ask you to Repair items before you'd bought Repair Tools, making it impossible to complete — now skipped until you've actually unlocked it",
+		"Raised base fault chance across the board by roughly 40% (e.g. average Electronics went from ~20% to ~28% chance of a fault) — Condition and Seller-type still scale it up or down from there as before",
+	]},
 	{"version": "Latest — 10/09/2026 05:45", "notes": [
 		"Added Daily Challenges: 3-5 random challenges each day (buy/sell/research/haggle/rarity-based), visible in the More tab showing live X/Y progress. Completing all of them in one day gives a bonus: +£75 and +30 XP",
 		"Added Level Unlocks screen in the More tab, showing your current Level, XP progress bar, and XP needed for next level",
