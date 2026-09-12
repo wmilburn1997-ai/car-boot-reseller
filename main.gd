@@ -553,7 +553,7 @@ func show_daily_challenges():
 	if daily_challenge_bonus_given:
 		bonus_label.text = "[color=#8cd98f][b]Bonus claimed today: +£75 and +30 XP![/b][/color]"
 	else:
-		bonus_label.text = "[color=#e8c15a][b]Complete all %d challenges today for a big bonus: +£75 and +30 XP![/b][/color]" % daily_challenges.size()
+		bonus_label.text = "[color=#e8c15a][b]Complete ALL %d challenges today for an extra bonus on top: +£75 and +30 XP![/b][/color]" % daily_challenges.size()
 	bonus_panel.add_child(bonus_label)
 
 	for c in daily_challenges:
@@ -572,7 +572,7 @@ func show_daily_challenges():
 		desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var progress_val = float(day_stats.get(c["type"], 0))
 		var target_val = float(c["target"])
-		desc_label.text = "%s (%d/%d)" % [c["desc"], int(min(progress_val, target_val)), int(target_val)]
+		desc_label.text = "%s (%d/%d) — Reward: +£%d, +%d XP" % [c["desc"], int(min(progress_val, target_val)), int(target_val), int(c["reward_cash"]), int(c["reward_xp"])]
 		if done:
 			desc_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
 		row.add_child(desc_label)
@@ -1142,7 +1142,7 @@ func generate_daily_challenges():
 		if t["type"] == "repairs_done" and toolbox_level <= 0:
 			continue
 		var target = rng.randi_range(t["min"], t["max"])
-		daily_challenges.append({"desc": t["desc_fmt"] % target, "type": t["type"], "target": target})
+		daily_challenges.append({"desc": t["desc_fmt"] % target, "type": t["type"], "target": target, "reward_cash": 15, "reward_xp": 8, "reward_given": false})
 		added += 1
 	daily_challenge_bonus_given = false
 
@@ -1155,6 +1155,14 @@ func daily_challenges_completed_count():
 		if check_daily_challenge(c):
 			count += 1
 	return count
+
+func check_daily_challenge_rewards():
+	for c in daily_challenges:
+		if not c["reward_given"] and check_daily_challenge(c):
+			c["reward_given"] = true
+			cash += float(c["reward_cash"])
+			add_xp(int(c["reward_xp"]))
+			queue_popup("Challenge complete: %s — +£%d, +%d XP" % [c["desc"], c["reward_cash"], c["reward_xp"]], "success")
 
 func check_daily_challenge_bonus():
 	if daily_challenge_bonus_given or daily_challenges.size() == 0:
@@ -1244,6 +1252,7 @@ func _restore_scroll(scroll):
 		scroll.scroll_vertical = int(last_scroll_value)
 
 func update_header():
+	check_daily_challenge_rewards()
 	check_daily_challenge_bonus()
 	var listed_count = 0
 	for item in inventory:
@@ -3707,6 +3716,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "Latest — 10/09/2026 06:35", "notes": [
+		"Individual Daily Challenges now actually give a reward on completion (+£15, +8 XP each) — previously only completing ALL of them gave anything, which wasn't clearly shown. Each challenge now displays its reward directly, and the big bonus for completing all of them is on top of these",
+		"Achievement progress bars (Haggled Savings, Total Profit) now have their own distinct accent colors matching the Level Unlocks bar's style — pink for Haggled Savings, gold for Total Profit",
+	]},
 	{"version": "Latest — 10/09/2026 06:10", "notes": [
 		"Fixed: Daily Challenges could ask you to Repair items before you'd bought Repair Tools, making it impossible to complete — now skipped until you've actually unlocked it",
 		"Raised base fault chance across the board by roughly 40% (e.g. average Electronics went from ~20% to ~28% chance of a fault) — Condition and Seller-type still scale it up or down from there as before",
@@ -4146,7 +4159,7 @@ func show_collection_grails():
 func sort_log(a, b):
 	return int(a["one_in"]) > int(b["one_in"])
 
-func make_progress_bar_section(title_text, current_value, max_value, milestones):
+func make_progress_bar_section(title_text, current_value, max_value, milestones, fill_color = Color(0.35,0.75,0.40,1.0)):
 	var container = VBoxContainer.new()
 	container.add_theme_constant_override("separation", 6)
 
@@ -4164,7 +4177,7 @@ func make_progress_bar_section(title_text, current_value, max_value, milestones)
 	bar.show_percentage = false
 	bar.custom_minimum_size = Vector2(0, 22)
 	var fill_style = StyleBoxFlat.new()
-	fill_style.bg_color = Color(0.35,0.75,0.40,1.0)
+	fill_style.bg_color = fill_color
 	fill_style.corner_radius_top_left = 6
 	fill_style.corner_radius_top_right = 6
 	fill_style.corner_radius_bottom_left = 6
@@ -4190,7 +4203,7 @@ func make_progress_bar_section(title_text, current_value, max_value, milestones)
 		var m_label = Label.new()
 		m_label.add_theme_font_size_override("font_size", 12)
 		m_label.text = ("X " if reached else "- ") + label_text
-		m_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0) if reached else Color(0.50,0.55,0.62,1.0))
+		m_label.add_theme_color_override("font_color", fill_color if reached else Color(0.50,0.55,0.62,1.0))
 		milestone_row.add_child(m_label)
 	return container
 
@@ -4205,9 +4218,9 @@ func show_achievements():
 	title.text = "ACHIEVEMENTS"
 	body.add_child(title)
 
-	body.add_child(make_progress_bar_section("Total Haggled Savings: £%.2f / £100,000" % total_haggled_savings, total_haggled_savings, 100000, [100.0, 500.0, 1000.0, 5000.0, 10000.0, 25000.0, 50000.0, 100000.0]))
+	body.add_child(make_progress_bar_section("Total Haggled Savings: £%.2f / £100,000" % total_haggled_savings, total_haggled_savings, 100000, [100.0, 500.0, 1000.0, 5000.0, 10000.0, 25000.0, 50000.0, 100000.0], Color(0.88,0.56,0.82,1.0)))
 
-	body.add_child(make_progress_bar_section("Total Lifetime Profit: £%.2f / £50,000" % total_lifetime_profit, total_lifetime_profit, 50000, [250.0, 1000.0, 2500.0, 5000.0, 10000.0, 25000.0, 50000.0]))
+	body.add_child(make_progress_bar_section("Total Lifetime Profit: £%.2f / £50,000" % total_lifetime_profit, total_lifetime_profit, 50000, [250.0, 1000.0, 2500.0, 5000.0, 10000.0, 25000.0, 50000.0], Color(0.91,0.76,0.35,1.0)))
 
 	var all_achievements = ["First Flip", "Against the Odds", "Should've Known Better", "Better Than Nothing", "Actually Mate...", "Car Boot King"]
 	for achievement in all_achievements:
