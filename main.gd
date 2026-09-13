@@ -660,6 +660,93 @@ func show_level_unlocks():
 			desc_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
 		row.add_child(desc_label)
 
+func make_skill_node(s):
+	var col = VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var unlocked = has_skill(s["name"])
+	var prereq_ok = s["requires"] == "" or has_skill(s["requires"])
+	var can_afford = skill_points_available() >= int(s["cost"])
+
+	var node_color = Color(0.16,0.17,0.20,1.0)
+	var border_color = Color(0.32,0.35,0.40,0.5)
+	if unlocked:
+		node_color = Color(0.11,0.30,0.19,1.0)
+		border_color = Color(0.45,0.85,0.55,0.95)
+	elif prereq_ok and can_afford:
+		node_color = Color(0.32,0.25,0.09,1.0)
+		border_color = Color(0.90,0.76,0.35,0.95)
+
+	var node_button = Button.new()
+	var initials = ""
+	for word in s["name"].split(" "):
+		initials += word[0]
+	node_button.text = initials
+	node_button.custom_minimum_size = Vector2(64, 64)
+	var sb_normal = StyleBoxFlat.new()
+	sb_normal.bg_color = node_color
+	sb_normal.border_color = border_color
+	sb_normal.border_width_left = 3
+	sb_normal.border_width_right = 3
+	sb_normal.border_width_top = 3
+	sb_normal.border_width_bottom = 3
+	sb_normal.corner_radius_top_left = 32
+	sb_normal.corner_radius_top_right = 32
+	sb_normal.corner_radius_bottom_left = 32
+	sb_normal.corner_radius_bottom_right = 32
+	sb_normal.shadow_color = Color(0,0,0,0.4)
+	sb_normal.shadow_size = 5
+	var sb_hover = sb_normal.duplicate()
+	sb_hover.bg_color = node_color.lightened(0.15)
+	var sb_pressed = sb_normal.duplicate()
+	sb_pressed.bg_color = node_color.darkened(0.15)
+	node_button.add_theme_stylebox_override("normal", sb_normal)
+	node_button.add_theme_stylebox_override("hover", sb_hover)
+	node_button.add_theme_stylebox_override("pressed", sb_pressed)
+	node_button.add_theme_font_size_override("font_size", 18)
+	node_button.tooltip_text = s["desc"]
+	node_button.pressed.connect(Callable(self, "queue_popup").bind("%s: %s" % [s["name"], s["desc"]], "info"))
+	col.add_child(node_button)
+
+	var name_label = Label.new()
+	name_label.text = s["name"]
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.custom_minimum_size = Vector2(78, 0)
+	name_label.add_theme_font_size_override("font_size", 11)
+	if unlocked:
+		name_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+	col.add_child(name_label)
+
+	if unlocked:
+		var done_label = Label.new()
+		done_label.text = "UNLOCKED"
+		done_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		done_label.add_theme_font_size_override("font_size", 9)
+		done_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+		col.add_child(done_label)
+	else:
+		var buy_button = Button.new()
+		var point_word = "pt" if int(s["cost"]) == 1 else "pts"
+		buy_button.text = "%d %s" % [int(s["cost"]), point_word]
+		buy_button.custom_minimum_size = Vector2(64, 26)
+		style_button(buy_button, "buy")
+		buy_button.add_theme_font_size_override("font_size", 11)
+		buy_button.disabled = not can_afford or not prereq_ok
+		buy_button.pressed.connect(Callable(self, "buy_skill").bind(s["name"]))
+		col.add_child(buy_button)
+
+	return col
+
+func make_skill_connector(from_unlocked):
+	var connector = ColorRect.new()
+	connector.custom_minimum_size = Vector2(4, 22)
+	connector.color = Color(0.45,0.85,0.55,0.9) if from_unlocked else Color(0.32,0.35,0.40,0.5)
+	var wrap = CenterContainer.new()
+	wrap.add_child(connector)
+	return wrap
+
 func show_skill_tree():
 	current_screen_name = "show_skill_tree"
 	clear_body()
@@ -677,50 +764,60 @@ func show_skill_tree():
 	points_label.text = "Skill Points available: %d (1 earned per level, %d spent so far)" % [skill_points_available(), skill_points_spent()]
 	body.add_child(points_label)
 
+	var tree_row = HBoxContainer.new()
+	tree_row.add_theme_constant_override("separation", 8)
+	tree_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	tree_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(tree_row)
+
 	var categories = ["Trading", "Appraisal", "Fortune"]
 	for cat in categories:
+		var col = VBoxContainer.new()
+		col.add_theme_constant_override("separation", 6)
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tree_row.add_child(col)
+
 		var cat_header = Label.new()
-		cat_header.add_theme_font_size_override("font_size", 16)
+		cat_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cat_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cat_header.add_theme_font_size_override("font_size", 14)
 		cat_header.text = cat
-		body.add_child(cat_header)
+		col.add_child(cat_header)
+
+		var cat_skills = []
 		for s in skill_tree:
-			if s["category"] != cat:
-				continue
-			var card = make_card()
-			body.add_child(card)
-			var box = VBoxContainer.new()
-			box.add_theme_constant_override("separation", 4)
-			card.add_child(box)
-			var unlocked = has_skill(s["name"])
-			var name_label = Label.new()
-			name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			name_label.add_theme_font_size_override("font_size", 15)
-			var prefix = "[UNLOCKED] " if unlocked else ""
-			var point_word = "point" if int(s["cost"]) == 1 else "points"
-			name_label.text = "%s%s (%d %s)" % [prefix, s["name"], int(s["cost"]), point_word]
-			if unlocked:
-				name_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
-			box.add_child(name_label)
-			var desc_label = Label.new()
-			desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			desc_label.add_theme_font_size_override("font_size", 13)
-			desc_label.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
-			var req_text = ""
-			if s["requires"] != "":
-				req_text = " — requires %s" % s["requires"]
-			desc_label.text = s["desc"] + req_text
-			box.add_child(desc_label)
-			if not unlocked:
-				var buy_button = Button.new()
-				buy_button.text = "Unlock (%d %s)" % [int(s["cost"]), point_word]
-				style_button(buy_button, "buy")
-				var can_afford = skill_points_available() >= int(s["cost"])
-				var prereq_ok = s["requires"] == "" or has_skill(s["requires"])
-				buy_button.disabled = not can_afford or not prereq_ok
-				buy_button.pressed.connect(Callable(self, "buy_skill").bind(s["name"]))
-				box.add_child(buy_button)
+			if s["category"] == cat:
+				cat_skills.append(s)
+		var base_skills = []
+		var dependent_skills = []
+		for s in cat_skills:
+			if s["requires"] == "":
+				base_skills.append(s)
+			else:
+				dependent_skills.append(s)
+
+		var base_row = HBoxContainer.new()
+		base_row.add_theme_constant_override("separation", 4)
+		base_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		for s in base_skills:
+			base_row.add_child(make_skill_node(s))
+		col.add_child(base_row)
+
+		for s in dependent_skills:
+			var prereq_unlocked = has_skill(s["requires"])
+			col.add_child(make_skill_connector(prereq_unlocked))
+			var dep_row = HBoxContainer.new()
+			dep_row.alignment = BoxContainer.ALIGNMENT_CENTER
+			dep_row.add_child(make_skill_node(s))
+			col.add_child(dep_row)
+
+	var legend = Label.new()
+	legend.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	legend.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	legend.add_theme_font_size_override("font_size", 12)
+	legend.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
+	legend.text = "Green = unlocked  •  Gold = ready to unlock  •  Grey = locked or needs its prerequisite first. Tap a node to see what it does."
+	body.add_child(legend)
 
 func show_more_menu():
 	current_screen_name = "show_more_menu"
@@ -3913,6 +4010,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v44", "notes": [
+		"Rebuilt the Skill Tree to actually look like a tree — circular node buttons in 3 columns (one per category), color-coded green/gold/grey for unlocked/ready/locked, connected by visual bars showing prerequisite relationships",
+		"Tap a node to see what it does, use the small button below it to unlock",
+	]},
 	{"version": "v43", "notes": [
 		"Added a Skill Tree — 9 skills across 3 categories (Trading, Appraisal, Fortune), spent using Skill Points earned at 1 per level, separate from the existing automatic Level Unlocks",
 		"Trading: Sharp Tongue/Silver Tongue (+8%/+18% haggle success), Bulk Buyer (+1 Carry slot)",
