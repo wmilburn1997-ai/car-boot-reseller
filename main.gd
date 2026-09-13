@@ -1258,6 +1258,34 @@ func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8d
 		box.add_child(note)
 	return panel
 
+func apply_grail_glow(panel):
+	var grail_sb = StyleBoxFlat.new()
+	grail_sb.bg_color = Color(0.15,0.12,0.04,1.0)
+	grail_sb.border_width_left = 5
+	grail_sb.border_width_top = 3
+	grail_sb.border_width_right = 3
+	grail_sb.border_width_bottom = 3
+	grail_sb.border_color = Color(1.0,0.84,0.35,1.0)
+	grail_sb.corner_radius_top_left = 10
+	grail_sb.corner_radius_top_right = 10
+	grail_sb.corner_radius_bottom_left = 10
+	grail_sb.corner_radius_bottom_right = 10
+	grail_sb.content_margin_left = 12
+	grail_sb.content_margin_right = 10
+	grail_sb.content_margin_top = 8
+	grail_sb.content_margin_bottom = 8
+	grail_sb.shadow_color = Color(1.0,0.84,0.35,0.45)
+	grail_sb.shadow_size = 10
+	grail_sb.shadow_offset = Vector2(0, 0)
+	panel.add_theme_stylebox_override("panel", grail_sb)
+
+func make_grail_badge():
+	var badge = Label.new()
+	badge.text = "GRAIL FIND"
+	badge.add_theme_font_size_override("font_size", 13)
+	badge.add_theme_color_override("font_color", Color(1.0,0.84,0.35,1.0))
+	return badge
+
 func make_card():
 	var panel = PanelContainer.new()
 	var sb = StyleBoxFlat.new()
@@ -2104,6 +2132,10 @@ func show_stall():
 		card.add_theme_constant_override("separation", 3)
 		panel.add_child(card)
 
+		if item["rarity"] == "Grail":
+			apply_grail_glow(panel)
+			card.add_child(make_grail_badge())
+
 		var rarity_text = ""
 		if item["one_in"] >= 20:
 			rarity_text = " %s 1/%d  •  " % [item["rarity"], item["one_in"]]
@@ -2783,6 +2815,10 @@ func show_special_offer():
 	var card = VBoxContainer.new()
 	card.add_theme_constant_override("separation", 5)
 	panel.add_child(card)
+
+	if item["rarity"] == "Grail":
+		apply_grail_glow(panel)
+		card.add_child(make_grail_badge())
 
 	var rarity_text = ""
 	if item["one_in"] >= 20:
@@ -4135,6 +4171,9 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v51", "notes": [
+		"Grail-tier finds (1-in-5000) now get a distinct visual treatment — a glowing gold border and shadow on the item card, plus a 'GRAIL FIND' badge — on the stall page, Inventory, and the Collection Log's Grails view",
+	]},
 	{"version": "v50", "notes": [
 		"Added 12 new item families (84 total, up from 72): 9 are seasonal (Christmas Decorations/Jumper, Winter Coat in Winter; Garden Furniture, BBQ Set, Paddling Pool in Summer; Halloween Costume, Fireworks Display Box in Autumn; Easter Decorations in Spring), 3 are year-round (Antique Mirror, Leather Satchel, Board Game Collection)",
 		"Seasons now actually restrict availability, not just pricing — seasonal items only appear during their matching season, at any seller who stocks that category. This applies everywhere items are generated: stalls, Mystery Packages, and side deal special offers",
@@ -4544,6 +4583,9 @@ func render_family_stat_card(family, force_undiscovered = false):
 		box.add_child(unknown_label)
 		return panel
 	var fs = family_stats[fam_name]
+	if fs["highest_rarity"] == "Grail":
+		apply_grail_glow(panel)
+		box.add_child(make_grail_badge())
 	var header = Label.new()
 	header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
