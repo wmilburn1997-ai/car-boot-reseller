@@ -2147,7 +2147,10 @@ func show_stall():
 			card.add_child(make_completed_action_box("Condition Checked", stall_condition_note, get_highlight_color(item, "condition"), condition_icon, "Reveals the exact Condition score for certain. This is the only reliable way to know it before buying — and, for non-electronic items, the only way to know about hidden defects at all."))
 
 		if item["basic_researched"]:
-			var stall_research_note = "Researched Prices: %s  •  [color=#e08fd0]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], float(item["locked_gamble_hint"]) * 100.0]
+			var displayed_gamble_chance = float(item["locked_gamble_hint"])
+			if has_skill("Deep Pockets"):
+				displayed_gamble_chance = min(0.45, displayed_gamble_chance * 1.25)
+			var stall_research_note = "Researched Prices: %s  •  [color=#e08fd0]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], displayed_gamble_chance * 100.0]
 			card.add_child(make_completed_action_box("Researched", stall_research_note, get_highlight_color(item, "research"), research_icon, "Shows real sold-price comparables for this exact item. Evidence to weigh, not a guaranteed value — one-time only."))
 
 		var top_row = HFlowContainer.new()
@@ -3025,6 +3028,8 @@ func show_inventory():
 			var real_rare_chance = 0.20
 			if item["basic_researched"]:
 				real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.04, 0.32)
+			if has_skill("Deep Pockets"):
+				real_rare_chance = min(0.45, real_rare_chance * 1.25)
 			var dr_preview_cost = max(4.0, round(float(item["asking"]) * 0.35))
 			var deep_button = Button.new()
 			deep_button.text = "Deep Research £%d | E12\nDiscovery %.0f%% | Rare %.0f%%" % [int(dr_preview_cost), deep_chance * 100.0, real_rare_chance * 100.0]
@@ -4110,6 +4115,11 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v49", "notes": [
+		"Cross-system audit pass: checked skill/level/challenge interactions across the whole game",
+		"Fixed: Deep Pockets' +25% Deep Research odds bonus wasn't reflected in either odds preview (stall page's Researched box, Inventory's Deep Research button) — the real roll already included it, but players with the skill saw a lower percentage than they actually got",
+		"Confirmed clean (no issues found): save/load covers every persistent stat correctly, all 11 Daily Challenge types match real tracked stats, all 9 achievements are correctly wired both ways, all 5 Level Unlock tiers match their implementation, no stale seller names remain, no popups bypass the queue system, and haggle/Inspect/Condition/Research displays all correctly reflect their skill bonuses",
+	]},
 	{"version": "v48", "notes": [
 		"Ran a full economy check now that Level Unlocks, Skill Tree, Daily Challenges, and Fixer's Gamble all exist together — found a real drift: a player using every system was accumulating ~62% more wealth over 60 days than the core trading loop alone intended",
 		"Isolated the cause: Daily Challenges' cash rewards were doing almost all of it (+52% alone), while Level Unlocks (+0%), Skill Tree (+13%), and Fixer's Gamble (+11%) were all fine on their own",
