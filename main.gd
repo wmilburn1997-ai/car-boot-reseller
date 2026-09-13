@@ -168,6 +168,7 @@ var inspect_icon
 var cash_icon
 var carry_icon
 var storage_icon
+var category_icons = {}
 var blocked_popup
 var blocked_popup_label
 var blocked_popup_timer
@@ -302,6 +303,24 @@ func _ready():
 		carry_icon = load("res://carry_icon.png")
 	if ResourceLoader.exists("res://storage_icon.png"):
 		storage_icon = load("res://storage_icon.png")
+	var category_icon_files = {
+		"Clothing": "res://cat_icons/cat_clothing.png",
+		"Games": "res://cat_icons/cat_games.png",
+		"Pokemon": "res://cat_icons/cat_pokemon.png",
+		"Electronics": "res://cat_icons/cat_electronics.png",
+		"Home": "res://cat_icons/cat_home.png",
+		"Vinyl": "res://cat_icons/cat_vinyl.png",
+		"Cameras": "res://cat_icons/cat_cameras.png",
+		"Tools": "res://cat_icons/cat_tools.png",
+		"Collectables": "res://cat_icons/cat_collectables.png",
+		"Jewellery": "res://cat_icons/cat_jewellery.png",
+		"Books": "res://cat_icons/cat_books.png",
+		"Musical Instruments": "res://cat_icons/cat_musical_instruments.png",
+		"Garden & Outdoor": "res://cat_icons/cat_garden_outdoor.png",
+	}
+	for cat in category_icon_files:
+		if ResourceLoader.exists(category_icon_files[cat]):
+			category_icons[cat] = load(category_icon_files[cat])
 	rng.randomize()
 	reset_day_stats()
 	load_game()
@@ -1286,6 +1305,17 @@ func make_grail_badge():
 	badge.add_theme_color_override("font_color", Color(1.0,0.84,0.35,1.0))
 	return badge
 
+func make_category_icon_rect(category):
+	if not category_icons.has(category):
+		return null
+	var icon_rect = TextureRect.new()
+	icon_rect.texture = category_icons[category]
+	icon_rect.custom_minimum_size = Vector2(22, 22)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return icon_rect
+
 func make_card():
 	var panel = PanelContainer.new()
 	var sb = StyleBoxFlat.new()
@@ -2176,7 +2206,13 @@ func show_stall():
 		if stall_trend_mult >= 1.10:
 			stall_trend_suffix = "  •  [color=#b088e8][b]TRENDING[/b][/color]"
 		state_line.text = "%s  •  Condition: %s  •  Function: %s%s" % [item["category"], condition_text, function_text_value, stall_trend_suffix]
-		card.add_child(state_line)
+		var state_row = HBoxContainer.new()
+		state_row.add_theme_constant_override("separation", 6)
+		var cat_icon_rect = make_category_icon_rect(item["category"])
+		if cat_icon_rect != null:
+			state_row.add_child(cat_icon_rect)
+		state_row.add_child(state_line)
+		card.add_child(state_row)
 
 		if item["quick_look_done"] and item["quick_look_note"] != "":
 			var look_result = RichTextLabel.new()
@@ -2991,7 +3027,13 @@ func show_inventory():
 		if trend_mult >= 1.10:
 			trend_suffix = "  •  [color=#b088e8][b]TRENDING[/b][/color]"
 		badge_line.text = "%s  •  Carry Space - %d Slots  •  Trend %+.0f%%%s" % [item["category"], size_units(item), (trend_mult - 1.0) * 100.0, trend_suffix]
-		card.add_child(badge_line)
+		var badge_row = HBoxContainer.new()
+		badge_row.add_theme_constant_override("separation", 6)
+		var inv_cat_icon_rect = make_category_icon_rect(item["category"])
+		if inv_cat_icon_rect != null:
+			badge_row.add_child(inv_cat_icon_rect)
+		badge_row.add_child(badge_line)
+		card.add_child(badge_row)
 
 		var potential = estimate_identified_potential(item)
 		var preview_price = (float(potential[0]) + float(potential[1])) / 2.0
@@ -4171,6 +4213,9 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v52", "notes": [
+		"Added per-category icons (Clothing, Games, Pokemon, Electronics, Home, Vinyl, Cameras, Tools, Collectables, Jewellery, Books, Musical Instruments, Garden & Outdoor) shown next to the category text on both the stall page and Inventory item cards",
+	]},
 	{"version": "v51", "notes": [
 		"Grail-tier finds (1-in-5000) now get a distinct visual treatment — a glowing gold border and shadow on the item card, plus a 'GRAIL FIND' badge — on the stall page, Inventory, and the Collection Log's Grails view",
 	]},
