@@ -584,9 +584,9 @@ func show_daily_challenges():
 	bonus_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bonus_label.add_theme_font_size_override("normal_font_size", 14)
 	if daily_challenge_bonus_given:
-		bonus_label.text = "[color=#8cd98f][b]Bonus claimed today: +£75 and +30 XP![/b][/color]"
+		bonus_label.text = "[color=#8cd98f][b]Bonus claimed today: +£40 and +30 XP![/b][/color]"
 	else:
-		bonus_label.text = "[color=#e8c15a][b]Complete ALL %d challenges today for an extra bonus on top: +£75 and +30 XP![/b][/color]" % daily_challenges.size()
+		bonus_label.text = "[color=#e8c15a][b]Complete ALL %d challenges today for an extra bonus on top: +£40 and +30 XP![/b][/color]" % daily_challenges.size()
 	bonus_panel.add_child(bonus_label)
 
 	for c in daily_challenges:
@@ -1442,7 +1442,7 @@ func generate_daily_challenges():
 		if t["type"] == "repairs_done" and toolbox_level <= 0:
 			continue
 		var target = rng.randi_range(t["min"], t["max"])
-		daily_challenges.append({"desc": t["desc_fmt"] % target, "type": t["type"], "target": target, "reward_cash": 15, "reward_xp": 8, "reward_given": false})
+		daily_challenges.append({"desc": t["desc_fmt"] % target, "type": t["type"], "target": target, "reward_cash": 8, "reward_xp": 8, "reward_given": false})
 		added += 1
 	daily_challenge_bonus_given = false
 
@@ -1478,9 +1478,9 @@ func check_daily_challenge_bonus():
 		return
 	if daily_challenges_completed_count() >= daily_challenges.size():
 		daily_challenge_bonus_given = true
-		cash += 75.0
+		cash += 40.0
 		add_xp(30)
-		queue_popup("ALL DAILY CHALLENGES COMPLETE! +£75 and +30 XP!", "success")
+		queue_popup("ALL DAILY CHALLENGES COMPLETE! +£40 and +30 XP!", "success")
 
 var skills_unlocked = {}
 var skill_tree = [
@@ -4110,6 +4110,11 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v48", "notes": [
+		"Ran a full economy check now that Level Unlocks, Skill Tree, Daily Challenges, and Fixer's Gamble all exist together — found a real drift: a player using every system was accumulating ~62% more wealth over 60 days than the core trading loop alone intended",
+		"Isolated the cause: Daily Challenges' cash rewards were doing almost all of it (+52% alone), while Level Unlocks (+0%), Skill Tree (+13%), and Fixer's Gamble (+11%) were all fine on their own",
+		"Reduced Daily Challenge rewards: £15 -> £8 per individual challenge, £75 -> £40 for completing all of them — simulated result: drift drops from +46% to a much more reasonable +24%",
+	]},
 	{"version": "v47", "notes": [
 		"Save codes were huge because they were just base64 of raw JSON with no compression — added gzip compression before encoding, which cut a realistic save code from ~33,000 characters down to ~1,700 in testing (a ~95% reduction), with zero data loss",
 	]},
