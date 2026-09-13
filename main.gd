@@ -37,13 +37,13 @@ var category_knowledge = {
 }
 
 var seller_profiles = {
-	"Desperate Seller": {"knowledge":0.42, "haggle":0.23, "pricing":0.88, "fault":1.15, "fake":1.05, "side":0.010, "depth":18, "rarity_boost":0.80, "categories":["Clothing","Games","Pokemon","Electronics","Home","Garden & Outdoor"]},
-	"House Clearance": {"knowledge":0.28, "haggle":0.34, "pricing":0.90, "fault":1.30, "fake":0.90, "side":0.018, "depth":26, "rarity_boost":0.70, "categories":["Home","Vinyl","Cameras","Tools","Books","Collectables","Jewellery","Musical Instruments","Garden & Outdoor"]},
-	"Clueless Seller": {"knowledge":0.16, "haggle":0.38, "pricing":0.84, "fault":0.95, "fake":0.85, "side":0.002, "depth":15, "rarity_boost":0.55, "categories":["Games","Pokemon","Clothing","Books","Home","Collectables","Garden & Outdoor"]},
+	"Desperate Seller": {"knowledge":0.45, "haggle":0.23, "pricing":0.88, "fault":1.15, "fake":1.05, "side":0.010, "depth":18, "rarity_boost":0.80, "categories":["Clothing","Games","Pokemon","Electronics","Home","Garden & Outdoor"]},
+	"House Clearance": {"knowledge":0.35, "haggle":0.34, "pricing":0.90, "fault":1.30, "fake":0.90, "side":0.018, "depth":26, "rarity_boost":0.70, "categories":["Home","Vinyl","Cameras","Tools","Books","Collectables","Jewellery","Musical Instruments","Garden & Outdoor"]},
+	"Clueless Seller": {"knowledge":0.40, "haggle":0.38, "pricing":0.84, "fault":0.95, "fake":0.85, "side":0.002, "depth":15, "rarity_boost":0.55, "categories":["Games","Pokemon","Clothing","Books","Home","Collectables","Garden & Outdoor"]},
 	"Regular Seller": {"knowledge":0.60, "haggle":0.56, "pricing":0.98, "fault":1.00, "fake":1.00, "side":0.0015, "depth":14, "rarity_boost":1.00, "categories":["Clothing","Games","Tools","Home","Electronics","Books","Musical Instruments","Garden & Outdoor"]},
-	"Collector": {"knowledge":0.90, "haggle":0.78, "pricing":1.06, "fault":0.70, "fake":0.45, "side":0.008, "depth":10, "rarity_boost":1.45, "categories":["Vinyl","Cameras","Collectables","Jewellery","Games","Pokemon","Musical Instruments"]},
+	"Collector": {"knowledge":0.86, "haggle":0.78, "pricing":1.06, "fault":0.70, "fake":0.45, "side":0.008, "depth":10, "rarity_boost":1.60, "categories":["Vinyl","Cameras","Collectables","Jewellery","Games","Pokemon","Musical Instruments"]},
 	"Dodgy Seller": {"knowledge":0.48, "haggle":0.36, "pricing":0.82, "fault":1.55, "fake":2.40, "side":0.022, "depth":13, "rarity_boost":0.95, "categories":["Clothing","Pokemon","Electronics","Games","Jewellery"]},
-	"Dealer": {"knowledge":0.95, "haggle":0.84, "pricing":1.10, "fault":0.65, "fake":0.55, "side":0.001, "depth":8, "rarity_boost":1.65, "categories":["Clothing","Games","Cameras","Vinyl","Collectables","Jewellery","Musical Instruments"]}
+	"Dealer": {"knowledge":0.90, "haggle":0.84, "pricing":1.10, "fault":0.65, "fake":0.55, "side":0.001, "depth":8, "rarity_boost":1.85, "categories":["Clothing","Games","Cameras","Vinyl","Collectables","Jewellery","Musical Instruments"]}
 }
 
 var item_families = [
@@ -183,6 +183,8 @@ var inventory_tab = "unlisted"
 var fixer_uses_today = 0
 var daily_challenges = []
 var daily_challenge_bonus_given = false
+var lifetime_challenges_completed = 0
+var lifetime_fixer_wins = 0
 const SAVE_PATH = "user://savegame.json"
 var last_save_time = ""
 var package_insight_level = 0
@@ -1078,6 +1080,7 @@ func fixer_gamble(amount):
 	record_rng("Fixer's Gamble: Wager £%.0f | Chance 47%% | Rolled: %.2f%% | Result: %s" % [amount, roll * 100.0, "WON" if won else "LOST"])
 	if won:
 		cash += amount * 2.0
+		lifetime_fixer_wins += 1
 		queue_popup("The Fixer's Gamble — WON! £%.0f -> £%.0f" % [amount, amount * 2.0], "success")
 	else:
 		queue_popup("The Fixer's Gamble — LOST £%.0f. Better luck tomorrow." % amount)
@@ -1103,6 +1106,8 @@ func get_save_data():
 		"sold_history": sold_history,
 		"total_haggled_savings": total_haggled_savings,
 		"total_lifetime_profit": total_lifetime_profit,
+		"lifetime_challenges_completed": lifetime_challenges_completed,
+		"lifetime_fixer_wins": lifetime_fixer_wins,
 		"negative_days_streak": negative_days_streak,
 		"save_time": Time.get_datetime_string_from_system(false, true),
 	}
@@ -1150,6 +1155,8 @@ func load_game():
 	sold_history = parsed.get("sold_history", sold_history)
 	total_haggled_savings = float(parsed.get("total_haggled_savings", total_haggled_savings))
 	total_lifetime_profit = float(parsed.get("total_lifetime_profit", total_lifetime_profit))
+	lifetime_challenges_completed = int(parsed.get("lifetime_challenges_completed", lifetime_challenges_completed))
+	lifetime_fixer_wins = int(parsed.get("lifetime_fixer_wins", lifetime_fixer_wins))
 	negative_days_streak = int(parsed.get("negative_days_streak", negative_days_streak))
 	last_save_time = str(parsed.get("save_time", ""))
 	return true
@@ -1198,7 +1205,16 @@ func check_daily_challenge_rewards():
 			c["reward_given"] = true
 			cash += float(c["reward_cash"])
 			add_xp(int(c["reward_xp"]))
+			lifetime_challenges_completed += 1
 			queue_popup("Challenge complete: %s — +£%d, +%d XP" % [c["desc"], c["reward_cash"], c["reward_xp"]], "success")
+
+func check_milestone_achievements():
+	if player_level >= 10:
+		unlock_achievement("Level Headed")
+	if lifetime_challenges_completed >= 30:
+		unlock_achievement("Challenge Crusher")
+	if lifetime_fixer_wins >= 5:
+		unlock_achievement("High Roller")
 
 func check_daily_challenge_bonus():
 	if daily_challenge_bonus_given or daily_challenges.size() == 0:
@@ -1290,6 +1306,7 @@ func _restore_scroll(scroll):
 func update_header():
 	check_daily_challenge_rewards()
 	check_daily_challenge_bonus()
+	check_milestone_achievements()
 	var listed_count = 0
 	for item in inventory:
 		if item["listed"]:
@@ -1503,7 +1520,7 @@ func generate_item(seller):
 				true_value *= rng.randf_range(1.5, 4.5)
 
 	var random_ask = rng.randf_range(base["ask"][0], base["ask"][1])
-	var marketish = true_value * float(profile["pricing"]) * rng.randf_range(0.78, 1.20)
+	var marketish = true_value * float(profile["pricing"]) * rng.randf_range(0.55, 1.35)
 	var asking = lerp(random_ask, marketish, float(profile["knowledge"]))
 	asking = max(1.0, round(asking))
 
@@ -2670,11 +2687,12 @@ func show_inventory():
 		else:
 			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
 			var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
-			var real_rare_chance = 0.10
+			var real_rare_chance = 0.20
 			if item["basic_researched"]:
-				real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.02, 0.18)
+				real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.04, 0.32)
+			var dr_preview_cost = max(4.0, round(float(item["asking"]) * 0.35))
 			var deep_button = Button.new()
-			deep_button.text = "Deep Research £18 | E12\nDiscovery %.0f%% | Rare %.0f%%" % [deep_chance * 100.0, real_rare_chance * 100.0]
+			deep_button.text = "Deep Research £%d | E12\nDiscovery %.0f%% | Rare %.0f%%" % [int(dr_preview_cost), deep_chance * 100.0, real_rare_chance * 100.0]
 			deep_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
 			deep_button.pressed.connect(Callable(self, "deep_research").bind(i))
 			deep_button.tooltip_text = "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."
@@ -2986,7 +3004,7 @@ func gamble_hint_chance(item):
 	var potential = estimate_identified_potential(item)
 	var center = (float(potential[0]) + float(potential[1])) / 2.0
 	var value_ratio = clamp(float(item["asking"]) / max(1.0, center), 0.3, 2.5)
-	return clamp(0.03 + (value_ratio - 0.8) * 0.10, 0.02, 0.18)
+	return clamp(0.06 + (value_ratio - 0.8) * 0.20, 0.04, 0.32)
 
 func estimate_identified_potential(item):
 	var center = float(item["true_value"]) * float(item["identified_mult"]) * float(current_trends.get(item["category"], 1.0))
@@ -3077,15 +3095,16 @@ func deep_research(index):
 	if item["deep_researched"]:
 		set_status("Deep Research has already been completed once.")
 		return
-	if cash < 18.0 or energy < 12:
-		set_status("Need £18 and E12.")
+	var dr_cost = max(4.0, round(float(item["asking"]) * 0.35))
+	if cash < dr_cost or energy < 12:
+		set_status("Need £%d and E12." % int(dr_cost))
 		return
 	var before = estimate_identified_potential(item)
-	cash -= 18.0
-	item["extra_spend"] += 18.0
+	cash -= dr_cost
+	item["extra_spend"] += dr_cost
 	energy -= 12
 	current_time_minutes += 20
-	day_stats["research"] += 18.0
+	day_stats["research"] += dr_cost
 	day_stats["deep_researches_done"] += 1
 	item["deep_researched"] = true
 	item["action_order"].append("deep_research")
@@ -3121,19 +3140,19 @@ func deep_research(index):
 	var rare_roll = rng.randf()
 	var rare_mult = 1.0
 	var rare_tier = ""
-	var total_chance = 0.10
+	var total_chance = 0.20
 	if item["basic_researched"]:
-		total_chance = clamp(float(item["locked_gamble_hint"]), 0.02, 0.18)
+		total_chance = clamp(float(item["locked_gamble_hint"]), 0.04, 0.32)
 	var exceptional_cut = total_chance * 0.05
 	var significant_cut = total_chance * 0.20
 	if rare_roll < exceptional_cut:
-		rare_mult = rng.randf_range(3.0, 5.0)
+		rare_mult = rng.randf_range(3.5, 6.0)
 		rare_tier = "EXCEPTIONAL rare variant"
 	elif rare_roll < exceptional_cut + significant_cut:
-		rare_mult = rng.randf_range(2.0, 2.8)
+		rare_mult = rng.randf_range(2.3, 3.2)
 		rare_tier = "significant rare variant"
 	elif rare_roll < total_chance:
-		rare_mult = rng.randf_range(1.4, 1.9)
+		rare_mult = rng.randf_range(1.6, 2.2)
 		rare_tier = "rare variant"
 	record_rng("Deep research rare-variant chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [total_chance * 100.0, rare_roll * 100.0, ("%s x%.1f" % [rare_tier, rare_mult]) if rare_mult > 1.0 else "no rare variant"])
 	if rare_mult > 1.0:
@@ -3752,6 +3771,18 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v42", "notes": [
+		"Major rebalance based on simulated play: sellers were wildly unbalanced (Clueless Seller was ~10x more profitable than any other seller; Collector and Dealer actually lost money despite their better rarity odds) and Deep Research had gone negative-EV after an earlier nerf, making it never worth using",
+		"Fixed the root cause for Collector/Dealer: their accurate pricing meant bargains almost never appeared for their rarity bonus to ever pay off. Widened the general pricing variance so even accurate sellers occasionally produce real bargains",
+		"Clueless Seller's pricing knowledge raised (0.16 -> 0.40) — still the most likely to underprice, but no longer absurdly dominant over every other seller",
+		"Deep Research cost now scales with the item's price (roughly 35% of asking, minimum £4) instead of a flat £18 — cheap on cheap items, pricier on expensive ones, which prevents the old 'spam it on junk' exploit regardless of odds",
+		"Deep Research odds and multiplier tiers raised again now that cost scales properly (odds roughly doubled, multipliers raised ~15-20%) — it should be a genuinely worthwhile gamble again, not just a losing proposition",
+		"This was validated with a Python simulation matching the game's real formulas as closely as possible, not by running the actual Godot code — please play-test and flag if anything still feels off",
+	]},
+	{"version": "v41", "notes": [
+		"Added 3 new achievements tied to the newer systems: Level Headed (reach Level 10), Challenge Crusher (complete 30 daily challenges total, across all days), High Roller (win the Fixer's Gamble 5 times) — these are lifetime/cumulative, not day-scoped, so they're saved properly",
+		"These 3 show live progress (e.g. '12/30 challenges completed') until unlocked, unlike the older one-off achievements",
+	]},
 	{"version": "v40", "notes": [
 		"Patch note timestamps were never actually accurate — they were plausible-looking but fabricated, since there's no reliable way to know the exact real-world date/time when each change was made. Switched to simple sequential version numbers (v1, v2, v3...) instead, which don't claim precision that was never real",
 	]},
@@ -4275,7 +4306,12 @@ func show_achievements():
 
 	body.add_child(make_progress_bar_section("Total Lifetime Profit: £%.2f / £50,000" % total_lifetime_profit, total_lifetime_profit, 50000, [250.0, 1000.0, 2500.0, 5000.0, 10000.0, 25000.0, 50000.0], Color(0.91,0.76,0.35,1.0)))
 
-	var all_achievements = ["First Flip", "Against the Odds", "Should've Known Better", "Better Than Nothing", "Actually Mate...", "Car Boot King"]
+	var all_achievements = ["First Flip", "Against the Odds", "Should've Known Better", "Better Than Nothing", "Actually Mate...", "Car Boot King", "Level Headed", "Challenge Crusher", "High Roller"]
+	var progress_text = {
+		"Level Headed": "Level %d/10" % player_level,
+		"Challenge Crusher": "%d/30 challenges completed" % lifetime_challenges_completed,
+		"High Roller": "%d/5 Fixer wins" % lifetime_fixer_wins,
+	}
 	for achievement in all_achievements:
 		var line = Label.new()
 		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -4283,7 +4319,10 @@ func show_achievements():
 		var prefix = "[ ] "
 		if achievements.has(achievement):
 			prefix = ""
-		line.text = prefix + achievement
+		var suffix = ""
+		if not achievements.has(achievement) and progress_text.has(achievement):
+			suffix = " (%s)" % progress_text[achievement]
+		line.text = prefix + achievement + suffix
 		body.add_child(line)
 
 func unlock_achievement(name):
@@ -4358,7 +4397,7 @@ func show_bankruptcy_screen():
 	var stats = Label.new()
 	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	stats.text = "Items sold: %d  •  Achievements unlocked: %d/6  •  Collection: %d discovered" % [sold_history.size(), achievements.size(), discovered_log.size()]
+	stats.text = "Items sold: %d  •  Achievements unlocked: %d/9  •  Collection: %d discovered" % [sold_history.size(), achievements.size(), discovered_log.size()]
 	body.add_child(stats)
 	var restart = Button.new()
 	restart.text = "Start New Game"
