@@ -660,6 +660,68 @@ func show_level_unlocks():
 			desc_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
 		row.add_child(desc_label)
 
+func show_skill_tree():
+	current_screen_name = "show_skill_tree"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "SKILL TREE"
+	body.add_child(title)
+
+	var points_label = Label.new()
+	points_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	points_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	points_label.add_theme_font_size_override("font_size", 15)
+	points_label.add_theme_color_override("font_color", Color(0.75,0.55,0.95,1.0))
+	points_label.text = "Skill Points available: %d (1 earned per level, %d spent so far)" % [skill_points_available(), skill_points_spent()]
+	body.add_child(points_label)
+
+	var categories = ["Trading", "Appraisal", "Fortune"]
+	for cat in categories:
+		var cat_header = Label.new()
+		cat_header.add_theme_font_size_override("font_size", 16)
+		cat_header.text = cat
+		body.add_child(cat_header)
+		for s in skill_tree:
+			if s["category"] != cat:
+				continue
+			var card = make_card()
+			body.add_child(card)
+			var box = VBoxContainer.new()
+			box.add_theme_constant_override("separation", 4)
+			card.add_child(box)
+			var unlocked = has_skill(s["name"])
+			var name_label = Label.new()
+			name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			name_label.add_theme_font_size_override("font_size", 15)
+			var prefix = "[UNLOCKED] " if unlocked else ""
+			var point_word = "point" if int(s["cost"]) == 1 else "points"
+			name_label.text = "%s%s (%d %s)" % [prefix, s["name"], int(s["cost"]), point_word]
+			if unlocked:
+				name_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+			box.add_child(name_label)
+			var desc_label = Label.new()
+			desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			desc_label.add_theme_font_size_override("font_size", 13)
+			desc_label.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+			var req_text = ""
+			if s["requires"] != "":
+				req_text = " — requires %s" % s["requires"]
+			desc_label.text = s["desc"] + req_text
+			box.add_child(desc_label)
+			if not unlocked:
+				var buy_button = Button.new()
+				buy_button.text = "Unlock (%d %s)" % [int(s["cost"]), point_word]
+				style_button(buy_button, "buy")
+				var can_afford = skill_points_available() >= int(s["cost"])
+				var prereq_ok = s["requires"] == "" or has_skill(s["requires"])
+				buy_button.disabled = not can_afford or not prereq_ok
+				buy_button.pressed.connect(Callable(self, "buy_skill").bind(s["name"]))
+				box.add_child(buy_button)
+
 func show_more_menu():
 	current_screen_name = "show_more_menu"
 	clear_body()
@@ -704,6 +766,7 @@ func show_more_menu():
 	var more_row = HFlowContainer.new()
 	more_row.add_theme_constant_override("separation", 8)
 	body.add_child(more_row)
+	add_nav_button(more_row, "Skill Tree (%d pts)" % skill_points_available(), Callable(self, "show_skill_tree"))
 	add_nav_button(more_row, "Daily Challenges %d/%d" % [daily_challenges_completed_count(), daily_challenges.size()], Callable(self, "show_daily_challenges"))
 	add_nav_button(more_row, "Level Unlocks", Callable(self, "show_level_unlocks"))
 	add_nav_button(more_row, "Trends", Callable(self, "show_trends"))
@@ -1076,8 +1139,9 @@ func fixer_gamble(amount):
 	fixer_uses_today += 1
 	cash -= amount
 	var roll = rng.randf()
-	var won = roll < 0.47
-	record_rng("Fixer's Gamble: Wager £%.0f | Chance 47%% | Rolled: %.2f%% | Result: %s" % [amount, roll * 100.0, "WON" if won else "LOST"])
+	var win_chance = 0.51 if has_skill("Lucky Streak") else 0.47
+	var won = roll < win_chance
+	record_rng("Fixer's Gamble: Wager £%.0f | Chance %.0f%% | Rolled: %.2f%% | Result: %s" % [amount, win_chance * 100.0, roll * 100.0, "WON" if won else "LOST"])
 	if won:
 		cash += amount * 2.0
 		lifetime_fixer_wins += 1
@@ -1108,6 +1172,7 @@ func get_save_data():
 		"total_lifetime_profit": total_lifetime_profit,
 		"lifetime_challenges_completed": lifetime_challenges_completed,
 		"lifetime_fixer_wins": lifetime_fixer_wins,
+		"skills_unlocked": skills_unlocked,
 		"negative_days_streak": negative_days_streak,
 		"save_time": Time.get_datetime_string_from_system(false, true),
 	}
@@ -1157,6 +1222,7 @@ func load_game():
 	total_lifetime_profit = float(parsed.get("total_lifetime_profit", total_lifetime_profit))
 	lifetime_challenges_completed = int(parsed.get("lifetime_challenges_completed", lifetime_challenges_completed))
 	lifetime_fixer_wins = int(parsed.get("lifetime_fixer_wins", lifetime_fixer_wins))
+	skills_unlocked = parsed.get("skills_unlocked", skills_unlocked)
 	negative_days_streak = int(parsed.get("negative_days_streak", negative_days_streak))
 	last_save_time = str(parsed.get("save_time", ""))
 	return true
@@ -1225,11 +1291,74 @@ func check_daily_challenge_bonus():
 		add_xp(30)
 		queue_popup("ALL DAILY CHALLENGES COMPLETE! +£75 and +30 XP!", "success")
 
+var skills_unlocked = {}
+var skill_tree = [
+	{"category": "Trading", "name": "Sharp Tongue", "cost": 1, "desc": "+8% haggle success chance", "requires": ""},
+	{"category": "Trading", "name": "Bulk Buyer", "cost": 1, "desc": "+1 Carry slot", "requires": ""},
+	{"category": "Trading", "name": "Silver Tongue", "cost": 2, "desc": "An additional +10% haggle success chance (stacks with Sharp Tongue)", "requires": "Sharp Tongue"},
+	{"category": "Appraisal", "name": "Keen Eye", "cost": 1, "desc": "+10% Inspect accuracy", "requires": ""},
+	{"category": "Appraisal", "name": "Efficient Research", "cost": 1, "desc": "Condition and Research cost 20% less", "requires": ""},
+	{"category": "Appraisal", "name": "Deep Pockets", "cost": 2, "desc": "+25% Deep Research rare-variant odds", "requires": "Efficient Research"},
+	{"category": "Fortune", "name": "Lucky Streak", "cost": 1, "desc": "Fixer's Gamble win chance 47% -> 51%", "requires": ""},
+	{"category": "Fortune", "name": "Frugal Living", "cost": 1, "desc": "-15% daily upkeep", "requires": ""},
+	{"category": "Fortune", "name": "Golden Touch", "cost": 2, "desc": "+8% XP from all sources", "requires": "Frugal Living"},
+]
+
+func effective_bag_capacity():
+	return int(bag_upgrades[bag_level]["capacity"]) + (1 if has_skill("Bulk Buyer") else 0)
+
+func effective_look_accuracy():
+	var acc = float(eye_upgrades[eye_level]["accuracy"])
+	if has_skill("Keen Eye"):
+		acc = min(0.97, acc + 0.10)
+	return acc
+
+func condition_cost():
+	return 4.0 if has_skill("Efficient Research") else 5.0
+
+func research_cost():
+	return 0.8 if has_skill("Efficient Research") else 1.0
+
+func has_skill(name):
+	return skills_unlocked.has(name)
+
+func skill_points_spent():
+	var total = 0
+	for s in skill_tree:
+		if has_skill(s["name"]):
+			total += int(s["cost"])
+	return total
+
+func skill_points_available():
+	return max(0, (player_level - 1) - skill_points_spent())
+
+func buy_skill(name):
+	for s in skill_tree:
+		if s["name"] != name:
+			continue
+		if has_skill(name):
+			queue_popup("Already unlocked.")
+			return
+		if s["requires"] != "" and not has_skill(s["requires"]):
+			queue_popup("Requires %s first." % s["requires"])
+			return
+		if skill_points_available() < int(s["cost"]):
+			queue_popup("Not enough skill points.")
+			return
+		skills_unlocked[name] = true
+		queue_popup("Skill unlocked: %s!" % name, "success")
+		save_game()
+		show_skill_tree()
+		return
+
 func xp_needed_for_level(level):
 	return int(100 + (level - 1) * 50)
 
 func add_xp(amount):
-	player_xp += amount
+	var boosted_amount = amount
+	if has_skill("Golden Touch"):
+		boosted_amount = int(round(float(amount) * 1.08))
+	player_xp += boosted_amount
 	while player_xp >= xp_needed_for_level(player_level):
 		player_xp -= xp_needed_for_level(player_level)
 		player_level += 1
@@ -1377,6 +1506,8 @@ func compute_upkeep():
 	var upkeep = float(tier_sum) * 1.75
 	if player_level >= 12:
 		upkeep *= 0.9
+	if has_skill("Frugal Living"):
+		upkeep *= 0.85
 	return upkeep
 
 func generate_weekly_trends():
@@ -1708,10 +1839,11 @@ func show_stall():
 	fixer_label.add_theme_font_size_override("font_size", 13)
 	fixer_label.add_theme_color_override("font_color", Color(0.75,0.55,0.95,1.0))
 	var fixer_done_today = fixer_uses_today >= fixer_max_uses()
+	var fixer_win_pct = 51 if has_skill("Lucky Streak") else 47
 	if fixer_done_today:
 		fixer_label.text = "The Fixer's Gamble (done for today — back tomorrow):"
 	else:
-		fixer_label.text = "The Fixer's Gamble — 47%% chance to double your cash (%d/%d used today):" % [fixer_uses_today, fixer_max_uses()]
+		fixer_label.text = "The Fixer's Gamble — %d%% chance to double your cash (%d/%d used today):" % [fixer_win_pct, fixer_uses_today, fixer_max_uses()]
 	fixer_row.add_child(fixer_label)
 	var fixer_wagers = [25, 75, 200]
 	if player_level >= 5:
@@ -1719,7 +1851,7 @@ func show_stall():
 	for wager in fixer_wagers:
 		var fixer_button = Button.new()
 		fixer_button.text = "Gamble £%d" % wager
-		fixer_button.tooltip_text = "Wager £%d for a 47%% chance to walk away with £%d. Lose, and it's gone." % [wager, wager * 2]
+		fixer_button.tooltip_text = "Wager £%d for a %d%% chance to walk away with £%d. Lose, and it's gone." % [wager, fixer_win_pct, wager * 2]
 		fixer_button.disabled = fixer_done_today or cash < wager
 		style_button(fixer_button, "danger")
 		fixer_button.pressed.connect(Callable(self, "fixer_gamble").bind(wager))
@@ -1730,7 +1862,7 @@ func show_stall():
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.add_theme_font_size_override("font_size", 14)
 	info.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
-	info.text = "Revealed %d/%d  •  Crowd %d%%  •  Packs up %s  •  Carry %d/%d  •  Mystery packages %d" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"]), carry_used, bag_upgrades[bag_level]["capacity"], mystery_packages_left]
+	info.text = "Revealed %d/%d  •  Crowd %d%%  •  Packs up %s  •  Carry %d/%d  •  Mystery packages %d" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"]), carry_used, effective_bag_capacity(), mystery_packages_left]
 	body.add_child(info)
 
 	if special_event_profiles.has(seller):
@@ -1922,7 +2054,7 @@ func show_stall():
 		card.add_child(actions)
 
 		var look = Button.new()
-		var look_accuracy = int(float(eye_upgrades[eye_level]["accuracy"]) * 100.0)
+		var look_accuracy = int(effective_look_accuracy() * 100.0)
 		look.text = "Inspect %d%% | E1" % look_accuracy if not item["quick_look_done"] else "Inspected"
 		if not item["quick_look_done"]:
 			look.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
@@ -1936,7 +2068,7 @@ func show_stall():
 
 		if not item["condition_checked"]:
 			var condition_button = Button.new()
-			condition_button.text = "Condition £5 | E4"
+			condition_button.text = "Condition £%d | E4" % int(condition_cost())
 			condition_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
 			condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			condition_button.tooltip_text = "Reveals the exact Condition score for certain. This is the only reliable way to know it before buying — and, for non-electronic items, the only way to know about hidden defects at all."
@@ -1948,7 +2080,7 @@ func show_stall():
 
 		if not item["basic_researched"]:
 			var research_button = Button.new()
-			research_button.text = "Research £1 | E2"
+			research_button.text = "Research £%.2f | E2" % research_cost()
 			research_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
 			research_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			research_button.tooltip_text = "Shows real sold-price comparables for this exact item. Evidence to weigh, not a guaranteed value — one-time only."
@@ -1972,7 +2104,7 @@ func quick_look(index):
 	current_time_minutes += 1
 	item["quick_look_done"] = true
 
-	var accuracy = float(eye_upgrades[eye_level]["accuracy"])
+	var accuracy = effective_look_accuracy()
 	var roll = rng.randf()
 	var accurate = roll < accuracy
 	var perceived_condition = int(item["condition"])
@@ -2004,14 +2136,15 @@ func check_condition(index):
 	if item["condition_checked"]:
 		set_status("Condition has already been checked.")
 		return
-	if cash < 5.0 or energy < 4:
-		set_status("Need £5 and E4.")
+	var cc_cost = condition_cost()
+	if cash < cc_cost or energy < 4:
+		set_status("Need £%d and E4." % int(cc_cost))
 		return
-	cash -= 5.0
-	item["extra_spend"] += 5.0
+	cash -= cc_cost
+	item["extra_spend"] += cc_cost
 	energy -= 4
 	current_time_minutes += 5
-	day_stats["research"] += 5.0
+	day_stats["research"] += cc_cost
 	var before_check = estimate_identified_potential(item)
 	item["condition_checked"] = true
 	item["action_order"].append("condition")
@@ -2040,14 +2173,15 @@ func prebuy_research(index):
 	if item["basic_researched"]:
 		set_status("Basic Research is already complete. Cached comps: " + item["basic_comps"])
 		return
-	if cash < 1.0 or energy < 2:
-		set_status("Need £1 and E2.")
+	var rc_cost = research_cost()
+	if cash < rc_cost or energy < 2:
+		set_status("Need £%.2f and E2." % rc_cost)
 		return
-	cash -= 1.0
-	item["extra_spend"] += 1.0
+	cash -= rc_cost
+	item["extra_spend"] += rc_cost
 	energy -= 2
 	current_time_minutes += 4
-	day_stats["research"] += 1.0
+	day_stats["research"] += rc_cost
 	day_stats["researches_done"] += 1
 	var research_before = estimate_identified_potential(item)
 	item["basic_researched"] = true
@@ -2082,6 +2216,10 @@ func compute_haggle_chance(item, seller, target_price):
 	var seller_haggle = float(seller_profiles[seller]["haggle"])
 	var leniency = 1.0 - seller_haggle
 	var base_chance = 0.75 + leniency * 0.20 + float(persuasion_level) * 0.01
+	if has_skill("Sharp Tongue"):
+		base_chance += 0.08
+	if has_skill("Silver Tongue"):
+		base_chance += 0.10
 	var penalty = pow(discount_pct, 1.3) * 3.0
 	var trend_mult = float(current_trends.get(item["category"], 1.0))
 	var trend_adjustment = (1.0 - trend_mult) * 0.3
@@ -2286,7 +2424,7 @@ func go_to_stall(index):
 	show_stall()
 
 func can_carry(item):
-	return carry_used + size_units(item) <= int(bag_upgrades[bag_level]["capacity"])
+	return carry_used + size_units(item) <= int(effective_bag_capacity())
 
 func can_store(item):
 	return inventory_space_used() + size_units(item) <= int(storage_upgrades[storage_level]["capacity"])
@@ -2326,7 +2464,7 @@ func buy_item(index):
 	add_xp(2)
 	queue_popup("Item Purchased! %s — £%.2f" % [item["name"], item["paid"]], "success")
 	save_game()
-	set_status("Bought %s for £%.2f. Carry used %d/%d." % [item["name"], item["paid"], carry_used, bag_upgrades[bag_level]["capacity"]])
+	set_status("Bought %s for £%.2f. Carry used %d/%d." % [item["name"], item["paid"], carry_used, effective_bag_capacity()])
 	show_stall()
 
 func update_family_condition(item):
@@ -2649,7 +2787,7 @@ func show_inventory():
 			actions.add_child(placeholder)
 		else:
 			var inv_condition_button = Button.new()
-			inv_condition_button.text = "Condition £5 | E4"
+			inv_condition_button.text = "Condition £%d | E4" % int(condition_cost())
 			inv_condition_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
 			inv_condition_button.pressed.connect(Callable(self, "inventory_check_condition").bind(i))
 			apply_button_icon(inv_condition_button, condition_icon)
@@ -2666,7 +2804,7 @@ func show_inventory():
 			actions.add_child(placeholder)
 		else:
 			var basic_button = Button.new()
-			basic_button.text = "Research £1 | E2"
+			basic_button.text = "Research £%.2f | E2" % research_cost()
 			basic_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
 			basic_button.pressed.connect(Callable(self, "inventory_basic_research").bind(i))
 			apply_button_icon(basic_button, research_icon)
@@ -3035,14 +3173,15 @@ func inventory_check_condition(index):
 	if item["condition_checked"]:
 		set_status("Condition has already been checked.")
 		return
-	if cash < 5.0 or energy < 4:
-		set_status("Need £5 and E4.")
+	var cc_cost = condition_cost()
+	if cash < cc_cost or energy < 4:
+		set_status("Need £%d and E4." % int(cc_cost))
 		return
-	cash -= 5.0
-	item["extra_spend"] += 5.0
+	cash -= cc_cost
+	item["extra_spend"] += cc_cost
 	energy -= 4
 	current_time_minutes += 5
-	day_stats["research"] += 5.0
+	day_stats["research"] += cc_cost
 	var before_check = estimate_identified_potential(item)
 	item["condition_checked"] = true
 	item["action_order"].append("condition")
@@ -3072,14 +3211,15 @@ func inventory_basic_research(index):
 	if item["basic_researched"]:
 		set_status("Research already completed once for this item.")
 		return
-	if cash < 1.0 or energy < 2:
-		set_status("Need £1 and E2.")
+	var rc_cost = research_cost()
+	if cash < rc_cost or energy < 2:
+		set_status("Need £%.2f and E2." % rc_cost)
 		return
-	cash -= 1.0
-	item["extra_spend"] += 1.0
+	cash -= rc_cost
+	item["extra_spend"] += rc_cost
 	energy -= 2
 	current_time_minutes += 4
-	day_stats["research"] += 1.0
+	day_stats["research"] += rc_cost
 	day_stats["researches_done"] += 1
 	var research_before = estimate_identified_potential(item)
 	item["basic_researched"] = true
@@ -3143,6 +3283,8 @@ func deep_research(index):
 	var total_chance = 0.20
 	if item["basic_researched"]:
 		total_chance = clamp(float(item["locked_gamble_hint"]), 0.04, 0.32)
+	if has_skill("Deep Pockets"):
+		total_chance = min(0.45, total_chance * 1.25)
 	var exceptional_cut = total_chance * 0.05
 	var significant_cut = total_chance * 0.20
 	if rare_roll < exceptional_cut:
@@ -3771,6 +3913,13 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v43", "notes": [
+		"Added a Skill Tree — 9 skills across 3 categories (Trading, Appraisal, Fortune), spent using Skill Points earned at 1 per level, separate from the existing automatic Level Unlocks",
+		"Trading: Sharp Tongue/Silver Tongue (+8%/+18% haggle success), Bulk Buyer (+1 Carry slot)",
+		"Appraisal: Keen Eye (+10% Inspect accuracy), Efficient Research (-20% Condition/Research cost), Deep Pockets (+25% Deep Research rare-variant odds)",
+		"Fortune: Lucky Streak (Fixer's Gamble 47% -> 51%), Frugal Living (-15% upkeep), Golden Touch (+8% XP)",
+		"Some skills require an earlier skill in their branch first — accessible from a new Skill Tree button in the More tab",
+	]},
 	{"version": "v42", "notes": [
 		"Major rebalance based on simulated play: sellers were wildly unbalanced (Clueless Seller was ~10x more profitable than any other seller; Collector and Dealer actually lost money despite their better rarity odds) and Deep Research had gone negative-EV after an earlier nerf, making it never worth using",
 		"Fixed the root cause for Collector/Dealer: their accurate pricing meant bargains almost never appeared for their rarity bonus to ever pay off. Widened the general pricing variance so even accurate sellers occasionally produce real bargains",
