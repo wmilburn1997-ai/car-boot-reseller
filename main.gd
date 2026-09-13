@@ -118,7 +118,19 @@ var item_families = [
 	{"name":"Patio Furniture Set","category":"Garden & Outdoor","value":[15,150],"ask":[12,130],"fake":0.00,"size":"large","testable":false,"specials":["Designer Set","Rare Material","Complete Set"]},
 	{"name":"Vintage Wheelbarrow","category":"Garden & Outdoor","value":[5,50],"ask":[4,40],"fake":0.00,"size":"large","testable":false,"specials":["Rare Maker","Original Paint","Working Order"]},
 	{"name":"Camping Stove","category":"Garden & Outdoor","value":[5,60],"ask":[4,50],"fake":0.00,"size":"medium","testable":true,"specials":["Rare Model","Unused Old Stock","Complete Kit"]},
-	{"name":"Fishing Rod Set","category":"Garden & Outdoor","value":[8,90],"ask":[6,75],"fake":0.01,"size":"medium","testable":false,"specials":["Pro Grade","Rare Maker","Complete Tackle"]}
+	{"name":"Fishing Rod Set","category":"Garden & Outdoor","value":[8,90],"ask":[6,75],"fake":0.01,"size":"medium","testable":false,"specials":["Pro Grade","Rare Maker","Complete Tackle"]},
+	{"name":"Christmas Decorations","category":"Home","value":[15,90],"ask":[10,75],"fake":0.04,"size":"small","testable":false,"season":"Winter","specials":["Antique Bauble Set","Hand-Blown Glass Set","Vintage Fairy Lights"]},
+	{"name":"Christmas Jumper","category":"Clothing","value":[10,70],"ask":[8,55],"fake":0.05,"size":"small","testable":false,"season":"Winter","specials":["Novelty Rare Print","Designer Collab","Autographed"]},
+	{"name":"Winter Coat","category":"Clothing","value":[20,140],"ask":[15,115],"fake":0.08,"size":"medium","testable":false,"season":"Winter","specials":["Vintage Designer Label","Rare Colourway","Deadstock Tags"]},
+	{"name":"Garden Furniture Set","category":"Garden & Outdoor","value":[30,180],"ask":[25,150],"fake":0.02,"size":"large","testable":false,"season":"Summer","specials":["Antique Wrought Iron","Rare Original Finish","Limited Edition Set"]},
+	{"name":"BBQ Set","category":"Garden & Outdoor","value":[20,120],"ask":[15,100],"fake":0.02,"size":"large","testable":false,"season":"Summer","specials":["Rare Vintage Model","Cast Iron Original","Collector's Edition"]},
+	{"name":"Paddling Pool","category":"Garden & Outdoor","value":[8,45],"ask":[5,38],"fake":0.01,"size":"medium","testable":false,"season":"Summer","specials":["Vintage Design Print","Sealed New Old Stock","Rare Pattern"]},
+	{"name":"Halloween Costume","category":"Clothing","value":[8,60],"ask":[5,48],"fake":0.03,"size":"small","testable":false,"season":"Autumn","specials":["Rare Movie Replica","Screen-Worn Style","Limited Run"]},
+	{"name":"Fireworks Display Box","category":"Collectables","value":[10,55],"ask":[8,45],"fake":0.02,"size":"small","testable":false,"season":"Autumn","specials":["Collector's Tin","Vintage Packaging","Rare Brand"]},
+	{"name":"Easter Decorations","category":"Home","value":[6,40],"ask":[4,32],"fake":0.02,"size":"small","testable":false,"season":"Spring","specials":["Hand-Painted Original","Vintage Ceramic","Rare Set"]},
+	{"name":"Antique Mirror","category":"Home","value":[25,160],"ask":[20,135],"fake":0.03,"size":"large","testable":false,"specials":["Gilt Frame Original","Bevelled Glass","Rare Maker's Mark"]},
+	{"name":"Leather Satchel","category":"Clothing","value":[15,110],"ask":[12,90],"fake":0.10,"size":"small","testable":false,"specials":["Vintage Leather Original","Designer Label","Rare Hardware"]},
+	{"name":"Board Game Collection","category":"Games","value":[10,95],"ask":[8,80],"fake":0.02,"size":"medium","testable":false,"specials":["Rare Out-of-Print Title","Complete Original Set","Sealed Copy"]}
 ]
 
 var rarity_table = [
@@ -1773,10 +1785,18 @@ func generate_day():
 
 func generate_item(seller):
 	var profile = seller_profiles[seller]
+	var current_season = get_season_name()
 	var candidates = []
 	for family in item_families:
 		if family["category"] in profile["categories"]:
+			if family.has("season") and family["season"] != current_season:
+				continue
 			candidates.append(family)
+	if candidates.size() == 0:
+		candidates = []
+		for family in item_families:
+			if not family.has("season") or family["season"] == current_season:
+				candidates.append(family)
 	if candidates.size() == 0:
 		candidates = item_families
 	var base = candidates[rng.randi_range(0, candidates.size() - 1)].duplicate(true)
@@ -4115,6 +4135,11 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v50", "notes": [
+		"Added 12 new item families (84 total, up from 72): 9 are seasonal (Christmas Decorations/Jumper, Winter Coat in Winter; Garden Furniture, BBQ Set, Paddling Pool in Summer; Halloween Costume, Fireworks Display Box in Autumn; Easter Decorations in Spring), 3 are year-round (Antique Mirror, Leather Satchel, Board Game Collection)",
+		"Seasons now actually restrict availability, not just pricing — seasonal items only appear during their matching season, at any seller who stocks that category. This applies everywhere items are generated: stalls, Mystery Packages, and side deal special offers",
+		"Collection Log automatically scales to the new total (84 families x 5 rarity tiers = 420 possible discoveries) since it reads the item list dynamically rather than a hardcoded count",
+	]},
 	{"version": "v49", "notes": [
 		"Cross-system audit pass: checked skill/level/challenge interactions across the whole game",
 		"Fixed: Deep Pockets' +25% Deep Research odds bonus wasn't reflected in either odds preview (stall page's Researched box, Inventory's Deep Research button) — the real roll already included it, but players with the skill saw a lower percentage than they actually got",
