@@ -187,6 +187,7 @@ var lifetime_challenges_completed = 0
 var lifetime_fixer_wins = 0
 const SAVE_PATH = "user://savegame.json"
 var last_save_time = ""
+var stat_chip_styles = {}
 var package_insight_level = 0
 var persuasion_level = 0
 const PACKAGE_INSIGHT_MAX = 20
@@ -371,6 +372,21 @@ func build_ui():
 	pattern_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	pattern_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(pattern_rect)
+
+	var pattern2_size = 64
+	var pattern2_img = Image.create(pattern2_size, pattern2_size, false, Image.FORMAT_RGBA8)
+	pattern2_img.fill(Color(0, 0, 0, 0))
+	var dot2_color = Color(0.55, 0.70, 0.95, 0.045)
+	for dx in range(5):
+		for dy in range(5):
+			pattern2_img.set_pixel(8 + dx, 8 + dy, dot2_color)
+	var pattern2_tex = ImageTexture.create_from_image(pattern2_img)
+	var pattern2_rect = TextureRect.new()
+	pattern2_rect.texture = pattern2_tex
+	pattern2_rect.stretch_mode = TextureRect.STRETCH_TILE
+	pattern2_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pattern2_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(pattern2_rect)
 
 	root_vbox = VBoxContainer.new()
 	root_vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -843,6 +859,42 @@ func show_more_menu():
 	manual_save_button.pressed.connect(Callable(self, "manual_save"))
 	body.add_child(manual_save_button)
 
+	var export_button = Button.new()
+	export_button.text = "Export Save Code"
+	export_button.tooltip_text = "Generates a text code with your full save, so you can copy it and load it on another device or browser."
+	style_button(export_button, "action")
+	body.add_child(export_button)
+
+	var export_field = LineEdit.new()
+	export_field.editable = true
+	export_field.placeholder_text = "Press Export to generate your save code"
+	body.add_child(export_field)
+
+	export_button.pressed.connect(func():
+		var code = export_save_code()
+		export_field.text = code
+		DisplayServer.clipboard_set(code)
+		queue_popup("Save code copied to clipboard! (also shown below in case copying didn't work)", "success")
+	)
+
+	var import_field = LineEdit.new()
+	import_field.placeholder_text = "Paste your save code here"
+	body.add_child(import_field)
+
+	var import_button = Button.new()
+	import_button.text = "Load Save Code"
+	import_button.tooltip_text = "Replaces your CURRENT progress with whatever is in the pasted code. This cannot be undone."
+	style_button(import_button, "danger")
+	body.add_child(import_button)
+
+	import_button.pressed.connect(func():
+		if import_save_code(import_field.text):
+			queue_popup("Save loaded!", "success")
+			show_more_menu()
+		else:
+			queue_popup("Invalid save code.")
+	)
+
 	var save_panel = make_card()
 	body.add_child(save_panel)
 	var save_box = VBoxContainer.new()
@@ -913,6 +965,12 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 	elif key == "storage":
 		bg = Color(0.20,0.13,0.05,1.0)
 		border = Color(0.72,0.50,0.18,1.0)
+	elif key == "energy":
+		bg = Color(0.06,0.16,0.16,1.0)
+		border = Color(0.25,0.62,0.62,0.75)
+	elif key == "level":
+		bg = Color(0.13,0.09,0.19,1.0)
+		border = Color(0.55,0.40,0.78,0.75)
 	sb.bg_color = bg
 	sb.border_color = border
 	sb.border_width_left = 2
@@ -931,6 +989,7 @@ func add_stat_chip(parent, key, tooltip, compact = false):
 	sb.shadow_size = 5
 	sb.shadow_offset = Vector2(0, 2)
 	pill.add_theme_stylebox_override("panel", sb)
+	stat_chip_styles[key] = sb
 	pill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	pill.size_flags_stretch_ratio = 1.0
 	parent.add_child(pill)
@@ -1049,6 +1108,12 @@ func style_button(button, kind):
 	button.add_theme_stylebox_override("normal", normal)
 	button.add_theme_stylebox_override("hover", hover)
 	button.add_theme_stylebox_override("pressed", pressed)
+	var disabled_sb = normal.duplicate()
+	disabled_sb.bg_color = Color(0.10,0.10,0.11,0.55)
+	disabled_sb.border_color = Color(0.25,0.25,0.27,0.30)
+	disabled_sb.shadow_color = Color(0,0,0,0)
+	button.add_theme_stylebox_override("disabled", disabled_sb)
+	button.add_theme_color_override("font_disabled_color", Color(0.45,0.45,0.48,0.75))
 	button.button_down.connect(Callable(self, "_on_tooltip_button_down").bind(button))
 	button.button_up.connect(Callable(self, "_on_tooltip_button_up"))
 
@@ -1288,15 +1353,7 @@ func save_game():
 	file.close()
 	last_save_time = str(data["save_time"])
 
-func load_game():
-	if not FileAccess.file_exists(SAVE_PATH):
-		return false
-	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if file == null:
-		return false
-	var text = file.get_as_text()
-	file.close()
-	var parsed = JSON.parse_string(text)
+func apply_save_data(parsed):
 	if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
 		return false
 	cash = float(parsed.get("cash", cash))
@@ -1323,6 +1380,36 @@ func load_game():
 	negative_days_streak = int(parsed.get("negative_days_streak", negative_days_streak))
 	last_save_time = str(parsed.get("save_time", ""))
 	return true
+
+func load_game():
+	if not FileAccess.file_exists(SAVE_PATH):
+		return false
+	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return false
+	var text = file.get_as_text()
+	file.close()
+	var parsed = JSON.parse_string(text)
+	return apply_save_data(parsed)
+
+func export_save_code():
+	var data = get_save_data()
+	var json_text = JSON.stringify(data)
+	return Marshalls.utf8_to_base64(json_text)
+
+func import_save_code(code):
+	var cleaned = code.strip_edges()
+	if cleaned == "":
+		return false
+	var json_text = ""
+	json_text = Marshalls.base64_to_utf8(cleaned)
+	if json_text == "":
+		return false
+	var parsed = JSON.parse_string(json_text)
+	var applied = apply_save_data(parsed)
+	if applied:
+		save_game()
+	return applied
 
 func generate_daily_challenges():
 	var templates = [
@@ -1543,8 +1630,14 @@ func update_header():
 	stat_labels["cash"].text = "£%.2f" % cash
 	if cash < 0.0:
 		stat_labels["cash"].add_theme_color_override("font_color", Color(0.95,0.55,0.45,1.0))
+		if stat_chip_styles.has("cash"):
+			stat_chip_styles["cash"].bg_color = Color(0.20,0.07,0.08,1.0)
+			stat_chip_styles["cash"].border_color = Color(0.75,0.32,0.30,1.0)
 	else:
 		stat_labels["cash"].add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
+		if stat_chip_styles.has("cash"):
+			stat_chip_styles["cash"].bg_color = Color(0.07,0.16,0.11,1.0)
+			stat_chip_styles["cash"].border_color = Color(0.20,0.55,0.32,1.0)
 	stat_labels["energy"].text = "[b][color=#7ec8ff]E[/color][/b]nergy %d/100" % energy
 	if energy <= 15:
 		stat_labels["energy"].add_theme_color_override("default_color", Color(0.95,0.55,0.45,1.0))
@@ -2000,7 +2093,7 @@ func show_stall():
 		var name_line = Label.new()
 		name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		name_line.add_theme_font_size_override("font_size", 16)
+		name_line.add_theme_font_size_override("font_size", 18)
 		name_line.text = "%s%s  •  £%.0f  •  Carry Space - %d Slots" % [rarity_text, item["name"], item["asking"], size_units(item)]
 		name_row.add_child(name_line)
 		var dismiss_button = Button.new()
@@ -2465,7 +2558,7 @@ func show_stall_list():
 		var name_line = Label.new()
 		name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		name_line.add_theme_font_size_override("font_size", 15)
+		name_line.add_theme_font_size_override("font_size", 17)
 		name_line.text = "Stall %d — %s%s" % [i + 1, stall["seller_display_name"], here_tag]
 		if packed:
 			name_line.add_theme_color_override("font_color", Color(0.5,0.5,0.55,1.0))
@@ -2667,7 +2760,7 @@ func show_special_offer():
 	var name_line = Label.new()
 	name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_line.add_theme_font_size_override("font_size", 16)
+	name_line.add_theme_font_size_override("font_size", 18)
 	name_line.text = "%s%s  •  %s  •  £%.0f  •  Carry Space - %d Slots" % [rarity_text, item["name"], item["category"], item["asking"], size_units(item)]
 	card.add_child(name_line)
 
@@ -4010,6 +4103,18 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v46", "notes": [
+		"Added Export/Import Save Code in the More tab — generates a text code containing your full save, copies it to your clipboard automatically, and shows it in a field you can select/copy manually as a fallback",
+		"Paste a save code into the Import field and press Load Save Code to restore progress on another device or browser — bridges the gap until real cloud saves exist",
+		"Importing a code overwrites your current progress, so treat it like loading a save file",
+	]},
+	{"version": "v45", "notes": [
+		"Cash pill now actually turns red when your balance goes negative, not just the text inside it — matches the £-42.25 case shown in feedback",
+		"Energy and Level header chips got their own distinct accent colors (teal and purple) instead of flat grey, matching Cash/Carry/Storage's treatment",
+		"Item names in cards are now noticeably bigger than the details below them, for clearer visual hierarchy",
+		"Disabled buttons (like an unaffordable Fixer's Gamble wager) are now clearly dimmed instead of looking nearly identical to active ones",
+		"Added a second, larger-scale background texture layer for more visual depth",
+	]},
 	{"version": "v44", "notes": [
 		"Rebuilt the Skill Tree to actually look like a tree — circular node buttons in 3 columns (one per category), color-coded green/gold/grey for unlocked/ready/locked, connected by visual bars showing prerequisite relationships",
 		"Tap a node to see what it does, use the small button below it to unlock",
