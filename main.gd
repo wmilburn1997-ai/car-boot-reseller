@@ -328,7 +328,10 @@ func _ready():
 	generate_day()
 	adjust_scale_for_device()
 	build_ui()
-	show_stall()
+	if tutorial_seen:
+		show_stall()
+	else:
+		show_tutorial()
 	get_tree().root.size_changed.connect(_on_size_changed)
 
 func _on_size_changed():
@@ -811,23 +814,23 @@ func show_skill_tree():
 	points_label.text = "Skill Points available: %d (1 earned per level, %d spent so far)" % [skill_points_available(), skill_points_spent()]
 	body.add_child(points_label)
 
-	var tree_row = HBoxContainer.new()
-	tree_row.add_theme_constant_override("separation", 8)
-	tree_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	tree_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body.add_child(tree_row)
-
 	var categories = ["Trading", "Appraisal", "Fortune"]
-	for cat in categories:
+	for cat_index in range(categories.size()):
+		var cat = categories[cat_index]
+		if cat_index > 0:
+			var divider = ColorRect.new()
+			divider.custom_minimum_size = Vector2(0, 2)
+			divider.color = Color(0.25,0.28,0.33,0.5)
+			body.add_child(divider)
 		var col = VBoxContainer.new()
 		col.add_theme_constant_override("separation", 6)
 		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tree_row.add_child(col)
+		body.add_child(col)
 
 		var cat_header = Label.new()
 		cat_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		cat_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cat_header.add_theme_font_size_override("font_size", 14)
+		cat_header.add_theme_font_size_override("font_size", 16)
 		cat_header.text = cat
 		col.add_child(cat_header)
 
@@ -865,6 +868,98 @@ func show_skill_tree():
 	legend.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
 	legend.text = "Green = unlocked  •  Gold = ready to unlock  •  Grey = locked or needs its prerequisite first. Tap a node to see what it does."
 	body.add_child(legend)
+
+var tutorial_seen = false
+var tutorial_slide_index = 0
+var tutorial_slides = [
+	{"title": "Welcome to Car Boot Reseller", "body": "Buy things cheap, work out what they're really worth, and sell them for more. That's the whole game — everything else is helping you do that better.\n\nYou start with £300. Let's walk through the basics."},
+	{"title": "Browsing a Stall", "body": "Visit Stalls to see what's on offer. Each stall belongs to a different seller, and only some of their stock is revealed at first.\n\nPress Dig Deeper to reveal more items — it costs a little energy each time."},
+	{"title": "Sellers Aren't All The Same", "body": "Every seller prices things differently. Some (like a Clueless Seller) barely know what they've got, so you'll spot bigger bargains. Others (like a Dealer) price accurately but have better odds of stocking something genuinely rare.\n\nThere's no single 'best' seller — it depends what you're after."},
+	{"title": "Before You Buy: Inspect", "body": "Inspect gives a cheap, rough read on an item's condition before you commit any real money. It can be wrong — it's not a guarantee, just a hint."},
+	{"title": "After You Buy: Condition, Research & Testing", "body": "Once it's yours, Condition reveals the exact score for certain, and Research shows real comparable sale prices.\n\nElectronics also need Testing before you can list them — it reveals whether the item actually works, which matters a lot for what it's worth."},
+	{"title": "Deep Research & Authentication", "body": "Deep Research digs deeper into exactly what you've got — occasionally turning up a rare variant worth much more. It costs more the pricier the item is.\n\nAuthenticate checks for fakes. Worth doing on anything expensive or easy to counterfeit."},
+	{"title": "Trends", "body": "Categories go in and out of fashion. A category that's TRENDING is worth more right now, and tends to sell a bit faster too — keep an eye out for the badge on item cards."},
+	{"title": "Selling", "body": "List an item near its estimated value and wait for a buyer, or Quick Sell it for instant cash at a lower price if you'd rather not wait.\n\nHigher Buyer Interest means it'll sell faster — condition, price, and trends all affect it."},
+	{"title": "Leveling Up", "body": "You'll earn XP from buying, selling, and investigating items. Leveling up unlocks perks automatically, and gives you Skill Points to spend in the Skill Tree on permanent bonuses you choose yourself.\n\nCheck the More tab for Daily Challenges too — they give solid rewards for things you'd likely do anyway."},
+	{"title": "You're Ready", "body": "That's everything you need to get going. Everything else — the Fixer's Gamble, the Collection Log, Achievements — you'll find naturally as you play.\n\nGood luck out there."},
+]
+
+func show_tutorial():
+	current_screen_name = "show_tutorial"
+	clear_body()
+	var slide = tutorial_slides[tutorial_slide_index]
+	var progress_label = Label.new()
+	progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	progress_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	progress_label.add_theme_font_size_override("font_size", 13)
+	progress_label.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
+	progress_label.text = "%d / %d" % [tutorial_slide_index + 1, tutorial_slides.size()]
+	body.add_child(progress_label)
+
+	var panel = make_card()
+	body.add_child(panel)
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	panel.add_child(box)
+
+	var title_label = Label.new()
+	title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.add_theme_font_size_override("font_size", 19)
+	title_label.text = slide["title"]
+	box.add_child(title_label)
+
+	var body_label = Label.new()
+	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body_label.add_theme_font_size_override("font_size", 15)
+	body_label.add_theme_color_override("font_color", Color(0.80,0.85,0.90,1.0))
+	body_label.text = slide["body"]
+	box.add_child(body_label)
+
+	var nav_row = HBoxContainer.new()
+	nav_row.add_theme_constant_override("separation", 10)
+	body.add_child(nav_row)
+
+	var back_button = Button.new()
+	back_button.text = "Back"
+	back_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(back_button, "nav")
+	back_button.disabled = tutorial_slide_index == 0
+	back_button.pressed.connect(func():
+		tutorial_slide_index -= 1
+		show_tutorial()
+	)
+	nav_row.add_child(back_button)
+
+	var next_button = Button.new()
+	var is_last = tutorial_slide_index >= tutorial_slides.size() - 1
+	next_button.text = "Let's Go!" if is_last else "Next"
+	next_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(next_button, "buy")
+	next_button.pressed.connect(func():
+		if is_last:
+			tutorial_seen = true
+			tutorial_slide_index = 0
+			save_game()
+			show_stall()
+		else:
+			tutorial_slide_index += 1
+			show_tutorial()
+	)
+	nav_row.add_child(next_button)
+
+	if not tutorial_seen:
+		var skip_button = Button.new()
+		skip_button.text = "Skip Tutorial"
+		style_button(skip_button, "danger")
+		skip_button.pressed.connect(func():
+			tutorial_seen = true
+			tutorial_slide_index = 0
+			save_game()
+			show_stall()
+		)
+		body.add_child(skip_button)
 
 func show_more_menu():
 	current_screen_name = "show_more_menu"
@@ -946,6 +1041,7 @@ func show_more_menu():
 	var more_row = HFlowContainer.new()
 	more_row.add_theme_constant_override("separation", 8)
 	body.add_child(more_row)
+	add_nav_button(more_row, "How to Play", func(): tutorial_slide_index = 0; show_tutorial())
 	add_nav_button(more_row, "Skill Tree (%d pts)" % skill_points_available(), Callable(self, "show_skill_tree"))
 	add_nav_button(more_row, "Daily Challenges %d/%d" % [daily_challenges_completed_count(), daily_challenges.size()], Callable(self, "show_daily_challenges"))
 	add_nav_button(more_row, "Level Unlocks", Callable(self, "show_level_unlocks"))
@@ -1405,6 +1501,7 @@ func get_save_data():
 		"lifetime_challenges_completed": lifetime_challenges_completed,
 		"lifetime_fixer_wins": lifetime_fixer_wins,
 		"skills_unlocked": skills_unlocked,
+		"tutorial_seen": tutorial_seen,
 		"negative_days_streak": negative_days_streak,
 		"save_time": Time.get_datetime_string_from_system(false, true),
 	}
@@ -1447,6 +1544,7 @@ func apply_save_data(parsed):
 	lifetime_challenges_completed = int(parsed.get("lifetime_challenges_completed", lifetime_challenges_completed))
 	lifetime_fixer_wins = int(parsed.get("lifetime_fixer_wins", lifetime_fixer_wins))
 	skills_unlocked = parsed.get("skills_unlocked", skills_unlocked)
+	tutorial_seen = bool(parsed.get("tutorial_seen", tutorial_seen))
 	negative_days_streak = int(parsed.get("negative_days_streak", negative_days_streak))
 	last_save_time = str(parsed.get("save_time", ""))
 	return true
@@ -4213,6 +4311,14 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v54", "notes": [
+		"Added an introduction tutorial — 10 slides covering the basics (buying, listing, selling) plus the main systems (sellers, Inspect/Condition/Research/Testing, Deep Research, Authentication, Trends, Buyer Interest, Leveling/Skill Tree)",
+		"Shows automatically on first launch only, with a Skip option — revisit anytime via 'How to Play' in the More tab",
+	]},
+	{"version": "v53", "notes": [
+		"Fixed a real mobile bug: the Skill Tree's 3 categories side-by-side didn't fit mobile screen width, cutting off the Fortune column, Storage stat, and the legend text entirely. Categories now stack vertically, each getting the full screen width — should display correctly on mobile now",
+		"Added a subtle divider between the stacked categories for clearer separation",
+	]},
 	{"version": "v52", "notes": [
 		"Added per-category icons (Clothing, Games, Pokemon, Electronics, Home, Vinyl, Cameras, Tools, Collectables, Jewellery, Books, Musical Instruments, Garden & Outdoor) shown next to the category text on both the stall page and Inventory item cards",
 	]},
