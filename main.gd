@@ -1361,7 +1361,7 @@ func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8d
 		help_btn.add_theme_font_size_override("font_size", 13)
 		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
 		header_row.add_child(help_btn)
-	if note_bbcode_text != "":
+	if note_bbcode_text != "" and show_action_details:
 		var note = RichTextLabel.new()
 		note.bbcode_enabled = true
 		note.fit_content = true
@@ -1400,6 +1400,31 @@ func make_grail_badge():
 	badge.add_theme_font_size_override("font_size", 13)
 	badge.add_theme_color_override("font_color", Color(1.0,0.84,0.35,1.0))
 	return badge
+
+func make_action_details_toggle():
+	var btn = Button.new()
+	btn.text = "Hide Action Details" if show_action_details else "Show Action Details"
+	btn.tooltip_text = "Toggles whether Condition/Research/Test/etc. results show their full detail text, or just a compact header."
+	style_button(btn, "nav")
+	btn.pressed.connect(func():
+		show_action_details = not show_action_details
+		if current_screen_name == "show_stall":
+			show_stall()
+		else:
+			show_inventory()
+	)
+	return btn
+
+func make_pricing_details_toggle():
+	var btn = Button.new()
+	btn.text = "Hide Pricing Details" if show_pricing_details else "Show Pricing Details"
+	btn.tooltip_text = "Toggles whether the fee/postage/profit breakdown shows in full, or just the estimated profit."
+	style_button(btn, "nav")
+	btn.pressed.connect(func():
+		show_pricing_details = not show_pricing_details
+		show_inventory()
+	)
+	return btn
 
 func make_category_icon_rect(category):
 	if not category_icons.has(category):
@@ -2187,6 +2212,7 @@ func show_stall():
 	title.add_theme_font_size_override("font_size", 18)
 	title.text = "Stall %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display]
 	title_row.add_child(title)
+	title_row.add_child(make_action_details_toggle())
 
 	var browse = Button.new()
 	browse.text = "Dig Deeper E4"
@@ -3062,6 +3088,12 @@ func show_inventory():
 	title.add_theme_font_size_override("font_size", 20)
 	title.text = "INVENTORY — Storage %d/%d" % [inventory_space_used(), storage_upgrades[storage_level]["capacity"]]
 	body.add_child(title)
+	var toggle_row = HFlowContainer.new()
+	toggle_row.add_theme_constant_override("h_separation", 8)
+	toggle_row.add_theme_constant_override("v_separation", 8)
+	body.add_child(toggle_row)
+	toggle_row.add_child(make_action_details_toggle())
+	toggle_row.add_child(make_pricing_details_toggle())
 
 	var unlisted_count = 0
 	var listed_count = 0
@@ -3387,7 +3419,10 @@ func add_listing_controls(card, index, item, potential):
 		breakdown_live.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		breakdown_live.add_theme_font_size_override("normal_font_size", 15)
 		breakdown_live.add_theme_color_override("default_color", Color(0.72,0.78,0.85,1.0))
-		breakdown_live.text = format_sale_breakdown(item, float(item["listing"])) + "\n" + format_sale_estimate(item, float(item["listing"]))
+		if show_pricing_details:
+			breakdown_live.text = format_sale_breakdown(item, float(item["listing"])) + "\n" + format_sale_estimate(item, float(item["listing"]))
+		else:
+			breakdown_live.text = format_sale_summary(item, float(item["listing"]))
 		card.add_child(breakdown_live)
 		return
 
@@ -3411,7 +3446,10 @@ func add_listing_controls(card, index, item, potential):
 	breakdown.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	breakdown.add_theme_font_size_override("normal_font_size", 15)
 	breakdown.add_theme_color_override("default_color", Color(0.72,0.78,0.85,1.0))
-	breakdown.text = format_sale_breakdown(item, initial_value) + "\n" + format_sale_estimate(item, initial_value)
+	if show_pricing_details:
+		breakdown.text = format_sale_breakdown(item, initial_value) + "\n" + format_sale_estimate(item, initial_value)
+	else:
+		breakdown.text = format_sale_summary(item, initial_value)
 
 	var minus_btn = Button.new()
 	minus_btn.text = "-"
@@ -3526,6 +3564,19 @@ func quick_sell_item(index):
 	queue_popup("Item Quick Sold: %s — £%.2f" % [item["name"], quick_price], "success")
 	save_game()
 	show_inventory()
+
+var show_pricing_details = false
+var show_action_details = false
+
+func format_sale_summary(item, price):
+	var costs = selling_costs(item, price)
+	var insurance_pack = float(costs["insurance"]) + float(costs["packaging"])
+	var total_costs = float(costs["fee"]) + float(costs["postage"]) + insurance_pack
+	var net = price - total_costs
+	var extra_spend = float(item.get("extra_spend", 0.0))
+	var profit = net - float(item["paid"]) - extra_spend
+	var profit_color = "#8cd98f" if profit >= 0.0 else "#e88c7a"
+	return "Est. profit: [color=%s]£%+.2f[/color]  •  [i](tap Show Pricing Details for the full breakdown)[/i]" % [profit_color, profit]
 
 func format_sale_breakdown(item, price):
 	var costs = selling_costs(item, price)
@@ -4447,6 +4498,10 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v56", "notes": [
+		"Reduced text density: the pricing breakdown (fee/postage/insurance/profit math) and completed-action detail text (Condition/Research/Test/etc. results) are now collapsed by default, showing a compact summary instead",
+		"Added 'Show Action Details' toggle on the stall page and Inventory, and 'Show Pricing Details' toggle on Inventory — no information was removed, just made opt-in instead of always-on",
+	]},
 	{"version": "v55", "notes": [
 		"Added Auctions — unlocks at Level 6. A third way to sell (alongside Quick Sell and Create Listing): put an item up for 3 days and the final price varies based on real bidding dynamics, not a fixed number",
 		"Any item can get a surprise result either way — but rarer finds and items in a trending category get meaningfully better odds of a real bidding war, without ordinary items being locked out of the upside entirely",
