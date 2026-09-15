@@ -2068,6 +2068,11 @@ func generate_item(seller):
 		"identified_mult": 1.0,
 		"listing": 0.0,
 		"listed": false,
+		"auctioned": false,
+		"auction_days_left": 0,
+		"auction_current_bid": 0.0,
+		"auction_final_price": 0.0,
+		"auction_tier": "",
 		"repair_attempted": false,
 		"haggle_attempted": false,
 		"seller_refuses": false,
@@ -3349,6 +3354,16 @@ func function_status(item):
 	return "Working"
 
 func add_listing_controls(card, index, item, potential):
+	if item["auctioned"]:
+		var auction_live = RichTextLabel.new()
+		auction_live.bbcode_enabled = true
+		auction_live.fit_content = true
+		auction_live.scroll_active = false
+		auction_live.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		auction_live.add_theme_font_size_override("normal_font_size", 15)
+		auction_live.text = "[color=#e8c15a][b]AUCTION LIVE[/b][/color] — Current bid: £%.2f — Ends in %d day%s" % [item["auction_current_bid"], item["auction_days_left"], "" if item["auction_days_left"] == 1 else "s"]
+		card.add_child(auction_live)
+		return
 	var box = HFlowContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	card.add_child(box)
@@ -3452,6 +3467,14 @@ func add_listing_controls(card, index, item, potential):
 	style_button(quick_sell_button, "danger")
 	quick_sell_button.pressed.connect(Callable(self, "quick_sell_item").bind(index))
 	quick_sell_row.add_child(quick_sell_button)
+
+	var auction_button = Button.new()
+	auction_button.text = "Start Auction" if player_level >= 6 else "Start Auction (Level 6)"
+	auction_button.tooltip_text = "Puts the item up for auction for 3 days. The final price varies — it can sell for well above or below its estimate. No return risk, unlike a normal sale."
+	auction_button.disabled = player_level < 6
+	style_button(auction_button, "action")
+	auction_button.pressed.connect(Callable(self, "start_auction").bind(index))
+	quick_sell_row.add_child(auction_button)
 
 func _parse_price(text):
 	var cleaned = text.strip_edges()
@@ -3907,6 +3930,119 @@ func buyer_interest_label(item, price):
 		return "LOW"
 	return "VERY LOW"
 
+func auction_flavor_text(tier, sniped):
+	if sniped:
+		return "A late bid snuck in right at the buzzer."
+	if tier == "big_war":
+		return "A proper bidding war broke out for it."
+	if tier == "war":
+		return "A collector recognized what you'd found."
+	if tier == "weak":
+		return "Sold to the only bidder in the room."
+	return "A fair price, no drama."
+
+func start_auction(index):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	if player_level < 6:
+		queue_popup("Auctions unlock at Level 6.")
+		return
+	if item["auth_status"] == "Confirmed Counterfeit":
+		set_status("Confirmed counterfeit items cannot be auctioned.")
+		return
+	if item["testable"] and not item["tested"]:
+		queue_popup("You need to test this item first.")
+		return
+	var potential = estimate_identified_potential(item)
+	var center = (float(potential[0]) + float(potential[1])) / 2.0
+
+	var hype = 0.0
+	if item["one_in"] >= 25:
+		hype += 0.15
+	if item["one_in"] >= 125:
+		hype += 0.15
+	if item["one_in"] >= 750:
+		hype += 0.15
+	if item["one_in"] >= 5000:
+		hype += 0.15
+	var trend_mult = float(current_trends.get(item["category"], 1.0))
+	if trend_mult >= 1.10:
+		hype += 0.15
+	hype = clamp(hype, 0.0, 0.6)
+
+	var weights = {"weak": 0.15, "normal": 0.50, "war": 0.25 * (1.0 + hype), "big_war": 0.10 * (1.0 + hype)}
+	var total_weight = 0.0
+	for w in weights.values():
+		total_weight += w
+	var roll = rng.randf() * total_weight
+	var cumulative = 0.0
+	var tier = "normal"
+	for key in ["weak", "normal", "war", "big_war"]:
+		cumulative += weights[key]
+		if roll <= cumulative:
+			tier = key
+			break
+	var final_mult = 1.0
+	if tier == "weak":
+		final_mult = rng.randf_range(0.65, 0.90)
+	elif tier == "normal":
+		final_mult = rng.randf_range(0.90, 1.15)
+	elif tier == "war":
+		final_mult = rng.randf_range(1.15, 1.60)
+	else:
+		final_mult = rng.randf_range(1.60, 2.20)
+	record_rng("Auction started: hype %.0f%% | tier: %s | mult x%.2f" % [hype * 100.0, tier, final_mult])
+
+	item["auctioned"] = true
+	item["listed"] = false
+	item["auction_days_left"] = 3
+	item["auction_final_price"] = max(1.0, round(center * final_mult))
+	item["auction_tier"] = tier
+	item["auction_current_bid"] = round(float(item["auction_final_price"]) * rng.randf_range(0.35, 0.55))
+	queue_popup("Auction started for %s! Ends in 3 days." % item["name"], "success")
+	show_inventory()
+
+func process_auctions():
+	var to_remove = []
+	for i in range(inventory.size()):
+		var item = inventory[i]
+		if not item["auctioned"]:
+			continue
+		item["auction_days_left"] -= 1
+		if item["auction_days_left"] <= 0:
+			var final_price = float(item["auction_final_price"])
+			var sniped = rng.randf() < 0.15
+			if sniped:
+				final_price = round(final_price * rng.randf_range(1.10, 1.25))
+			var costs = selling_costs(item, final_price)
+			var net = final_price - costs["fee"] - costs["postage"] - costs["insurance"] - costs["packaging"]
+			var profit = net - float(item["paid"]) - float(item.get("extra_spend", 0.0))
+			cash += net
+			day_stats["sales_revenue"] += final_price
+			day_stats["fees"] += costs["fee"]
+			day_stats["postage"] += costs["postage"] + costs["insurance"] + costs["packaging"]
+			day_stats["items_sold"] += 1
+			if profit > 0.0:
+				day_stats["profitable_sales"] += 1
+			sold_history.append({"name":item["name"], "price":final_price, "day":day, "condition":item["condition"], "condition_checked":item["condition_checked"], "paid":item["paid"], "fee":costs["fee"], "postage":costs["postage"], "insurance":costs["insurance"], "packaging":costs["packaging"], "extra_spend":float(item.get("extra_spend", 0.0))})
+			carry_used = max(0, carry_used - size_units(item))
+			add_xp(4 + (4 if profit > 0.0 else 0))
+			if family_stats.has(item["name"]):
+				var fs_auc = family_stats[item["name"]]
+				fs_auc["highest_sold"] = max(float(fs_auc["highest_sold"]), final_price)
+				fs_auc["lifetime_profit"] = float(fs_auc["lifetime_profit"]) + profit
+			total_lifetime_profit += profit
+			queue_popup("Auction ended: %s sold for £%.2f! %s" % [item["name"], final_price, auction_flavor_text(item["auction_tier"], sniped)], "success")
+			to_remove.append(i)
+		else:
+			var days_total = 3.0
+			var progress = (days_total - float(item["auction_days_left"])) / days_total
+			var approach_frac = clamp(0.4 + progress * 0.5 + rng.randf_range(-0.05, 0.05), 0.3, 0.95)
+			item["auction_current_bid"] = round(float(item["auction_final_price"]) * approach_frac)
+	for i in range(to_remove.size() - 1, -1, -1):
+		inventory.remove_at(to_remove[i])
+
 func create_listing(index, value_edit):
 	if index >= inventory.size():
 		return
@@ -4311,6 +4447,13 @@ func buy_upgrade(kind):
 	show_shop()
 
 var patch_notes = [
+	{"version": "v55", "notes": [
+		"Added Auctions — unlocks at Level 6. A third way to sell (alongside Quick Sell and Create Listing): put an item up for 3 days and the final price varies based on real bidding dynamics, not a fixed number",
+		"Any item can get a surprise result either way — but rarer finds and items in a trending category get meaningfully better odds of a real bidding war, without ordinary items being locked out of the upside entirely",
+		"A small chance of a last-second snipe on the final day for an extra bump",
+		"Auctions carry no return risk (sold as-is) — a genuine reason to auction a known-faulty item instead of listing it normally",
+		"Live status shown on the item card while an auction runs: current bid and days remaining",
+	]},
 	{"version": "v54", "notes": [
 		"Added an introduction tutorial — 10 slides covering the basics (buying, listing, selling) plus the main systems (sellers, Inspect/Condition/Research/Testing, Deep Research, Authentication, Trends, Buyer Interest, Leveling/Skill Tree)",
 		"Shows automatically on first launch only, with a Skip option — revisit anytime via 'How to Play' in the More tab",
@@ -4947,6 +5090,7 @@ func chance_text(chance):
 
 func end_day():
 	process_sales()
+	process_auctions()
 	var upkeep = compute_upkeep()
 	cash -= daily_expenses
 	cash -= upkeep
