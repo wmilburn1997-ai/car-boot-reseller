@@ -19,6 +19,7 @@ func art(kind, idx):
 func build(parent):
 	var v = k.vbox(14)
 	v.add_child(costs_bar())
+	ui.coach(v, "business")
 	var top = k.grid(1 if ui.mobile else 2, 12, 12)
 	top.add_child(premises_card())
 	top.add_child(vehicle_card())
@@ -69,6 +70,7 @@ func track(n, cur, names):
 func premises_card():
 	var cur = g.premises()
 	var p = k.panel("card", 14)
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var v = k.vbox(10)
 	p.add_child(v)
 	var tex = art("premises", g.premises_level)
@@ -120,6 +122,7 @@ func premises_card():
 func vehicle_card():
 	var cur = g.vehicle()
 	var p = k.panel("card", 14)
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var v = k.vbox(10)
 	p.add_child(v)
 	var tex = art("vehicle", g.vehicle_level)
@@ -231,6 +234,7 @@ func equip_card(id, owned):
 
 func account_card():
 	var p = k.panel("card", 14)
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var v = k.vbox(8)
 	p.add_child(v)
 	var cur = g.account()
@@ -250,6 +254,7 @@ func account_card():
 
 func staff_card():
 	var p = k.panel("card", 14)
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var v = k.vbox(8)
 	p.add_child(v)
 	var h = k.hbox(8)

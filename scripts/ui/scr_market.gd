@@ -29,6 +29,7 @@ func arch_color(a):
 func build_market(parent):
 	var v = k.vbox(12)
 	v.add_child(market_header())
+	ui.coach(v, "market")
 	if g.current_time_minutes >= 12 * 60:
 		v.add_child(closing_card())
 	else:
@@ -302,6 +303,7 @@ func build_stall(parent):
 		g.selected_stall_uid = int(stall["stock"][sel]["uid"])
 	var list = k.vbox(8)
 	list.add_child(stall_header(stall, closed))
+	ui.coach(list, "stall")
 	if not closed:
 		if vis.size() == 0:
 			list.add_child(k.label("Nothing on the table takes your fancy. Dig deeper or move on.", "b", k.TEXT3, true))
@@ -514,6 +516,7 @@ func build_clearance(parent):
 	hv.add_child(k.label(st["story"], "b", k.TEXT, true))
 	hv.add_child(k.label("The family want it all gone today, for one fixed price. Look round as much as your energy allows, then decide. Junk goes to the skip; you take the rest.", "s", k.TEXT3, true))
 	v.add_child(head)
+	ui.coach(v, "clearance")
 	# The deal
 	var deal = k.panel("card2", 14)
 	var dh = k.hbox(16)

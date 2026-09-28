@@ -137,14 +137,18 @@ func build_day_summary(parent, s):
 	# Money
 	var cols = k.grid(1 if ui.mobile else 2, 12, 12)
 	var inp = k.panel("card", 12)
+	inp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var iv = k.vbox(4)
 	inp.add_child(iv)
 	iv.add_child(k.label("MONEY IN", "xs", k.TEXT3))
 	money_line(iv, "Sales", float(st.get("sales_revenue", 0)))
+	if float(st.get("sales_revenue", 0)) == 0 and float(st.get("other_income", 0)) == 0:
+		iv.add_child(k.label("Nothing today.", "s", k.TEXT3))
 	if float(st.get("other_income", 0)) != 0:
 		money_line(iv, "Other", float(st.get("other_income", 0)))
 	cols.add_child(inp)
 	var outp = k.panel("card", 12)
+	outp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var ov = k.vbox(4)
 	outp.add_child(ov)
 	ov.add_child(k.label("MONEY OUT", "xs", k.TEXT3))

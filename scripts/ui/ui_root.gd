@@ -198,7 +198,7 @@ func build_root():
 		shell.add_child(nav_box)
 	else:
 		nav_box = k.vbox(6)
-		nav_box.custom_minimum_size = Vector2(210, 0)
+		nav_box.custom_minimum_size = Vector2(210 if logical.x >= 1400 else 176, 0)
 		shell.add_child(nav_box)
 		var right = k.vbox(10)
 		k.expand(right, true)
@@ -251,13 +251,16 @@ func position_toasts():
 		toast_box.offset_right = -10
 		toast_box.offset_top = 64
 	else:
-		toast_box.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+		toast_box.anchor_left = 1.0
+		toast_box.anchor_right = 1.0
+		toast_box.anchor_top = 1.0
+		toast_box.anchor_bottom = 1.0
 		toast_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 		toast_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
-		toast_box.offset_right = -18
-		toast_box.offset_bottom = -18
 		toast_box.offset_left = -440
-		toast_box.custom_minimum_size = Vector2(420, 0)
+		toast_box.offset_right = -20
+		toast_box.offset_top = -20
+		toast_box.offset_bottom = -20
 
 func set_chrome(v):
 	chrome_visible = v
@@ -415,6 +418,8 @@ func update_hud():
 	else:
 		build_hud_desktop()
 		refresh_goal_box()
+	if abs(hud_cash_value - g.cash) >= 0.5:
+		animate_cash()
 	if nav_box != null and is_instance_valid(nav_box):
 		for id in nav_buttons:
 			pass
@@ -430,19 +435,19 @@ func refresh_goal_box():
 	gb.add_child(k.label(g.current_goal_text(), "s", k.GOLD, true))
 
 func build_hud_desktop():
+	var compact = logical.x < 1560
 	var p = k.panel("hud", 8)
-	var row = k.hbox(14)
+	var row = k.hbox(10 if compact else 14)
 	p.add_child(row)
 	hud_box.add_child(p)
 	# cash
 	var cash_box = k.hbox(8)
-	cash_box.custom_minimum_size = Vector2(200, 0)
+	cash_box.custom_minimum_size = Vector2(150 if compact else 200, 0)
 	var coin = k.glyph("coin", k.GOLD, 26)
 	coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	cash_box.add_child(coin)
 	var cv = k.vbox(0)
-	hud_cash_label = k.label(g.fmt_money(g.cash), "xl", k.GREEN if g.cash >= 0 else k.RED)
-	hud_cash_value = g.cash
+	hud_cash_label = k.label(g.fmt_money(hud_cash_value), "xl", k.GREEN if g.cash >= 0 else k.RED)
 	cv.add_child(hud_cash_label)
 	cv.add_child(k.label("business %s" % g.fmt_money(g.business_value()), "xs", k.TEXT3))
 	cash_box.add_child(cv)
@@ -453,7 +458,7 @@ func build_hud_desktop():
 	row.add_child(vsep())
 	# day & clock
 	var dv = k.vbox(3)
-	dv.custom_minimum_size = Vector2(170, 0)
+	dv.custom_minimum_size = Vector2(120 if compact else 170, 0)
 	var dh = k.hbox(6)
 	dh.add_child(k.label("Day %d" % g.day, "m", k.TEXT))
 	dh.add_child(k.label(g.format_time(), "m", k.GOLD))
@@ -469,21 +474,23 @@ func build_hud_desktop():
 	var wg = k.glyph(k.weather_glyph(w), k.weather_color(w), 22)
 	wg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	wb.add_child(wg)
-	var wv = k.vbox(0)
-	wv.add_child(k.label(g.weather_name(w), "s", k.TEXT))
-	wv.add_child(k.label(g.market_name(g.market_today.get("type", "regular")), "xs", k.TEXT3))
-	wb.add_child(wv)
-	wb.tooltip_text = str(g.market_today.get("weather_line", ""))
+	if not compact:
+		var wv = k.vbox(0)
+		wv.add_child(k.label(g.weather_name(w), "s", k.TEXT))
+		wv.add_child(k.label(g.market_name(g.market_today.get("type", "regular")), "xs", k.TEXT3))
+		wb.add_child(wv)
+	wb.tooltip_text = "%s: %s" % [g.weather_name(w), str(g.market_today.get("weather_line", ""))]
 	wb.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(wb)
 	row.add_child(vsep())
-	row.add_child(meter("bolt", "Energy", g.energy, 100, k.TEAL, "Energy for today. Most actions use some. Refills every morning."))
-	row.add_child(meter("bag", "Carry", g.carry_used, g.effective_bag_capacity(), k.BLUE, "What you can carry home today (%s)." % g.vehicle()["name"]))
-	row.add_child(meter("box", "Storage", g.inventory_space_used(), g.storage_capacity(), k.ORANGE, "Space at your %s." % g.premises()["name"]))
+	var mw = 72 if compact else 96
+	row.add_child(meter("bolt", "Energy", g.energy, 100, k.TEAL, "Energy for today. Most actions use some. Refills every morning.", mw))
+	row.add_child(meter("bag", "Carry", g.carry_used, g.effective_bag_capacity(), k.BLUE, "What you can carry home today (%s)." % g.vehicle()["name"], mw))
+	row.add_child(meter("box", "Storage", g.inventory_space_used(), g.storage_capacity(), k.ORANGE, "Space at your %s." % g.premises()["name"], mw))
 	row.add_child(k.spacer(0, 0, true))
 	# level
 	var lv = k.vbox(3)
-	lv.custom_minimum_size = Vector2(130, 0)
+	lv.custom_minimum_size = Vector2(100 if compact else 130, 0)
 	var lh = k.hbox(6)
 	lh.add_child(k.glyph("star", k.PURPLE, 14))
 	lh.add_child(k.label("Level %d" % g.player_level, "s", k.TEXT))
@@ -498,6 +505,7 @@ func build_hud_desktop():
 	var rt = k.vbox(0)
 	rt.add_child(k.label("%d%%" % int(g.seller_rating), "m", k.GREEN if g.seller_rating >= 90 else (k.GOLD if g.seller_rating >= 70 else k.RED)))
 	rt.add_child(k.label("rating", "xs", k.TEXT3))
+	rt.visible = not compact or logical.x >= 1180
 	rt.tooltip_text = "Seller rating. Returns lower it, and a low rating slows sales."
 	rt.mouse_filter = Control.MOUSE_FILTER_PASS
 	row.add_child(rt)
@@ -510,9 +518,9 @@ func vsep():
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return c
 
-func meter(glyph_name, name, v, maxv, color, tip):
+func meter(glyph_name, name, v, maxv, color, tip, w = 96):
 	var b = k.vbox(3)
-	b.custom_minimum_size = Vector2(96, 0)
+	b.custom_minimum_size = Vector2(w, 0)
 	var h = k.hbox(5)
 	h.add_child(k.glyph(glyph_name, color, 14))
 	h.add_child(k.label("%d/%d" % [int(v), int(maxv)], "s", k.TEXT))
@@ -532,8 +540,7 @@ func build_hud_mobile():
 	var coin = k.glyph("coin", k.GOLD, 18)
 	coin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	cv.add_child(coin)
-	hud_cash_label = k.label(g.fmt_money(g.cash), "l", k.GREEN if g.cash >= 0 else k.RED)
-	hud_cash_value = g.cash
+	hud_cash_label = k.label(g.fmt_money(hud_cash_value), "l", k.GREEN if g.cash >= 0 else k.RED)
 	cv.add_child(hud_cash_label)
 	row.add_child(cv)
 	hud_refs["cash_anchor"] = cv
@@ -567,7 +574,9 @@ func animate_cash():
 		return
 	var from = hud_cash_value
 	var to = g.cash
-	if abs(to - from) < 0.5:
+	if abs(to - from) < 0.5 or abs(to - from) > 100000.0:
+		hud_cash_value = to
+		_set_cash_text(to)
 		return
 	hud_cash_value = to
 	var tw = hud_cash_label.create_tween()
@@ -827,8 +836,21 @@ func clear_toasts():
 		toast_box.remove_child(c)
 		c.queue_free()
 
+var fx_pending = []
+
 func fx_money(amount):
-	animate_cash()
+	fx_pending.append(amount)
+	g.get_tree().create_timer(0.06).timeout.connect(_fx_flush)
+
+func _fx_flush():
+	var list = fx_pending
+	fx_pending = []
+	var off = 0
+	for a in list:
+		_fx_spawn(a, off)
+		off += 26
+
+func _fx_spawn(amount, yoff):
 	var anchor = hud_refs.get("cash_anchor", null)
 	if anchor == null or not is_instance_valid(anchor) or not anchor.is_visible_in_tree():
 		return
@@ -837,7 +859,7 @@ func fx_money(amount):
 	l.add_theme_constant_override("outline_size", 4)
 	overlay.add_child(l)
 	var pos = anchor.global_position - root.global_position
-	l.position = pos + Vector2(40, 30)
+	l.position = pos + Vector2(40, 30 + yoff)
 	var tw = l.create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(l, "position", l.position + Vector2(0, 36 if amount >= 0 else 46), 1.1).set_ease(Tween.EASE_OUT)
@@ -959,3 +981,29 @@ func handle_key(ev):
 		_:
 			return false
 	return true
+
+# --- first-time coaching -----------------------------------------------------------
+const COACH = {
+	"market": "This is the morning's car boot. Every stall is a person: some are regulars who'll remember you. Stalls pack up from late morning and the field shuts at noon, so pick your route.",
+	"stall": "Pick something off the table. Research shows what it really sells for after fees. Inspect is quick but can be wrong. You only get one offer per item.",
+	"clue": "A purple ? is a clue: something about this item isn't what it seems. It could be good or bad. Checks, expertise and workshop kit identify it; anything you miss, a buyer will spot.",
+	"stock": "Everything you own. Your estimate can be wrong until you check things properly. Electricals must be tested. Set a price and list it: buyers come overnight when you end the day.",
+	"business": "Save up for bigger premises, a better vehicle and workshop kit. Each one changes what you can do, but premises and vehicles cost rent or fuel every night.",
+	"clearance": "A whole house for one price. Look round the rooms you have energy for, then decide. Your expertise shows you more. Take it and you get everything; walk away and the morning's gone.",
+}
+
+func coach(parent, id):
+	if g.tips_seen.has(id) or not COACH.has(id):
+		return
+	var p = k.panel("blue", 12)
+	var h = k.hbox(10)
+	p.add_child(h)
+	var gl = k.glyph("spark", k.BLUE, 20)
+	gl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	h.add_child(gl)
+	h.add_child(k.label(COACH[id], "s", k.TEXT, true))
+	h.add_child(k.button("Got it", "action", func():
+		g.tips_seen[id] = true
+		g.save_settings()
+		refresh(), "", "s"))
+	parent.add_child(p)

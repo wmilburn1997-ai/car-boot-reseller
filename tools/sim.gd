@@ -297,12 +297,14 @@ func spend_upgrades():
 	if g.vehicle_level < Biz.VEHICLES.size() - 1:
 		var nv = Biz.VEHICLES[g.vehicle_level + 1]
 		var mult = 2.0 if g.vehicle_level == 0 else 2.5
+		if strategy == "tycoon":
+			mult = 1.3
 		if cash - float(nv["cost"]) > reserve and cash > float(nv["cost"]) * mult:
 			g.buy_vehicle()
 			return
-	if used > cap * 0.7 and g.can_buy_premises():
+	if (used > cap * 0.7 or (strategy == "tycoon" and g.vehicle_level >= 3)) and g.can_buy_premises():
 		var np = Biz.PREMISES[g.premises_level + 1]
-		if cash > float(np["cost"]) * 2.0:
+		if cash > float(np["cost"]) * (2.0 if strategy != "tycoon" else 1.3):
 			g.buy_premises()
 			return
 	if used > cap * 0.75 and g.equip_level("shelving") < 2 and g.workshop_slots_used() < g.workshop_slots() or (g.equip_level("shelving") == 1 and used > cap * 0.8):

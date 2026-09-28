@@ -84,10 +84,10 @@ Per-category expertise XP comes from:
 | Tier | Name | XP | Unlocks |
 |---|---|---|---|
 | 0 | Novice | 0 | Standard view |
-| 1 | Enthusiast | 60 | `eye` tier-1 clues show on Inspect; tighter estimates |
-| 2 | Specialist | 200 | The category's **specialist action** at stalls and at home; `eye` tier-2 |
-| 3 | Expert | 450 | Expert-tier traits; **Collector contact**: a daily private buyer in the category who pays close to true value |
-| 4 | Authority | 900 | Spot fakes at a glance in the category (exact fake status on the specialist action); `eye` tier-3 |
+| 1 | Enthusiast | 70 | `eye` tier-1 clues show on Inspect; tighter estimates |
+| 2 | Specialist | 220 | The category's **specialist action** at stalls and at home; `eye` tier-2 |
+| 3 | Expert | 560 | Expert-tier traits; **Collector contact**: a daily private buyer in the category who pays close to true value |
+| 4 | Authority | 1200 | Spot fakes at a glance in the category (exact fake status on the specialist action); `eye` tier-3 |
 
 ### Specialist actions
 

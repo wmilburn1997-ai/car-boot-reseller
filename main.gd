@@ -580,8 +580,7 @@ func add_xp(amount):
 
 var level_unlock_tiers = [
 	{"level": 3, "desc": "+1 Mystery Package available each day"},
-	{"level": 4, "desc": "Collectors' Fairs start appearing on the market calendar"},
-	{"level": 5, "desc": "The Fixer's Gamble unlocks a bigger £350 stake"},
+		{"level": 5, "desc": "The Fixer's Gamble unlocks a bigger £350 stake"},
 	{"level": 6, "desc": "Online auctions"},
 	{"level": 8, "desc": "Dig Deeper reveals 1 extra item each time"},
 	{"level": 15, "desc": "The Fixer's Gamble can be used twice a day"},
@@ -681,6 +680,7 @@ func generate_day():
 	carry_used = 0
 	fixer_uses_today = 0
 	collector_used_today = {}
+	collector_offers = {}
 	rival_route = []
 	selected_stall_uid = -1
 	generate_daily_challenges()
@@ -768,8 +768,9 @@ func build_stall(reg, mfx, wfx):
 		"rival_visited": false,
 		"tipoff": false,
 	}
+	var rate = 0.9 if (has_perk("regulars_rate") and float(reg.get("rel", 0.0)) >= 50.0) else 1.0
 	var ctx = {"cats": reg.get("cats", []), "rarity_boost": float(mfx["rarity"]),
-		"price_mult": float(pers.get("price_mod", 1.0)) * float(wfx["price"]),
+		"price_mult": float(pers.get("price_mod", 1.0)) * float(wfx["price"]) * rate,
 		"knowledge_mod": float(pers.get("knowledge_mod", 0.0))}
 	var stock_count = rng.randi_range(max(6, int(profile["depth"] * 0.65)), profile["depth"])
 	var seen_names = {}
@@ -1823,7 +1824,7 @@ func repair_item(index):
 		return
 	if not can_repair(item):
 		return
-	var cost = repair_cost(item) if item["fault"] else 6.0
+	var cost = repair_cost(item) if (item["fault"] and fault_is_known(item)) else 6.0
 	if cash < cost or energy < 10:
 		queue_popup("Repairing needs £%.0f and 10 energy." % cost)
 		return
@@ -1868,10 +1869,12 @@ func repair_item(index):
 	add_toast("Repair: %s." % ", ".join(notes), "success" if "fixed" in item["repair_note"].to_lower() or "repaired" in item["repair_note"].to_lower() else "warn")
 	refresh_after("inv")
 
-func buyer_interest_score(item, price, perceived = false):
+func buyer_interest_score(item, price, perceived = false, reference_override = -1.0):
 	# perceived=true: what the player expects, based on their own estimate.
 	# perceived=false: the real figure used by the sale roll.
 	var reference = perceived_center(item) if perceived else market_value(item)
+	if reference_override > 0.0:
+		reference = reference_override
 	var r = float(price) / max(1.0, reference)
 	var score = 0.93 - (r - 0.70) * 1.18
 	score *= lerp(1.0, float(current_trends.get(item["category"], 1.0)), 0.5)
@@ -2038,6 +2041,8 @@ func create_listing(index, price_in):
 	if item["testable"] and not item["tested"]:
 		queue_popup("Test it first: buyers want to know it works.")
 		return
+	if item["auctioned"]:
+		return
 	if not item["listed"] and active_listing_count() >= listing_cap():
 		queue_popup("You're at your listing limit (%d). Bigger premises or a Light-Box Studio let you list more." % listing_cap())
 		return
@@ -2122,7 +2127,7 @@ func record_completed_sale(item, sale_price, costs, channel):
 	day_stats["fees"] += float(costs["fee"])
 	day_stats["postage"] += float(costs["postage"]) + float(costs["insurance"]) + float(costs["packaging"])
 	day_stats["items_sold"] += 1
-	var missed = missed_traits_on_sale(item)
+	var missed = missed_traits_on_sale(item) if channel in ["listing", "instant", "shop"] else []
 	var missed_names = []
 	for t in missed:
 		missed_names.append(trait_def(t)["name"])
@@ -2142,7 +2147,10 @@ func record_completed_sale(item, sale_price, costs, channel):
 		unlock_achievement("First Flip")
 	if sale_profit >= 200.0:
 		unlock_achievement("Big Score")
-	add_expertise(item["category"], 8 + (4 if sale_profit > 0.0 else 0))
+	if channel == "trader":
+		add_expertise(item["category"], 2)
+	else:
+		add_expertise(item["category"], 8 + (4 if sale_profit > 0.0 else 0))
 	if missed.size() > 0:
 		var mline = "Missed on the %s: %s. %s" % [item["name"], ", ".join(missed_names), str(trait_def(missed[0]).get("missed", ""))]
 		add_journal(mline, "bad")
@@ -2200,8 +2208,9 @@ func resolve_item_sale(item, sale_chance, channel = "listing"):
 		if fake_unauth:
 			reason = "says it's a fake, and filed a claim"
 			seller_rating = max(0.0, seller_rating - 9.0 * hit)
-			item["auth_status"] = "Suspected Counterfeit"
-			item["auth_attempted"] = false
+			if item["auth_status"] != "Confirmed Counterfeit":
+				item["auth_status"] = "Suspected Counterfeit"
+				item["auth_attempted"] = false
 		elif item["fault"] and not fault_is_known(item):
 			reason = "found a fault you didn't mention"
 			seller_rating = max(0.0, seller_rating - 5.0 * hit)
@@ -2246,6 +2255,9 @@ func process_sales():
 	for i in range(inventory.size()):
 		var item = inventory[i]
 		if not item["listed"]:
+			continue
+		if item["auth_status"] == "Confirmed Counterfeit":
+			item["listed"] = false
 			continue
 		var interest = buyer_interest_score(item, float(item["listing"]))
 		var chance = daily_sale_chance(interest)
@@ -2545,11 +2557,11 @@ var show_rng_toasts = true
 func load_settings():
 	var cfg = ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) != OK:
-		ui_scale = 1.0 if OS.has_feature("web") else 1.25
+		ui_scale = 1.0
 		return
 	master_volume = float(cfg.get_value("audio", "master_volume", 0.8))
 	sfx_enabled = to_bool(cfg.get_value("audio", "sfx_enabled", true))
-	ui_scale = float(cfg.get_value("display", "ui_scale", 1.25))
+	ui_scale = float(cfg.get_value("display", "ui_scale2", 1.0))
 	fullscreen = to_bool(cfg.get_value("display", "fullscreen", false))
 	show_rng_toasts = to_bool(cfg.get_value("gameplay", "show_rng_toasts", true))
 	music_volume = float(cfg.get_value("audio", "music_volume", 0.5))
@@ -2561,7 +2573,7 @@ func save_settings():
 	cfg.set_value("audio", "master_volume", master_volume)
 	cfg.set_value("audio", "sfx_enabled", sfx_enabled)
 	cfg.set_value("audio", "music_volume", music_volume)
-	cfg.set_value("display", "ui_scale", ui_scale)
+	cfg.set_value("display", "ui_scale2", ui_scale)
 	cfg.set_value("display", "fullscreen", fullscreen)
 	cfg.set_value("gameplay", "show_rng_toasts", show_rng_toasts)
 	cfg.set_value("gameplay", "tips_seen", tips_seen)
@@ -3129,7 +3141,8 @@ func migrate_from_0_10(parsed):
 	premises_level = {0: 0, 1: 0, 2: 1, 3: 2, 4: 3, 5: 4}.get(storage_level, 0)
 	if storage_level >= 1:
 		equipment["shelving"] = 1
-	vehicle_level = clamp(bag_level, 0, Biz.VEHICLES.size() - 1)
+	vehicle_level = {0: 0, 1: 1, 2: 1, 3: 2, 4: 3}.get(bag_level, 0)
+	goals_done = 0
 	if toolbox_level > 0:
 		equipment["repair"] = min(3, toolbox_level)
 	fee_level = clamp(fee_level, 0, Biz.ACCOUNTS.size() - 1)
@@ -3146,7 +3159,7 @@ func migrate_from_0_10(parsed):
 	if skills_unlocked.size() > 0:
 		skills_unlocked = {}
 		notes.append("The skill tree is now Perks, with new mechanical abilities. Your points have been refunded.")
-	notes.append("Welcome to 0.11. Your upgrades have become a business: %s, %s%s." % [premises()["name"], vehicle()["name"], (" and a " + Biz.EQUIPMENT["repair"]["levels"][equip_level("repair") - 1]["name"]) if equip_level("repair") > 0 else ""])
+	notes.append("Welcome to 0.11. Your upgrades have become a business: %s, %s%s. Premises, vehicles and staff now have running costs (rent, fuel, wages) every night instead of upkeep. Check the Business page." % [premises()["name"], vehicle()["name"], (" and a " + Biz.EQUIPMENT["repair"]["levels"][equip_level("repair") - 1]["name"]) if equip_level("repair") > 0 else ""])
 	return notes
 
 func asset_value():
@@ -3317,6 +3330,12 @@ func show_skill_tree():
 func show_clearance():
 	_screen("show_clearance")
 
+func show_knowledge():
+	_screen("show_knowledge")
+
+func show_perks():
+	_screen("show_perks")
+
 func show_day_summary(summary):
 	_screen("show_day_summary", [summary])
 
@@ -3336,7 +3355,7 @@ func adjust_scale_for_device():
 # =====================================================================
 # 0.11 — EXPERTISE
 # =====================================================================
-const EXPERTISE_TIERS = [0, 50, 160, 400, 850]
+const EXPERTISE_TIERS = [0, 70, 220, 560, 1200]
 const EXPERTISE_TIER_NAMES = ["Novice", "Enthusiast", "Specialist", "Expert", "Authority"]
 const SPECIALIST_ACTIONS = {
 	"Vinyl": "Read the run-out",
@@ -3462,15 +3481,15 @@ func roll_item_traits(item, fam, profile, rarity_tier, ctx = {}):
 	var taken_ids = {}
 	var r = rng.randf()
 	var n = 0
-	if r < 0.36:
+	if r < 0.40:
 		n = 0
-	elif r < 0.74:
+	elif r < 0.76:
 		n = 1
-	elif r < 0.93:
+	elif r < 0.94:
 		n = 2
 	else:
 		n = 3
-	var good_p = 0.44
+	var good_p = 0.34
 	good_p += {"Common": 0.0, "Uncommon": 0.06, "Rare": 0.12, "Very Rare": 0.18, "Grail": 0.26}.get(rarity_tier, 0.0)
 	good_p += (float(item["condition"]) - 6.5) * 0.025
 	good_p += float(profile.get("trait_bias", 0.0))
@@ -3583,7 +3602,8 @@ func on_trait_found(item, t, method):
 		return
 	discoveries_log[d["id"]] = int(discoveries_log.get(d["id"], 0)) + 1
 	day_stats["discoveries"] = int(day_stats.get("discoveries", 0)) + 1
-	add_expertise(item["category"], 6 if d["kind"] == "good" else 4)
+	var owned = inventory.has(item)
+	add_expertise(item["category"], (6 if d["kind"] == "good" else 4) if owned else 2)
 	var pct = trait_value_pct(t)
 	var kind = str(d["kind"])
 	if kind == "hidden_item":
@@ -3615,7 +3635,7 @@ func missed_traits_on_sale(item):
 		if t.get("known", false):
 			continue
 		var d = trait_def(t)
-		if d == null or d["kind"] != "good":
+		if d == null or not (d["kind"] in ["good", "hidden_item"]):
 			continue
 		missed.append(t)
 		t["known"] = true
@@ -3686,6 +3706,10 @@ func specialist_check(where, index):
 		msg += (" " if msg != "" else "") + "Authority eye: it's %s." % ("genuine" if item["authentic"] else "a FAKE")
 		if not item["authentic"]:
 			item["identified_mult"] = float(item["identified_mult"]) * 0.10
+			item["listed"] = false
+			item["auctioned"] = false
+			item["on_shop_floor"] = false
+			item["listing"] = 0.0
 	if msg != "":
 		add_toast(msg, "info")
 	item["expert_note"] = msg
@@ -3854,7 +3878,7 @@ func collector_offer_for(item):
 	var key = str(item.get("uid", 0)) + ":" + str(day)
 	if not collector_offers.has(key):
 		var needs_test = item["testable"] and not item["tested"]
-		collector_offers[key] = max(1.0, round(true_market_value(item) * rng.randf_range(0.82, 1.04) * (0.85 if needs_test else 1.0)))
+		collector_offers[key] = max(1.0, round(perceived_center(item) * rng.randf_range(0.90, 1.05) * (0.85 if needs_test else 1.0)))
 	return float(collector_offers[key])
 
 func sell_to_collector(index):
@@ -3863,16 +3887,30 @@ func sell_to_collector(index):
 		return
 	var price = collector_offer_for(item)
 	collector_used_today[item["category"]] = true
-	cash += price
 	spend_time(3)
+	# The collector looks it over properly before paying.
+	if not item["authentic"] and item["auth_status"] != "Confirmed Genuine":
+		item["auth_status"] = "Suspected Counterfeit"
+		add_toast("Your %s collector turns it over and hands it back: \"That's not right, mate. Not for me.\"" % item["category"], "error")
+		add_journal("A collector refused the %s as a fake." % item["name"], "bad")
+		save_game()
+		show_inventory()
+		return
+	if item["fault"] and not fault_is_known(item):
+		price = max(1.0, round(price * fault_multiplier(item["fault_severity"])))
+		if item["testable"]:
+			item["tested"] = true
+		else:
+			item["condition_checked"] = true
+		add_toast("The collector spots a fault and knocks the price down to £%.0f." % price, "warn")
+	cash += price
 	var profit = record_completed_sale(item, price, {"fee": 0.0, "postage": 0.0, "insurance": 0.0, "packaging": 0.0}, "collector")
 	inventory.remove_at(index)
-	add_toast("Your %s collector contact paid £%.0f for the %s (profit %s)." % [item["category"], price, item["name"], money_signed(profit)], "success" if profit >= 0 else "warn")
+	add_toast("Your %s collector paid £%.0f for the %s (profit %s)." % [item["category"], price, item["name"], money_signed(profit)], "success" if profit >= 0 else "warn")
 	fx_money(price)
 	play_sfx("sale")
 	save_game()
 	show_inventory()
-
 
 # =====================================================================
 # 0.11 — THE BUSINESS (premises, vehicle, workshop, account, staff)
@@ -4149,7 +4187,11 @@ func process_shop_floor():
 		if not item.get("on_shop_floor", false):
 			continue
 		var price = float(item.get("shop_price", 0.0))
-		var chance = daily_sale_chance(buyer_interest_score(item, price)) * 0.55 * footfall
+		if item["auth_status"] == "Confirmed Counterfeit":
+			item["on_shop_floor"] = false
+			continue
+		# Walk-in customers handle the item: they judge it on what it really is.
+		var chance = daily_sale_chance(buyer_interest_score(item, price, false, true_market_value(item))) * 0.55 * footfall
 		var roll = rng.randf()
 		if roll < chance:
 			cash += price
@@ -4174,8 +4216,8 @@ func put_on_shop_floor(index, price):
 	if shop_floor_count() >= shop_floor_cap():
 		queue_popup("The shop floor's full (%d items)." % shop_floor_cap())
 		return
-	if item["auth_status"] == "Confirmed Counterfeit":
-		queue_popup("You can't knowingly sell a counterfeit.")
+	if item["auth_status"] in ["Confirmed Counterfeit", "Suspected Counterfeit"]:
+		queue_popup("You can't put a suspected fake on the shelf.")
 		return
 	if item["listed"] or item["auctioned"]:
 		queue_popup("Take it off the internet first.")
@@ -4281,7 +4323,7 @@ func plan_day_type(d):
 		return "early_bird"
 	if d >= 8 and d % 21 == 15:
 		return "bank_holiday"
-	if player_level >= 4 and d % 7 == 4 and rng.randf() < 0.65:
+	if vehicle_level >= 2 and d % 7 == 4 and rng.randf() < 0.7:
 		return "collectors_fair"
 	if season == "Winter" and d % 7 == 6:
 		return "christmas_market"
@@ -4436,7 +4478,7 @@ func plan_rival_route():
 	var order = range(stalls.size())
 	order.shuffle()
 	var visits = min(stalls.size(), rng.randi_range(2, 4))
-	var t = 7 * 60 + 20 + int(MARKET_FX.get(market_today.get("type", "regular"), MARKET_FX["regular"])["early"])
+	var t = 7 * 60 + 20 + max(0, int(market_today.get("start_offset", 0)))
 	for i in range(visits):
 		t += rng.randi_range(12, 45)
 		rival_route.append({"stall": order[i], "minute": t, "done": false})
@@ -4557,7 +4599,7 @@ func build_clearance(lead):
 	for it in items:
 		total += true_market_value(it)
 	# The family want a quick, fixed price: a fraction of what it'll fetch, with noise the player can't see.
-	var price = round(total * rng.randf_range(0.32, 0.58) / 5.0) * 5.0
+	var price = round(total * rng.randf_range(0.36, 0.86) / 5.0) * 5.0
 	rng.seed = saved_seed
 	rng.state = saved_state
 	return {"lead": lead, "items": items, "rooms": rooms, "price": max(40.0, price), "looked": 0}
@@ -4577,6 +4619,7 @@ func start_clearance(lead_id):
 		return
 	clearance = build_clearance(lead)
 	market_today["clearance"] = true
+	daily_expenses = pitch_fee()
 	add_journal("Went to do a clearance: %s." % WorldData.CLEARANCE_STORIES[int(lead["story"])]["title"], "info")
 	save_game()
 	show_clearance()
@@ -4597,7 +4640,10 @@ func clearance_look(room_index):
 	for idx in room["items"]:
 		var it = clearance["items"][idx]
 		it["quick_look_done"] = true
-		it["perceived_condition"] = clamp(int(it["condition"]) + (0 if rng.randf() < inspect_accuracy(it) else rng.randi_range(-3, 3)), 1, 10)
+		it["quick_look_accuracy"] = inspect_accuracy(it)
+		it["quick_look_roll"] = rng.randf()
+		it["perceived_condition"] = clamp(int(it["condition"]) + (0 if float(it["quick_look_roll"]) < float(it["quick_look_accuracy"]) else rng.randi_range(-3, 3)), 1, 10)
+		it["quick_look_note"] = inspect_clue_text(int(it["perceived_condition"]))
 		reveal_traits(it, "look")
 		if can_specialist_check(it):
 			reveal_traits(it, "expert")

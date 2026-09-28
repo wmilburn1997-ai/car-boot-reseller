@@ -451,6 +451,8 @@ func findings(it, ctx):
 	if str(it.get("haggle_note", "")) != "" and ctx == "stall":
 		notes.append(["person", it["haggle_note"], k.GOLD])
 	for n in notes:
+		if str(n[1]).strip_edges() == "":
+			continue
 		var h2 = k.hbox(8)
 		var gl = k.glyph(n[0], n[2], 14)
 		gl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -462,6 +464,10 @@ func findings(it, ctx):
 		return null
 	var outer = k.vbox(8)
 	outer.add_child(k.section("What you know"))
+	for t in it.get("traits", []):
+		if t.get("clue", false) and not t.get("known", false):
+			ui.coach(outer, "clue")
+			break
 	outer.add_child(v)
 	return outer
 

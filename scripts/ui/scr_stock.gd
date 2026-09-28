@@ -58,6 +58,7 @@ func sorted_indices():
 func build(parent):
 	var list = k.vbox(8)
 	list.add_child(summary())
+	ui.coach(list, "stock")
 	list.add_child(tabs_row())
 	var idx = sorted_indices()
 	var sel = -1

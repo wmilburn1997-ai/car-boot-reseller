@@ -19,7 +19,8 @@ const PREMISES = [
 const VEHICLES = [
 	{"id":"foot","name":"On Foot","carry":6,"cost":0,"fuel":0.0,"desc":"Two hands and a bag for life."},
 	{"id":"trolley","name":"Shopping Trolley","carry":10,"cost":60,"fuel":0.0,"desc":"A folding tartan trolley. Squeaks, but holds a surprising amount."},
-	{"id":"estate","name":"Old Estate Car","carry":18,"cost":700,"fuel":3.0,"desc":"Rear seats down, boot full. Gets you to the out-of-town markets."},
+	{"id":"estate","name":"Old Estate Car","carry":18,"cost":700,"fuel":3.0,"desc":"Rear seats down, boot full. Gets you to the Collectors' Fairs out of town.",
+		"unlocks":["Collectors' Fairs"]},
 	{"id":"van","name":"Panel Van","carry":30,"cost":2400,"fuel":6.0,"desc":"A second-hand van with somebody else's logo half-scraped off.",
 		"unlocks":["House clearances"]},
 	{"id":"luton","name":"Luton Box Van","carry":48,"cost":7000,"fuel":10.0,"desc":"A tail-lift and a box the size of a bedroom.",
@@ -70,7 +71,7 @@ const STAFF = {
 const PERKS = [
 	{"id":"early_bird","branch":"Buying","name":"Early Bird","cost":1,"requires":"","desc":"Arrive at 6:30 instead of 7:00: half an hour before most rivals."},
 	{"id":"silver_tongue","branch":"Buying","name":"Silver Tongue","cost":1,"requires":"","desc":"When a seller rejects your offer, they come back with a counter-offer you can take."},
-	{"id":"bundle","branch":"Buying","name":"Bundle Deal","cost":2,"requires":"silver_tongue","desc":"Offer for everything you've picked at a stall in one go. Sellers like shifting stock."},
+	{"id":"regulars_rate","branch":"Buying","name":"Regular's Rate","cost":2,"requires":"silver_tongue","desc":"Sellers who count you as a regular knock 10% off everything on their table."},
 	{"id":"poker_face","branch":"Buying","name":"Poker Face","cost":1,"requires":"","desc":"Lowball offers never get you thrown off a stall, and cost half the goodwill."},
 	{"id":"charmer","branch":"Buying","name":"Charmer","cost":2,"requires":"poker_face","desc":"Regulars warm to you twice as fast."},
 	{"id":"keen_eye","branch":"Knowing","name":"Keen Eye","cost":1,"requires":"","desc":"+12% Inspect reliability in every category."},
