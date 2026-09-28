@@ -799,8 +799,8 @@ func sell_panel(it, index):
 	if g.collector_contact_available(it):
 		var offer = g.collector_offer_for(it)
 		alt.add_child(k.button("Collector pays %s" % g.fmt_money(offer), "gold", func(): g.sell_to_collector(index), "Your %s collector contact makes one private offer a day. No fees, no postage." % it["category"], "s"))
-	var tr_lo = 0.55 if g.has_perk("trade_contacts") else 0.40
-	var tr_hi = 0.75 if g.has_perk("trade_contacts") else 0.60
+	var tr_lo = 0.45 if g.has_perk("trade_contacts") else 0.35
+	var tr_hi = 0.60 if g.has_perk("trade_contacts") else 0.50
 	alt.add_child(k.button("Sell to a trader", "ghost", func(): g.quick_sell_item(index), "Instant cash: a trader pays %d–%d%% of what it's really worth." % [int(tr_lo * 100), int(tr_hi * 100)], "s"))
 	alt.add_child(k.button("Scrap", "ghost", func(): g.scrap_item(index), "Parts value only.", "s"))
 	v.add_child(alt)

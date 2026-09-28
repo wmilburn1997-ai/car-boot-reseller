@@ -81,7 +81,7 @@ const PERKS = [
 	{"id":"quick_study","branch":"Knowing","name":"Quick Study","cost":1,"requires":"","desc":"Earn expertise 50% faster in every category."},
 	{"id":"polymath","branch":"Knowing","name":"Polymath","cost":3,"requires":"quick_study","desc":"Count as at least Enthusiast (tier 1) in every category."},
 	{"id":"good_photos","branch":"Selling","name":"Good Photos","cost":1,"requires":"","desc":"Listings attract more buyers (stacks with the Photo Corner)."},
-	{"id":"trade_contacts","branch":"Selling","name":"Trade Contacts","cost":1,"requires":"","desc":"Traders offer 55–75% of value instead of 40–60%."},
+	{"id":"trade_contacts","branch":"Selling","name":"Trade Contacts","cost":1,"requires":"","desc":"Traders offer 45–60% of value instead of 35–50%."},
 	{"id":"auctioneer","branch":"Selling","name":"Auctioneer","cost":2,"requires":"","desc":"Auctions unlock straight away and the auction house fee drops to 2%."},
 	{"id":"thick_skin","branch":"Selling","name":"Thick Skin","cost":1,"requires":"","desc":"Returns only knock your seller rating half as much."},
 	{"id":"frugal","branch":"Selling","name":"Frugal","cost":2,"requires":"","desc":"Rent, fuel, wages and pitch fees cost 15% less."},

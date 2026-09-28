@@ -1484,7 +1484,7 @@ func quick_sell_item(index):
 	if item["auth_status"] == "Confirmed Counterfeit":
 		queue_popup("Confirmed counterfeits can't be sold. Scrap it for parts.")
 		return
-	var qs_roll = rng.randf_range(0.42, 0.58) if has_perk("trade_contacts") else rng.randf_range(0.30, 0.45)
+	var qs_roll = rng.randf_range(0.45, 0.60) if has_perk("trade_contacts") else rng.randf_range(0.35, 0.50)
 	var quick_price = max(1.0, round(true_market_value(item) * qs_roll))
 	record_rng("Trader offer: %.0f%% of market value | Result: £%.0f" % [qs_roll * 100.0, quick_price])
 	cash += quick_price
@@ -1621,21 +1621,22 @@ const RARITY_EXPECT = {"Common": 1.0, "Uncommon": 1.3, "Rare": 1.85, "Very Rare"
 
 func knowledge_weight(item):
 	# How much of your estimate comes from evidence about THIS item rather than its type.
+	# Research (real sold prices) is the big one; an unresearched item is mostly a guess from its type.
 	var w = 0.0
 	if item["quick_look_done"]:
-		w += 0.10
-	if item["basic_researched"]:
-		w += 0.50
-	if item["condition_checked"]:
-		w += 0.10
-	if item["deep_researched"]:
-		w += 0.25
-	if item["testable"] and item["tested"]:
 		w += 0.05
+	if item["basic_researched"]:
+		w += 0.80
+	if item["condition_checked"]:
+		w += 0.08
+	if item["deep_researched"]:
+		w += 0.15
+	if item["testable"] and item["tested"]:
+		w += 0.03
 	if item.get("expert_checked", false):
-		w += 0.10
-	w += 0.07 * float(expertise_tier(item["category"]))
-	return clamp(w, 0.0, 0.97)
+		w += 0.08
+	w += 0.05 * float(expertise_tier(item["category"]))
+	return clamp(w, 0.0, 0.98)
 
 func family_prior(item):
 	var fam = content.family(str(item["name"])) if content != null else null
@@ -3558,7 +3559,7 @@ func roll_item_traits(item, fam, profile, rarity_tier, ctx = {}):
 		n = 2
 	else:
 		n = 3
-	var good_p = 0.34
+	var good_p = 0.38
 	good_p += {"Common": 0.0, "Uncommon": 0.06, "Rare": 0.12, "Very Rare": 0.18, "Grail": 0.26}.get(rarity_tier, 0.0)
 	good_p += (float(item["condition"]) - 6.5) * 0.025
 	good_p += float(profile.get("trait_bias", 0.0))
