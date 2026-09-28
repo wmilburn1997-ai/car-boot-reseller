@@ -60,8 +60,10 @@ func _run():
 	check(b.stalls.size() > 0, "fresh day generated for legacy save")
 	check(b.discovered_log.has("Trading Cards|Trading Card Tin|Common"), "collection keys migrated")
 	b.show_inventory()
-	b.show_sold_history()
-	b.show_collection_log()
+	b.ui.show_journal("sales")
+	b.ui.show_journal("collection")
+	b.ui.show_journal("discoveries")
+	b.show_business()
 	b.end_day()
 	await process_frame
 	check(b.day == 10, "legacy save can end a day")
@@ -109,5 +111,60 @@ func _run():
 	check(d.pending_special_offer == null, "accepted offer not pending after reload")
 	check(d.energy <= dr_energy, "deep research energy not refunded by reload")
 	d.queue_free()
+	await process_frame
+	# 0.11 state round trip: business, expertise, regulars, rival, traits, mid-clearance
+	var e = load("res://Main.tscn").instantiate()
+	get_root().add_child(e)
+	await process_frame
+	e.start_new_game()
+	e.cash = 9000.0
+	e.buy_vehicle()
+	e.buy_vehicle()
+	e.buy_vehicle()
+	e.buy_premises()
+	e.buy_equipment("cleaning")
+	e.expertise["Vinyl"] = 300.0
+	e.regulars[0]["rel"] = 77.0
+	var it2 = e.generate_item("Collector")
+	it2["traits"] = [{"id": e.content.traits.keys()[0], "mult": 1.5, "known": true, "clue": true, "fixed": false}]
+	e.inventory.append(it2)
+	var uid2 = int(it2["uid"])
+	var lead = e.add_clearance_lead("paper")
+	e.start_clearance(lead["id"])
+	e.clearance_look(0)
+	var snap2 = {"veh": e.vehicle_level, "prem": e.premises_level, "eq": e.equip_level("cleaning"), "rel": e.regulars[0]["rel"], "rid": e.regulars[0]["id"], "rival": e.rival["name"], "clear_items": e.clearance["items"].size(), "looked": e.clearance["rooms"][0]["looked"], "cash": e.cash}
+	e.save_game()
+	e.queue_free()
+	await process_frame
+	var f = load("res://Main.tscn").instantiate()
+	get_root().add_child(f)
+	await process_frame
+	check(f.vehicle_level == snap2["veh"] and f.premises_level == snap2["prem"] and f.equip_level("cleaning") == snap2["eq"], "business restored")
+	check(f.expertise_tier("Vinyl") == 2, "expertise restored")
+	check(abs(float(f.regulars[0]["rel"]) - float(snap2["rel"])) < 0.01 and int(f.regulars[0]["id"]) == int(snap2["rid"]), "regulars restored")
+	check(f.rival["name"] == snap2["rival"], "rival restored")
+	check(f.clearance != null and f.clearance["items"].size() == snap2["clear_items"] and f.to_bool(f.clearance["rooms"][0]["looked"]), "mid-clearance restored")
+	var found = null
+	for x in f.inventory:
+		if int(x["uid"]) == uid2:
+			found = x
+	check(found != null and found["traits"].size() == 1 and found["traits"][0]["known"] == true, "item traits restored with uid")
+	f.accept_clearance()
+	check(f.clearance == null, "clearance can be completed after reload")
+	f.end_day()
+	await process_frame
+	check(f.day == 2, "day ends after clearance")
+	# 0.10 mid-game save (version 2) migration
+	var old = {"save_version": 2, "cash": 1200.0, "day": 30, "player_level": 9, "player_xp": 10, "inventory": [], "bag_level": 3, "storage_level": 3, "toolbox_level": 2, "eye_level": 2, "fee_level": 1, "package_insight_level": 2, "persuasion_level": 1, "skills_unlocked": {"Keen Eye": true}, "category_knowledge": {"Vinyl": 25, "Games": 10}, "goals_done": 9, "tutorial_seen": true, "sold_history": [{"name": "Punk LP", "price": 40.0, "day": 3, "paid": 10.0, "category": "Vinyl"}]}
+	f.apply_save_data(old)
+	check(f.premises_level == 2 and f.equip_level("shelving") == 1 and f.equip_level("repair") == 2, "0.10 storage/toolbox migrated")
+	check(f.vehicle_level == 2, "0.10 bag migrated to vehicle")
+	check(f.skills_unlocked.size() == 0 and f.skill_points_available() == 8, "old skills refunded")
+	check(abs(f.cash - (1200.0 + 50.0 + 64.0 + 50.0)) < 0.01, "retired upgrades refunded (%.0f)" % f.cash)
+	check(f.expertise_tier("Vinyl") >= 1 and f.goals_done == 0, "knowledge -> expertise, goals re-checked")
+	check(f.regulars.size() > 0 and f.rival.has("name") and f.stalls.size() > 0, "world created for old save")
+	f.check_goals()
+	check(f.goals_done > 0, "old save fast-forwards met goals")
+	f.queue_free()
 	print("SAVE TESTS: %d failures" % fails)
 	quit()

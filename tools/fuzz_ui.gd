@@ -8,6 +8,10 @@ func _initialize():
 	var steps = int(args[0]) if args.size() > 0 else 2000
 	var s = int(args[1]) if args.size() > 1 else 1
 	seed(s)
+	if OS.get_environment("W") != "":
+		var sz = Vector2i(int(OS.get_environment("W")), int(OS.get_environment("H")))
+		get_root().size = sz
+		DisplayServer.window_set_size(sz)
 	main = load("res://Main.tscn").instantiate()
 	get_root().add_child(main)
 	_run(steps)

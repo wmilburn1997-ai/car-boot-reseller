@@ -4354,6 +4354,8 @@ func plan_for(d):
 	return {"day": d, "type": "regular", "weather": "overcast"}
 
 func market_name(type_id):
+	if type_id == "regular":
+		return "Car Boot Sale"
 	var md = WorldData.MARKET_DAYS.get(type_id, {})
 	return str(md.get("name", "Car Boot Sale"))
 
