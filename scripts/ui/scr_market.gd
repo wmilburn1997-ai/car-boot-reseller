@@ -121,7 +121,7 @@ func stall_card(i):
 	b.add_theme_stylebox_override("pressed", k.sbox(k.PANEL, border, 8, 1, 12))
 	b.add_theme_stylebox_override("disabled", k.sbox(Color(0.06, 0.07, 0.09), k.LINE, 8, 1, 12))
 	b.add_theme_stylebox_override("focus", k.sbox(Color(0, 0, 0, 0), null, 8, 0, 0))
-	b.custom_minimum_size = Vector2(0, 104 if not ui.mobile else 92)
+	b.custom_minimum_size = Vector2(0, 118 if not ui.mobile else 104)
 	var v = k.vbox(4)
 	v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	v.offset_left = 12
@@ -166,6 +166,9 @@ func stall_card(i):
 	if stall.get("visited", false) and not packed:
 		st.add_child(k.glyph("check", k.GREEN, 12))
 	v.add_child(st)
+	var why = stall_hook(stall)
+	if why[0] != "" and not (packed or banned):
+		v.add_child(k.label(why[0], "xs", why[1]))
 	b.add_child(v)
 	b.disabled = packed or banned
 	b.pressed.connect(func():
@@ -319,16 +322,19 @@ func build_stall(parent):
 		list.add_child(stall_buttons(stall))
 	list.add_child(k.spacer(0, 16))
 	var detail = k.vbox(10)
+	var footer = null
 	if sel >= 0 and not closed:
 		detail.add_child(ui.item.detail(stall["stock"][sel], "stall", sel, stall))
 		if not ui.mobile:
-			detail.add_child(k.spacer(0, 4))
-			var bb = ui.item.buy_button(stall["stock"][sel], sel, stall)
-			detail.add_child(bb)
-			detail.add_child(dismiss_row(sel))
+			footer = k.hbox(8)
+			footer.add_child(ui.item.buy_button(stall["stock"][sel], sel, stall))
+			footer.add_child(k.button("Not interested", "ghost", func():
+				g.dismiss_stall_item(sel)
+				g.selected_stall_uid = -1
+				ui.refresh(), "Hide it from the list.", "s", 0, 52))
 	else:
 		detail.add_child(seller_detail(stall))
-	ui.master_detail(parent, "stall%d" % g.current_stall_index, list, detail, 1.0)
+	ui.master_detail(parent, "stall%d" % g.current_stall_index, list, detail, 1.0, footer)
 	if ui.mobile and ui.sheet_open and sel >= 0 and not closed:
 		var it2 = stall["stock"][sel]
 		var body = ui.item.detail(it2, "stall", sel, stall)
@@ -519,7 +525,7 @@ func build_clearance(parent):
 	ui.coach(v, "clearance")
 	# The deal
 	var deal = k.panel("card2", 14)
-	var dh = k.hbox(16)
+	var dh = k.vbox(10) if ui.mobile else k.hbox(16)
 	deal.add_child(dh)
 	var seen_est = 0.0
 	var seen_n = 0
@@ -536,11 +542,17 @@ func build_clearance(parent):
 	var mid = k.vbox(0)
 	k.expand(mid)
 	mid.add_child(k.label("WHAT YOU'VE SEEN", "xs", k.TEXT3))
-	mid.add_child(k.label("%d items, roughly %s" % [seen_n, g.fmt_money(seen_est)] if seen_n > 0 else "Nothing yet: have a look round", "l", k.TEAL))
-	mid.add_child(k.label("Rough, before fees. The rooms you haven't seen could hold anything.", "xs", k.TEXT3, true))
+	mid.add_child(k.label("%d items, roughly %s" % [seen_n, g.fmt_money(seen_est)] if seen_n > 0 else "Nothing yet: have a look round", "l", k.TEAL, true))
+	if seen_n > 0:
+		var per = seen_est / float(seen_n)
+		var proj = per * c["items"].size() * 0.74
+		var margin = proj - float(c["price"])
+		var col = k.GREEN if margin >= float(c["price"]) * 0.25 else (k.GOLD if margin > 0 else k.RED)
+		mid.add_child(k.label("If the rest are similar, after fees you'd clear about %s: %s vs their price." % [g.fmt_money(proj), g.money_signed(margin)], "s", col, true))
+	mid.add_child(k.label("Rough guesses. The rooms you haven't seen could hold anything.", "xs", k.TEXT3, true))
 	dh.add_child(mid)
 	v.add_child(deal)
-	var actions = k.hbox(10)
+	var actions = k.vbox(8) if ui.mobile else k.hbox(10)
 	var free = g.storage_capacity() - g.inventory_space_used()
 	var take = k.button("Take the job  %s" % g.fmt_money(c["price"]), "buy", func(): g.accept_clearance(), "", "m", 0, 52)
 	take.disabled = g.cash < float(c["price"]) or free < g.clearance_space_needed()
@@ -548,7 +560,9 @@ func build_clearance(parent):
 		take.text = "Not enough storage (%d free)" % free
 	take.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions.add_child(take)
-	actions.add_child(k.button("Walk away", "ghost", func(): g.walk_away_clearance(), "", "m", 150, 52))
+	if free < g.clearance_space_needed():
+		actions.add_child(k.button("Make room: your stock", "action", func(): ui.show_inventory(true), "Sell or scrap things to free storage, then come back here.", "m", 0, 52))
+	actions.add_child(k.button("Walk away", "ghost", func(): g.walk_away_clearance(), "", "m", 0 if ui.mobile else 150, 52))
 	v.add_child(actions)
 	# Rooms
 	v.add_child(k.section("The house"))
@@ -579,3 +593,36 @@ func build_clearance(parent):
 	v.add_child(gr)
 	v.add_child(k.spacer(0, 20))
 	parent.add_child(ui.keyed_scroll("clearance", v))
+
+
+func stall_hook(stall):
+	# One line on why this stall might be worth the walk.
+	if g.stall_has_saved_item(stall):
+		return ["Put something aside for you", k.GOLD]
+	var mins = int(stall["packing_minute"]) - g.current_time_minutes
+	if mins <= 25 and mins > 0:
+		return ["Packing up in %d minutes" % mins, k.ORANGE]
+	var cats = {}
+	for i in range(min(int(stall["revealed"]), stall["stock"].size())):
+		var c = stall["stock"][i]["category"]
+		cats[c] = int(cats.get(c, 0)) + 1
+	var best = ""
+	var bt = 0
+	for c in cats:
+		var t = g.expertise_tier(c)
+		if t > bt or (t == bt and best != "" and cats[c] > cats[best]):
+			bt = t
+			best = c
+	if best != "" and bt >= 1:
+		return ["%d %s on the table (your %s)" % [cats[best], best, g.EXPERTISE_TIER_NAMES[bt].to_lower()], k.TEAL]
+	if g.special_event_profiles.has(stall["seller"]):
+		return ["Might have more in the car", k.GOLD.darkened(0.1)]
+	var top = ""
+	var tn = 0
+	for c in cats:
+		if cats[c] > tn:
+			tn = cats[c]
+			top = c
+	if top != "" and tn >= 2:
+		return ["Mostly %s" % top, k.TEXT3]
+	return ["", k.TEXT3]

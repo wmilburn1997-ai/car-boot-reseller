@@ -24,10 +24,11 @@ func build_title(parent):
 	center.add_child(v)
 	if ResourceLoader.exists("res://banner.png"):
 		var tr = k.tex_rect(load("res://banner.png"), 0)
-		tr.custom_minimum_size = Vector2(0, 200 if not ui.mobile else 150)
+		tr.custom_minimum_size = Vector2(0, 280 if not ui.mobile else 160)
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		v.add_child(tr)
-	v.add_child(k.label("CAR BOOT RESELLER", "hero", k.GOLD, false, HORIZONTAL_ALIGNMENT_CENTER))
+	else:
+		v.add_child(k.label("CAR BOOT RESELLER", "hero", k.GOLD, false, HORIZONTAL_ALIGNMENT_CENTER))
 	v.add_child(k.label("Buy low at the boot sale. Find what everyone else missed. Build an empire.", "b", k.TEXT2, true, HORIZONTAL_ALIGNMENT_CENTER))
 	v.add_child(k.spacer(0, 6))
 	if confirm_new:
@@ -194,19 +195,26 @@ func build_day_summary(parent, s):
 	var cont = k.button("Next morning  ›", "primary", func():
 		g.play_sfx("confirm")
 		ui.show_market(), "", "xl", 0, 60)
-	v.add_child(cont)
-	v.add_child(k.spacer(0, 20))
-	parent.add_child(ui.keyed_scroll("summary", v))
+	v.add_child(k.spacer(0, 10))
+	var outer = k.vbox(10)
+	k.expand(outer, true)
+	outer.add_child(ui.keyed_scroll("summary", ui.cap_width(v, 1100)))
+	outer.add_child(ui.cap_width(cont, 1100))
+	parent.add_child(outer)
 	g.play_sfx("day_good" if cash_delta >= 0 else "day_bad")
 
 func event_card(e):
 	var kind = str(e.get("kind", "info"))
 	var style = {"sale": "good", "return": "bad", "missed": "purple", "bad": "bad", "info": "card"}.get(kind, "card")
+	if kind == "sale" and float(e.get("profit", 0.0)) < 0.0:
+		style = "card"
 	var p = k.panel(style, 10)
 	var h = k.hbox(10)
 	p.add_child(h)
 	var gl = {"sale": "coin", "return": "cross", "missed": "q", "bad": "person", "info": "spark"}.get(kind, "spark")
 	var col = {"sale": k.GREEN, "return": k.RED, "missed": k.PURPLE, "bad": k.RED, "info": k.TEXT2}.get(kind, k.TEXT2)
+	if kind == "sale" and float(e.get("profit", 0.0)) < 0.0:
+		col = k.TEXT2
 	var gg = k.glyph(gl, col, 20)
 	gg.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	h.add_child(gg)
@@ -236,12 +244,11 @@ func money_line(parent, name, v):
 func build_more(parent):
 	var v = k.vbox(12)
 	v.add_child(k.label("More", "xl", k.TEXT))
-	var items = [
-		["spark", "Perks", "Spend your level-up points", func(): ui.show_perks()],
-		["star", "Expertise", "What you know, and what's next", func(): ui.show_knowledge()],
-		["news", "Market news", "Trends, rumours and the week ahead", func(): ui.show_news()],
-		["book", "Journal", "Story, discoveries, collection, sales", func(): ui.show_journal()],
-		["trophy", "Daily challenges", challenges_line(), func(): ui.show_journal("achievements")],
+	var items = []
+	if ui.mobile:
+		items.append(["news", "Market news", "Trends, rumours and the week ahead", func(): ui.show_news()])
+	items += [
+		["trophy", "Achievements", "%d of %d unlocked" % [g.achievements.size(), g.ALL_ACHIEVEMENTS.size()], func(): ui.show_journal("achievements")],
 		["gear", "Settings", "Sound, interface size, save codes", func(): ui.show_settings()],
 		["q", "How to play", "The tutorial again", func(): ui.show_tutorial()],
 		["list", "Playtest notes", "What's new, and a bug-report helper", func(): ui.show_notes()],
@@ -281,7 +288,7 @@ func build_more(parent):
 		h2.add_child(k.label("%s  (%d/%d)" % [c["desc"], min(int(g.day_stats.get(c["type"], 0)), int(c["target"])), int(c["target"])], "s", k.GREEN if done else k.TEXT2, true))
 		v.add_child(h2)
 	v.add_child(k.spacer(0, 20))
-	parent.add_child(ui.keyed_scroll("more", v))
+	parent.add_child(ui.keyed_scroll("more", ui.cap_width(v, 1100)))
 
 func challenges_line():
 	return "%d of %d done today" % [g.daily_challenges_completed_count(), g.daily_challenges.size()]
@@ -478,6 +485,14 @@ func build_notes(parent):
 			h.add_child(k.glyph("spark", k.GOLD, 12))
 			h.add_child(k.label(n, "s", k.TEXT2, true))
 			v.add_child(h)
+	v.add_child(k.section("Dice log"))
+	v.add_child(k.label("Every roll is shown. Odds that would give away an item's hidden value stay hidden until the truth comes out.", "xs", k.TEXT3, true))
+	var lp = k.panel("inset", 10)
+	var lv = k.vbox(3)
+	lp.add_child(lv)
+	for i in range(g.rng_log.size() - 1, max(-1, g.rng_log.size() - 41), -1):
+		lv.add_child(k.label(ui.item.strip_bb(g.rng_log[i]), "xs", k.TEXT2, true))
+	v.add_child(lp)
 	v.add_child(k.section("Found a bug?"))
 	v.add_child(k.label("Copy this and paste it into your report. It includes a save code so we can see exactly what happened.", "s", k.TEXT3, true))
 	v.add_child(k.button("Copy bug report info", "action", func():

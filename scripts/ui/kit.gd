@@ -322,7 +322,7 @@ func action_tile(icon, title_text, sub, kind = "action", cb = null, disabled = f
 	b.focus_mode = Control.FOCUS_NONE
 	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	b.tooltip_text = tooltip
-	b.custom_minimum_size = Vector2(0, 52 if mobile else 46)
+	b.custom_minimum_size = Vector2(0, 58 if mobile else 46)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.disabled = disabled or done
 	var h = hbox(8)
@@ -350,7 +350,10 @@ func action_tile(icon, title_text, sub, kind = "action", cb = null, disabled = f
 	v.add_child(tl)
 	if str(sub) != "":
 		var sl = label(sub, "xs", fg.darkened(0.25) if not done else GREEN.darkened(0.1))
-		sl.clip_text = true
+		if mobile:
+			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		else:
+			sl.clip_text = true
 		v.add_child(sl)
 	h.add_child(v)
 	b.add_child(h)

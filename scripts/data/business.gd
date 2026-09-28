@@ -2,18 +2,20 @@ extends RefCounted
 # Business progression data: premises, vehicles, workshop equipment, seller accounts, staff, perks.
 
 const PREMISES = [
-	{"id":"box_room","name":"Box Room","storage":18,"slots":1,"listings":8,"cost":0,"rent":0.0,
+	{"id":"box_room","name":"Box Room","storage":18,"slots":1,"listings":8,"cost":0,"rent":0.0,"energy":0,
 		"desc":"A spare room with a wobbly shelf. Everything smells faintly of old cardboard."},
-	{"id":"garage","name":"Rented Garage","storage":40,"slots":2,"listings":14,"cost":450,"rent":3.0,
-		"desc":"A lock-up garage behind the flats. Room for a proper bench and a strip light."},
-	{"id":"lockup","name":"Industrial Lock-up","storage":80,"slots":3,"listings":22,"cost":1600,"rent":8.0,
-		"desc":"A unit on the trading estate with a roller door and a kettle. Now you're a business."},
-	{"id":"shop","name":"High Street Shop","storage":140,"slots":4,"listings":32,"cost":5500,"rent":20.0,
+	{"id":"garage","name":"Rented Garage","storage":40,"slots":2,"listings":14,"cost":450,"rent":3.0,"energy":5,
+		"desc":"A lock-up garage behind the flats. Room for a proper bench and a strip light.",
+		"unlocks":["+5 energy a day: a proper place to work"]},
+	{"id":"lockup","name":"Industrial Lock-up","storage":80,"slots":3,"listings":22,"cost":1600,"rent":5.0,"energy":10,
+		"desc":"A unit on the trading estate with a roller door and a kettle. Now you're a business.",
+		"unlocks":["+10 energy a day", "Room to hire an assistant"]},
+	{"id":"shop","name":"High Street Shop","storage":140,"slots":4,"listings":32,"cost":5500,"rent":12.0,"energy":15,
 		"desc":"A little shop with a bell over the door. Walk-in customers buy straight off the shelf.",
-		"unlocks":["Shop floor: display stock for walk-in customers (no fees or postage)"]},
-	{"id":"warehouse","name":"Warehouse","storage":320,"slots":6,"listings":50,"cost":16000,"rent":45.0,
+		"unlocks":["Shop floor: walk-in customers buy straight off the shelf (no fees or postage)", "+15 energy a day"]},
+	{"id":"warehouse","name":"Warehouse","storage":320,"slots":6,"listings":50,"cost":16000,"rent":25.0,"energy":20,
 		"desc":"Racking to the ceiling, a loading bay and a forklift you're not insured to drive.",
-		"unlocks":["Trade buyers take bulk stock at fair prices", "Space for a full team"]},
+		"unlocks":["A trade buyer takes your slow stock off your hands once a day", "+20 energy a day", "Space for a full team"]},
 ]
 
 const VEHICLES = [
@@ -55,16 +57,16 @@ const EQUIPMENT = {
 
 const ACCOUNTS = [
 	{"name":"Casual Seller","fee":0.115,"cost":0,"sales":0,"rating":0},
-	{"name":"Registered Seller","fee":0.095,"cost":300,"sales":20,"rating":0},
-	{"name":"Business Account","fee":0.075,"cost":1200,"sales":60,"rating":85},
-	{"name":"Trade Account","fee":0.055,"cost":3500,"sales":150,"rating":90},
-	{"name":"Power Seller","fee":0.040,"cost":9000,"sales":300,"rating":95},
+	{"name":"Registered Seller","fee":0.095,"cost":150,"sales":20,"rating":0},
+	{"name":"Business Account","fee":0.075,"cost":500,"sales":60,"rating":85},
+	{"name":"Trade Account","fee":0.055,"cost":1200,"sales":150,"rating":90},
+	{"name":"Power Seller","fee":0.040,"cost":3000,"sales":300,"rating":95},
 ]
 
 const STAFF = {
-	"assistant": {"name":"Assistant","wage":22.0,"needs":2,"desc":"Works your stock overnight: tests untested electricals, cleans grimy items (if you have a Cleaning Station) and trims 10% off listings that have sat for a week."},
-	"shopkeeper": {"name":"Shop Keeper","wage":28.0,"needs":3,"desc":"Keeps the shop open all day: doubles walk-in customers on the shop floor."},
-	"picker": {"name":"Picker","wage":35.0,"needs":4,"desc":"Works the car boot for you before you arrive: reveals extra items at every stall and keeps the rival honest."},
+	"assistant": {"name":"Assistant","wage":10.0,"needs":2,"desc":"Works your stock overnight: tests untested electricals, cleans grimy items (if you have a Cleaning Station) and trims 10% off listings that have sat for a week."},
+	"shopkeeper": {"name":"Shop Keeper","wage":14.0,"needs":3,"desc":"Keeps the shop open all day: doubles walk-in customers on the shop floor."},
+	"picker": {"name":"Picker","wage":15.0,"needs":4,"desc":"Works the car boot for you before you arrive: reveals extra items at every stall and keeps the rival honest."},
 }
 
 # Perks: one skill point per level. Mechanical, not +x% filler where possible.

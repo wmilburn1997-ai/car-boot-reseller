@@ -104,7 +104,7 @@ var package_table = [
 var special_event_profiles = {
 	"Desperate Seller": {"title":"Something in the Car","flavor":"\"Look, I need this gone today. I've got more of this in the car if you want first look.\"","price_mult":[0.55,0.80],"value_mult":[0.85,1.15],"fault_bonus":0.10},
 	"House Clearance": {"title":"More in the Van","flavor":"\"There's a lot more of this back in the van, actually. Take it or leave it.\"","price_mult":[0.75,1.00],"value_mult":[0.90,1.30],"fault_bonus":0.05},
-	"Collector": {"title":"From My Personal Collection","flavor":"\"I don't usually let this go... but from my personal collection, if you're serious.\"","price_mult":[0.95,1.30],"value_mult":[1.30,2.20],"fault_bonus":-0.05},
+	"Collector": {"title":"From My Personal Collection","flavor":"\"I don't usually let this go... but from my personal collection, if you're serious.\"","price_mult":[0.60,0.95],"value_mult":[1.30,2.20],"fault_bonus":-0.05},
 	"Dodgy Seller": {"title":"Bit of a Grey Area","flavor":"\"Between you and me, this one's a bit of a grey area — no questions asked, cash only.\"","price_mult":[0.45,0.70],"value_mult":[1.00,1.80],"fault_bonus":0.08,"fake_bonus":0.35}
 }
 var tutorial_seen = false
@@ -225,6 +225,7 @@ func get_save_data():
 		"collector_used_today": collector_used_today,
 		"collector_offers": collector_offers,
 		"fixed_count": fixed_count,
+		"trade_buyer_day": trade_buyer_day,
 		"save_time": Time.get_datetime_string_from_system(false, true),
 	}
 
@@ -318,6 +319,7 @@ func apply_save_data(parsed):
 		home_venue = str(parsed.get("home_venue", ""))
 		week_plan = parsed.get("week_plan", [])
 		fixed_count = int(parsed.get("fixed_count", 0))
+		trade_buyer_day = int(parsed.get("trade_buyer_day", -1))
 		var cl = parsed.get("clearance", null)
 		clearance = cl if typeof(cl) == TYPE_DICTIONARY else null
 		if clearance != null:
@@ -529,14 +531,21 @@ func daily_challenges_completed_count():
 	return count
 
 func check_daily_challenge_rewards():
+	var done = []
+	var total = 0.0
 	for c in daily_challenges:
 		if not c["reward_given"] and check_daily_challenge(c):
 			c["reward_given"] = true
 			cash += float(c["reward_cash"])
+			total += float(c["reward_cash"])
 			day_stats["other_income"] = float(day_stats.get("other_income", 0.0)) + float(c["reward_cash"])
 			add_xp(int(c["reward_xp"]))
 			lifetime_challenges_completed += 1
-			queue_popup("Challenge complete: %s — +£%d, +%d XP" % [c["desc"], c["reward_cash"], c["reward_xp"]], "success")
+			done.append(c["desc"])
+	if done.size() == 1:
+		add_toast("Challenge done: %s (+£%d)" % [done[0], int(total)], "success")
+	elif done.size() > 1:
+		add_toast("%d challenges done (+£%d)" % [done.size(), int(total)], "success")
 
 func check_milestone_achievements():
 	if player_level >= 10:
@@ -679,7 +688,6 @@ func generate_day():
 	stalls.clear()
 	carry_used = 0
 	fixer_uses_today = 0
-	collector_used_today = {}
 	collector_offers = {}
 	rival_route = []
 	selected_stall_uid = -1
@@ -697,7 +705,7 @@ func generate_day():
 		"intro": pick_line(md.get("intro", [])), "weather_line": pick_line(WorldData.WEATHER.get(weather, {}).get("lines", [])),
 		"clearance": false, "start_offset": start_offset}
 	current_time_minutes = 7 * 60 + start_offset
-	energy = 100 + int(wfx["energy"])
+	energy = max_energy() + int(wfx["energy"])
 	mystery_packages_left = rng.randi_range(0, 2) + (1 if player_level >= 3 else 0)
 	if mtype == "collectors_fair" or mtype == "village_fete":
 		mystery_packages_left = 0
@@ -768,7 +776,7 @@ func build_stall(reg, mfx, wfx):
 		"rival_visited": false,
 		"tipoff": false,
 	}
-	var rate = 0.9 if (has_perk("regulars_rate") and float(reg.get("rel", 0.0)) >= 50.0) else 1.0
+	var rate = 0.9 if (has_perk("regulars_rate") and float(reg.get("rel", 0.0)) >= 35.0) else 1.0
 	var ctx = {"cats": reg.get("cats", []), "rarity_boost": float(mfx["rarity"]),
 		"price_mult": float(pers.get("price_mod", 1.0)) * float(wfx["price"]) * rate,
 		"knowledge_mod": float(pers.get("knowledge_mod", 0.0))}
@@ -783,16 +791,16 @@ func build_stall(reg, mfx, wfx):
 		seen_names[it["name"]] = true
 		stall["stock"].append(it)
 	# Friends keep something back for you, in the thing you know best.
-	if int(reg["id"]) >= 0 and float(reg["rel"]) >= 80.0 and rng.randf() < 0.5:
+	if int(reg["id"]) >= 0 and float(reg["rel"]) >= 65.0 and rng.randf() < 0.5:
 		var best_cat = top_expertise_category()
 		var fams = content.families_by_cat.get(best_cat, [])
 		if fams.size() > 0:
 			var fam = fams[rng.randi_range(0, fams.size() - 1)]
 			var it = make_item_from_family(fam, seller, {"trait_bias": 0.18, "rarity_boost": 1.5})
-			it["asking"] = max(1.0, round(true_market_value(it) * rng.randf_range(0.55, 0.8)))
+			it["asking"] = max(1.0, round(true_market_value(it) * rng.randf_range(0.35, 0.55)))
 			it["saved_for_player"] = true
 			stall["stock"].insert(0, it)
-	if int(reg["id"]) >= 0 and float(reg["rel"]) >= 50.0 and can_do_clearances() and clearance_leads.size() < 3 and rng.randf() < 0.14:
+	if int(reg["id"]) >= 0 and float(reg["rel"]) >= 35.0 and can_do_clearances() and clearance_leads.size() < 3 and rng.randf() < 0.14:
 		stall["tipoff"] = true
 	stall["revealed"] = min(rng.randi_range(5, 7) + (2 if staff.has("picker") else 0), stall["stock"].size())
 	return stall
@@ -1212,8 +1220,8 @@ func haggle_item(index, offer):
 	play_sfx("haggle_no")
 	var escalation_roll = rng.randf()
 	var kicked_out = discount_pct >= 0.35 and escalation_roll < 0.35 and not has_perk("poker_face")
-	var item_banned = (not kicked_out) and discount_pct >= 0.20 and escalation_roll < 0.55
-	record_rng("Haggle escalation: needs %.0f%%+ discount for a refusal, 35%%+ for ejection | Rolled: %.2f%% | Result: %s" % [20.0, escalation_roll * 100.0, "STALL BAN" if kicked_out else ("ITEM REFUSED" if item_banned else "plain rejection")])
+	var item_banned = (not kicked_out) and escalation_roll < clamp((discount_pct - 0.10) * 2.5, 0.0, 0.6)
+	record_rng("Haggle escalation: refusal chance %.0f%%, ejection %.0f%% | Rolled: %.2f%% | Result: %s" % [clamp((discount_pct - 0.10) * 2.5, 0.0, 0.6) * 100.0, 35.0 if discount_pct >= 0.35 else 0.0, escalation_roll * 100.0, "STALL BAN" if kicked_out else ("ITEM REFUSED" if item_banned else "plain rejection")])
 	var goodwill = (1.0 if not has_perk("poker_face") else 0.5)
 	if kicked_out:
 		stall["banned_today"] = true
@@ -1308,7 +1316,7 @@ func buy_item(index):
 	stall["stock"].remove_at(index)
 	stall["revealed"] = clamp(int(stall["revealed"]) - 1, 0, stall["stock"].size())
 	register_collection(item)
-	change_rel(stall, 3.0 if item["haggle_result"] != "accepted" else 2.0)
+	change_rel(stall, 6.0 if item["haggle_result"] != "accepted" else 4.0)
 	var r = regular_by_id(int(stall.get("regular_id", -1))) if int(stall.get("regular_id", -1)) >= 0 else null
 	if r != null:
 		r["bought"] = int(r["bought"]) + 1
@@ -1476,7 +1484,7 @@ func quick_sell_item(index):
 	if item["auth_status"] == "Confirmed Counterfeit":
 		queue_popup("Confirmed counterfeits can't be sold. Scrap it for parts.")
 		return
-	var qs_roll = rng.randf_range(0.55, 0.75) if has_perk("trade_contacts") else rng.randf_range(0.40, 0.60)
+	var qs_roll = rng.randf_range(0.42, 0.58) if has_perk("trade_contacts") else rng.randf_range(0.30, 0.45)
 	var quick_price = max(1.0, round(true_market_value(item) * qs_roll))
 	record_rng("Trader offer: %.0f%% of market value | Result: £%.0f" % [qs_roll * 100.0, quick_price])
 	cash += quick_price
@@ -1491,7 +1499,8 @@ func quick_sell_item(index):
 
 
 func money_signed(v):
-	return ("+" if float(v) >= 0.0 else "-") + "£" + fmt_int(abs(float(v)))
+	var r = round(float(v))
+	return ("+" if r >= 0.0 else "-") + "£" + fmt_int(abs(r))
 
 # =====================================================================
 # UI BRIDGE — logic calls these; in sim mode they do nothing.
@@ -1570,7 +1579,7 @@ func true_market_value(item):
 	return max(1.0, v)
 
 func estimate_uncertainty(item):
-	var u = 0.32
+	var u = 0.40
 	if item["quick_look_done"]:
 		u -= 0.02
 	if item["condition_checked"]:
@@ -1598,9 +1607,56 @@ func perceived_center(item):
 	if item["hidden_special"] != "" and not item["special_discovered"]:
 		v /= max(1.0, float(item.get("special_premium", 1.0)))
 	v /= max(0.05, item_unknown_trait_mult(item))
+	# Without real evidence you can only guess from what this *kind* of thing usually fetches.
+	var w = knowledge_weight(item)
+	if w < 0.999:
+		var prior = family_prior(item)
+		if prior > 0.0:
+			v = exp(w * log(max(1.0, v)) + (1.0 - w) * log(max(1.0, prior)))
 	var u = estimate_uncertainty(item)
 	var bias = exp(clamp(float(item.get("est_noise", 0.0)), -2.2, 2.2) * u * 0.62)
 	return max(1.0, v * bias)
+
+const RARITY_EXPECT = {"Common": 1.0, "Uncommon": 1.3, "Rare": 1.85, "Very Rare": 3.2, "Grail": 8.5}
+
+func knowledge_weight(item):
+	# How much of your estimate comes from evidence about THIS item rather than its type.
+	var w = 0.0
+	if item["quick_look_done"]:
+		w += 0.10
+	if item["basic_researched"]:
+		w += 0.50
+	if item["condition_checked"]:
+		w += 0.10
+	if item["deep_researched"]:
+		w += 0.25
+	if item["testable"] and item["tested"]:
+		w += 0.05
+	if item.get("expert_checked", false):
+		w += 0.10
+	w += 0.07 * float(expertise_tier(item["category"]))
+	return clamp(w, 0.0, 0.97)
+
+func family_prior(item):
+	var fam = content.family(str(item["name"])) if content != null else null
+	if fam == null:
+		return -1.0
+	var p = (float(fam["value"][0]) + float(fam["value"][1])) * 0.5
+	p *= float(RARITY_EXPECT.get(item["rarity"], 1.0))
+	p *= float(current_trends.get(item["category"], 1.0))
+	var c = 6
+	if item["condition_checked"]:
+		c = int(item["condition"])
+	elif item["quick_look_done"]:
+		c = int(item.get("perceived_condition", 6))
+	p *= condition_factor(c)
+	for t in item.get("traits", []):
+		if t.get("known", false):
+			p *= float(t["mult"])
+	p *= float(item.get("identified_mult", 1.0))
+	if item["fault"] and fault_is_known(item):
+		p *= fault_multiplier(item["fault_severity"])
+	return max(1.0, p)
 
 func estimate_identified_potential(item):
 	var center = perceived_center(item)
@@ -1965,18 +2021,18 @@ func start_auction(index):
 	if float(current_trends.get(item["category"], 1.0)) >= 1.10:
 		hype += 0.15
 	hype = clamp(hype, 0.0, 0.6)
-	var weights = {"weak": 0.25, "normal": 0.50, "war": 0.18 * (1.0 + hype * 1.5), "big_war": 0.07 * (1.0 + hype * 2.0)}
+	var weights = {"flop": 0.12, "weak": 0.33, "normal": 0.42, "war": 0.10 * (1.0 + hype * 1.5), "big_war": 0.03 * (1.0 + hype * 2.5)}
 	var total_weight = 0.0
 	for w in weights.values():
 		total_weight += w
 	var roll = rng.randf() * total_weight
 	var tier = "normal"
-	for key in ["weak", "normal", "war", "big_war"]:
+	for key in ["flop", "weak", "normal", "war", "big_war"]:
 		roll -= weights[key]
 		if roll <= 0.0:
 			tier = key
 			break
-	var final_mult = {"weak": rng.randf_range(0.60, 0.90), "normal": rng.randf_range(0.85, 1.10), "war": rng.randf_range(1.10, 1.45), "big_war": rng.randf_range(1.50, 2.10)}[tier]
+	var final_mult = {"flop": 0.0, "weak": rng.randf_range(0.55, 0.85), "normal": rng.randf_range(0.80, 1.05), "war": rng.randf_range(1.10, 1.40), "big_war": rng.randf_range(1.45, 2.00)}[tier]
 	record_rng("Auction started for %s: interest boost %.0f%%. The final price stays hidden until it ends." % [item["name"], hype * 100.0], false)
 	item["auctioned"] = true
 	item["listed"] = false
@@ -1996,6 +2052,14 @@ func process_auctions():
 		if not item["auctioned"]:
 			continue
 		item["auction_days_left"] -= 1
+		if item["auction_days_left"] <= 0 and str(item["auction_tier"]) == "flop":
+			# Reserve not met: nobody bid enough. Back in stock, listing fee lost.
+			item["auctioned"] = false
+			item["auction_days_left"] = 0
+			cash -= 2.0
+			day_stats["fees"] += 2.0
+			night_events.append({"kind": "bad", "text": "Auction flop: %s" % item["name"], "sub": "The bids never reached the reserve. It's back in your stock (£2 listing fee lost)."})
+			continue
 		if item["auction_days_left"] <= 0:
 			var final_price = float(item["auction_final_price"])
 			var sniped = rng.randf() < 0.15
@@ -2053,10 +2117,11 @@ func create_listing(index, price_in):
 	item["listed"] = true
 	item["listed_day"] = day
 	var result = "no_sale"
-	if int(item.get("instant_roll_day", -1)) != day:
+	if int(item.get("instant_roll_day", -1)) < 0:
+		# One first-day buyer per item, ever: relisting doesn't buy you another shot.
 		item["instant_roll_day"] = day
 		var interest = buyer_interest_score(item, price)
-		var instant_chance = clamp(0.03 + interest * 0.20, 0.02, 0.25)
+		var instant_chance = clamp(interest * 0.20, 0.0, 0.20)
 		result = resolve_item_sale(item, instant_chance, "instant")
 	if result == "sold_removed":
 		inventory.remove_at(index)
@@ -2147,7 +2212,7 @@ func record_completed_sale(item, sale_price, costs, channel):
 		unlock_achievement("First Flip")
 	if sale_profit >= 200.0:
 		unlock_achievement("Big Score")
-	if channel == "trader":
+	if channel in ["trader", "trade"]:
 		add_expertise(item["category"], 2)
 	else:
 		add_expertise(item["category"], 8 + (4 if sale_profit > 0.0 else 0))
@@ -2478,7 +2543,11 @@ func end_day():
 		cash -= interest
 		day_stats["interest"] = interest
 		day_stats["expenses"] += interest
-		negative_days_streak += 1
+		# The bank only calls it in when your stock couldn't plausibly cover the hole.
+		if cash + inventory_book_value() * 0.4 < 0.0:
+			negative_days_streak += 1
+		else:
+			negative_days_streak = 0
 	else:
 		if negative_days_streak > 0:
 			unlock_achievement("Survivor")
@@ -2726,7 +2795,7 @@ var patch_notes = [
 ]
 
 func channel_name(c):
-	return {"listing": "online listing", "instant": "online, first-day buyer", "trader": "trader", "auction": "auction"}.get(c, c)
+	return {"listing": "online", "instant": "online, first day", "trader": "trader", "auction": "auction", "shop": "shop floor", "collector": "collector", "trade": "trade buyer"}.get(c, c)
 
 func sale_profit_of(sale):
 	var costs_total = float(sale.get("fee", 0.0)) + float(sale.get("postage", 0.0)) + float(sale.get("insurance", 0.0)) + float(sale.get("packaging", 0.0))
@@ -2786,7 +2855,7 @@ func goal_met(index):
 		8:
 			return premises_level >= 1
 		9:
-			return best_rel() >= 50.0
+			return best_rel() >= 35.0
 		10:
 			return max_expertise_tier() >= 2
 		11:
@@ -2946,7 +3015,7 @@ func do_check_condition(where, index):
 	if where == "inv":
 		var after = estimate_identified_potential(item)
 		item["condition_price_note"] += "\nYour estimate: £%d–£%d → £%d–£%d" % [before[0], before[1], after[0], after[1]]
-	add_toast(message, "info")
+	log_activity(message)
 	play_sfx("reveal")
 	refresh_after(where)
 
@@ -2956,7 +3025,7 @@ func do_research(where, index):
 		return
 	var rc_cost = research_cost()
 	if cash < rc_cost or energy < 2:
-		queue_popup("Research needs £%.2f and 2 energy." % rc_cost)
+		queue_popup("Research needs %s and 2 energy." % fmt_money(rc_cost))
 		return
 	cash -= rc_cost
 	item["extra_spend"] += rc_cost
@@ -3019,7 +3088,7 @@ func auctions_unlocked():
 	return player_level >= 6 or has_perk("auctioneer")
 
 func auction_fee_rate():
-	return 0.02 if has_perk("auctioneer") else 0.05
+	return 0.04 if has_perk("auctioneer") else 0.08
 
 func _init():
 	if _content_cache == null:
@@ -3274,11 +3343,11 @@ func queue_popup(text, kind = "error"):
 func set_status(text, color = null):
 	add_toast(str(text), "info")
 
-func show_big_popup(title, text, kind = "info"):
+func show_big_popup(title, text, kind = "info", extra = {}):
 	log_activity(title + ": " + str(text).replace("\n", " "))
 	if sim_mode or ui == null:
 		return
-	ui.big_popup(title, text, kind)
+	ui.big_popup(title, text, kind, extra)
 
 func clear_toasts():
 	if ui != null:
@@ -3626,7 +3695,7 @@ func show_discovery(item, t):
 	if sim_mode or d == null:
 		return
 	play_sfx("rare")
-	show_big_popup("DISCOVERY: %s" % d["name"].to_upper(), "%s\n\n%s\nValue +%d%%" % [item["name"], d["found"], trait_value_pct(t)], "rare")
+	show_big_popup("DISCOVERY: %s" % d["name"].to_upper(), "%s\n\n%s" % [item["name"], d["found"]], "rare", {"icon": item["category"], "big": "+%d%%" % trait_value_pct(t)})
 
 func missed_traits_on_sale(item):
 	# Called when an item sells: good traits you never found are revealed as missed.
@@ -3869,7 +3938,7 @@ func sort_lot(index):
 	refresh_after("inv")
 
 func collector_contact_available(item):
-	return expertise_tier(item["category"]) >= 3 and not collector_used_today.has(item["category"]) and item["auth_status"] != "Confirmed Counterfeit" and not item["listed"] and not item["auctioned"] and not item.get("on_shop_floor", false)
+	return expertise_tier(item["category"]) >= 3 and day - int(collector_used_today.get(item["category"], -99)) >= 2 and item["auth_status"] != "Confirmed Counterfeit" and not item["listed"] and not item["auctioned"] and not item.get("on_shop_floor", false)
 
 var collector_used_today = {}
 var collector_offers = {}   # item uid -> offer amount (rolled once per day)
@@ -3878,7 +3947,7 @@ func collector_offer_for(item):
 	var key = str(item.get("uid", 0)) + ":" + str(day)
 	if not collector_offers.has(key):
 		var needs_test = item["testable"] and not item["tested"]
-		collector_offers[key] = max(1.0, round(perceived_center(item) * rng.randf_range(0.90, 1.05) * (0.85 if needs_test else 1.0)))
+		collector_offers[key] = max(1.0, round(min(perceived_center(item), true_market_value(item)) * rng.randf_range(0.85, 0.98) * (0.85 if needs_test else 1.0)))
 	return float(collector_offers[key])
 
 func sell_to_collector(index):
@@ -3886,7 +3955,7 @@ func sell_to_collector(index):
 	if item == null or not collector_contact_available(item):
 		return
 	var price = collector_offer_for(item)
-	collector_used_today[item["category"]] = true
+	collector_used_today[item["category"]] = day
 	spend_time(3)
 	# The collector looks it over properly before paying.
 	if not item["authentic"] and item["auth_status"] != "Confirmed Genuine":
@@ -4004,7 +4073,7 @@ func compute_upkeep():
 	return float(running_costs()["total"])
 
 func pitch_fee():
-	var fee = min(15.0, 6.50 + float(day - 1) * 0.12)
+	var fee = min(15.0, 6.50 + float(day - 1) * 0.08)
 	fee += float(market_today.get("entry_fee", 0.0))
 	if market_today.get("clearance", false):
 		fee = 0.0
@@ -4191,7 +4260,7 @@ func process_shop_floor():
 			item["on_shop_floor"] = false
 			continue
 		# Walk-in customers handle the item: they judge it on what it really is.
-		var chance = daily_sale_chance(buyer_interest_score(item, price, false, true_market_value(item))) * 0.55 * footfall
+		var chance = daily_sale_chance(buyer_interest_score(item, price, false, true_market_value(item))) * 0.9 * footfall
 		var roll = rng.randf()
 		if roll < chance:
 			cash += price
@@ -4411,11 +4480,11 @@ func regular_by_id(id) -> Variant:
 	return null
 
 func rel_tier(rel):
-	if rel >= 80:
+	if rel >= 65:
 		return 3
-	if rel >= 50:
+	if rel >= 35:
 		return 2
-	if rel >= 20:
+	if rel >= 15:
 		return 1
 	return 0
 
@@ -4454,7 +4523,7 @@ func stall_greeting(stall):
 	var r = regular_by_id(rid) if rid >= 0 else null
 	if r == null or int(r["visits"]) <= 1:
 		return stall_line(stall, "greet_new")
-	if float(r["rel"]) >= 80:
+	if float(r["rel"]) >= 65:
 		return stall_line(stall, "greet_friend")
 	return stall_line(stall, "greet_regular")
 
@@ -4601,7 +4670,7 @@ func build_clearance(lead):
 	for it in items:
 		total += true_market_value(it)
 	# The family want a quick, fixed price: a fraction of what it'll fetch, with noise the player can't see.
-	var price = round(total * rng.randf_range(0.36, 0.86) / 5.0) * 5.0
+	var price = round(total * rng.randf_range(0.48, 0.98) / 5.0) * 5.0
 	rng.seed = saved_seed
 	rng.state = saved_state
 	return {"lead": lead, "items": items, "rooms": rooms, "price": max(40.0, price), "looked": 0}
@@ -4786,3 +4855,56 @@ func _debug_rich_state():
 		r["visits"] = 5
 	if ui != null:
 		ui.refresh()
+
+
+func max_energy():
+	return 100 + int(premises().get("energy", 0))
+
+# --- warehouse trade buyer --------------------------------------------------------
+var trade_buyer_day = -1
+
+func trade_buyer_candidates():
+	var out = []
+	for i in range(inventory.size()):
+		var it = inventory[i]
+		if it["listed"] or it["auctioned"] or it.get("on_shop_floor", false):
+			continue
+		if it["auth_status"] in ["Confirmed Counterfeit", "Suspected Counterfeit"]:
+			continue
+		if it["testable"] and not it["tested"]:
+			continue
+		if int(it.get("days_owned", 0)) < 3:
+			continue
+		out.append(i)
+	return out
+
+func trade_buyer_available():
+	return premises_level >= 4 and trade_buyer_day != day and trade_buyer_candidates().size() > 0
+
+func trade_buyer_offer():
+	var total = 0.0
+	for i in trade_buyer_candidates():
+		total += round(true_market_value(inventory[i]) * 0.62)
+	return total
+
+func trade_buyer_sale():
+	if not trade_buyer_available():
+		return
+	var idx = trade_buyer_candidates()
+	var total = 0.0
+	var n = 0
+	for j in range(idx.size() - 1, -1, -1):
+		var i = idx[j]
+		var it = inventory[i]
+		var price = max(1.0, round(true_market_value(it) * 0.62))
+		cash += price
+		total += price
+		record_completed_sale(it, price, {"fee": 0.0, "postage": 0.0, "insurance": 0.0, "packaging": 0.0}, "trade")
+		inventory.remove_at(i)
+		n += 1
+	trade_buyer_day = day
+	add_toast("A trade buyer backed up to the loading bay and took %d items for £%s." % [n, fmt_int(total)], "success")
+	fx_money(total)
+	play_sfx("sale")
+	save_game()
+	show_inventory()

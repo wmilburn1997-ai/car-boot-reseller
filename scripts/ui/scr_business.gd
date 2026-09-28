@@ -281,6 +281,9 @@ func staff_card():
 # Perks
 # ---------------------------------------------------------------------------
 func build_perks(parent):
+	parent.add_child(ui.keyed_scroll("perks", perks_content()))
+
+func perks_content():
 	var v = k.vbox(12)
 	var head = k.panel("card2", 14)
 	var hh = k.hbox(12)
@@ -292,7 +295,12 @@ func build_perks(parent):
 	tv.add_child(k.label("One point per level. Perks change how you play rather than nudging numbers.", "s", k.TEXT3, true))
 	hh.add_child(tv)
 	var pts = g.skill_points_available()
-	hh.add_child(k.label("%d point%s" % [pts, "" if pts == 1 else "s"], "xl", k.GOLD if pts > 0 else k.TEXT3))
+	var pv = k.vbox(2)
+	pv.add_child(k.label("%d point%s" % [pts, "" if pts == 1 else "s"], "xl", k.GOLD if pts > 0 else k.TEXT3, false, HORIZONTAL_ALIGNMENT_RIGHT))
+	if pts == 0:
+		pv.add_child(k.label("Next point at level %d" % (g.player_level + 1), "xs", k.TEXT3, false, HORIZONTAL_ALIGNMENT_RIGHT))
+		pv.add_child(k.bar(g.player_xp, g.xp_needed_for_level(g.player_level), k.PURPLE, 6))
+	hh.add_child(pv)
 	v.add_child(head)
 	var cols = 1 if ui.mobile else 3
 	var gr = k.grid(cols, 12, 12)
@@ -306,7 +314,7 @@ func build_perks(parent):
 		gr.add_child(col)
 	v.add_child(gr)
 	v.add_child(k.spacer(0, 20))
-	parent.add_child(ui.keyed_scroll("perks", v))
+	return v
 
 func perk_card(pd):
 	var owned = g.has_perk(pd["id"])
@@ -325,9 +333,8 @@ func perk_card(pd):
 	v.add_child(k.label(pd["desc"], "s", k.TEXT2, true))
 	if not req_ok:
 		v.add_child(k.label("Needs %s first." % g.perk_def(pd["requires"])["name"], "xs", k.TEXT3))
-	elif not owned:
-		var b = k.button("Unlock", "primary" if afford else "ghost", func(): g.buy_perk(pd["id"]), "", "s")
-		b.disabled = not afford
+	elif not owned and afford:
+		var b = k.button("Unlock", "primary", func(): g.buy_perk(pd["id"]), "", "s")
 		v.add_child(b)
 	return p
 
@@ -348,6 +355,7 @@ func knowledge_content():
 	for t in range(1, 5):
 		tiers.add_child(k.chip("%s at %d" % [g.EXPERTISE_TIER_NAMES[t], g.EXPERTISE_TIERS[t]], k.tier_color(t)))
 	hv.add_child(tiers)
+	hv.add_child(k.label("Enthusiast: subtler tells show up when you Inspect, and your estimates tighten. Specialist: a hands-on check for that category, at stalls and at home. Expert: a private collector contact. Authority: spot fakes at a glance.", "xs", k.TEXT2, true))
 	v.add_child(head)
 	var cats = g.CATEGORIES.duplicate()
 	cats.sort_custom(func(a, b): return g.expertise_xp(a) > g.expertise_xp(b))
@@ -365,7 +373,7 @@ func category_card(c):
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var h = k.hbox(12)
 	p.add_child(h)
-	h.add_child(k.cat_icon(c, 44))
+	h.add_child(k.cat_icon(c, 44 if not ui.mobile else 30))
 	var v = k.vbox(4)
 	k.expand(v)
 	var th = k.hbox(8)
@@ -383,8 +391,14 @@ func category_card(c):
 	v.add_child(th)
 	var pr = g.expertise_progress(c)
 	if float(pr[1]) > 0:
-		v.add_child(k.bar(pr[0], pr[1], k.tier_color(t + 1), 7))
-		v.add_child(k.label("Next: %s" % g.tier_unlock_text(c, t + 1), "xs", k.TEXT3, true))
+		var ph = k.hbox(8)
+		var pb = k.bar(pr[0], pr[1], k.tier_color(t + 1), 7)
+		k.expand(pb)
+		ph.add_child(pb)
+		ph.add_child(k.label("%d/%d → %s" % [int(pr[0]), int(pr[1]), g.EXPERTISE_TIER_NAMES[t + 1]], "xs", k.tier_color(t + 1)))
+		v.add_child(ph)
+		if t >= 1:
+			v.add_child(k.label("Next: %s" % g.tier_unlock_text(c, t + 1), "xs", k.TEXT3, true))
 	else:
 		v.add_child(k.label("Mastered.", "xs", k.GOLD))
 	if t >= 2:

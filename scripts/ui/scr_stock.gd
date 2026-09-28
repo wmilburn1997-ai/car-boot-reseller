@@ -92,7 +92,7 @@ func build(parent):
 		detail.add_child(help_panel())
 	ui.master_detail(parent, "stock_" + tab, list, detail, 1.0)
 	if ui.mobile and ui.sheet_open and sel >= 0:
-		ui.open_sheet(g.inventory[sel]["name"], ui.item.detail(g.inventory[sel], "inv", sel), null, func(): g.selected_inv_uid = -1)
+		ui.open_sheet(g.inventory[sel]["name"], ui.item.detail(g.inventory[sel], "inv", sel), ui.item.inv_footer(g.inventory[sel], sel), func(): g.selected_inv_uid = -1)
 
 func summary():
 	var p = k.panel("card2", 12)
@@ -105,6 +105,8 @@ func summary():
 	var gr = k.grid(3 if not ui.mobile else 3, 12, 6)
 	gr.add_child(meter("Storage", g.inventory_space_used(), g.storage_capacity(), k.ORANGE))
 	gr.add_child(meter("Listings", g.active_listing_count(), g.listing_cap(), k.GREEN))
+	if g.trade_buyer_available():
+		pass
 	if g.shop_floor_enabled():
 		gr.add_child(meter("Shop floor", g.shop_floor_count(), g.shop_floor_cap(), k.TEAL))
 	else:
@@ -151,7 +153,7 @@ func tabs_row():
 	v.add_child(h)
 	var h2 = k.hbox(6)
 	var sort_names = {"action": "Needs action", "newest": "Newest", "value": "Most valuable", "oldest": "Held longest"}
-	var sb = k.button("Sort: %s" % sort_names[sort_mode], "ghost", func():
+	var sb = k.button("Sort: %s  ▾" % sort_names[sort_mode], "ghost", func():
 		var order = ["action", "newest", "value", "oldest"]
 		sort_mode = order[(order.find(sort_mode) + 1) % order.size()]
 		ui.refresh(), "Change the sort order", "xs", 0, 32)
@@ -163,6 +165,8 @@ func tabs_row():
 			untested += 1
 	if untested > 0:
 		h2.add_child(k.button("Test all (%d)" % untested, "action", func(): g.bulk_test_all(), "Test every untested electrical.", "xs", 0, 32))
+	if g.trade_buyer_available():
+		h2.add_child(k.button("Trade buyer: %s" % g.fmt_money(g.trade_buyer_offer()), "gold", func(): g.trade_buyer_sale(), "At the warehouse, a trade buyer will take everything unlisted you've held 3+ days, at about 60% of what it's worth. Once a day.", "xs", 0, 32))
 	if tab != "selling" and counts["todo"] > 0:
 		h2.add_child(k.button("List all at estimate", "buy", func(): g.bulk_list_at_estimate(), "Lists everything tested at the middle of your estimate, skipping anything that would sell at a loss.", "xs", 0, 32))
 	v.add_child(h2)

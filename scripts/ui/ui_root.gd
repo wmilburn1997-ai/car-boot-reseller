@@ -246,21 +246,26 @@ func position_toasts():
 	if toast_box == null:
 		return
 	if mobile:
-		toast_box.set_anchors_preset(Control.PRESET_TOP_WIDE)
-		toast_box.offset_left = 10
-		toast_box.offset_right = -10
-		toast_box.offset_top = 64
-	else:
-		toast_box.anchor_left = 1.0
+		toast_box.anchor_left = 0.0
 		toast_box.anchor_right = 1.0
 		toast_box.anchor_top = 1.0
 		toast_box.anchor_bottom = 1.0
-		toast_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 		toast_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		toast_box.offset_left = 10
+		toast_box.offset_right = -10
+		toast_box.offset_top = -86
+		toast_box.offset_bottom = -86
+	else:
+		toast_box.anchor_left = 1.0
+		toast_box.anchor_right = 1.0
+		toast_box.anchor_top = 0.0
+		toast_box.anchor_bottom = 0.0
+		toast_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+		toast_box.grow_vertical = Control.GROW_DIRECTION_END
 		toast_box.offset_left = -440
-		toast_box.offset_right = -20
-		toast_box.offset_top = -20
-		toast_box.offset_bottom = -20
+		toast_box.offset_right = -24
+		toast_box.offset_top = 104
+		toast_box.offset_bottom = 104
 
 func set_chrome(v):
 	chrome_visible = v
@@ -291,7 +296,9 @@ func nav_active_id():
 		"show_knowledge":
 			return "knowledge" if not mobile else "journal"
 		"show_perks":
-			return "perks" if not mobile else "more"
+			return "perks" if not mobile else "journal"
+		"show_day_summary":
+			return ""
 		"show_news":
 			return "news" if not mobile else "market"
 		"show_journal":
@@ -333,7 +340,7 @@ func build_nav():
 	var gp = k.panel("card", 10)
 	gp.add_child(hud_refs["goal_box"])
 	nav_box.add_child(gp)
-	var end = k.button("End Day", "primary", func(): g.end_day(), "Go home for the night: pay the day's costs and see what sells. (E)", "l", 0, 56)
+	var end = k.button("End Day", "primary", func(): request_end_day(), "Go home for the night: pay the day's costs and see what sells. (E)", "l", 0, 56)
 	hud_refs["end_day"] = end
 	nav_box.add_child(end)
 
@@ -484,10 +491,17 @@ func build_hud_desktop():
 	row.add_child(wb)
 	row.add_child(vsep())
 	var mw = 72 if compact else 96
-	row.add_child(meter("bolt", "Energy", g.energy, 100, k.TEAL, "Energy for today. Most actions use some. Refills every morning.", mw))
+	row.add_child(meter("bolt", "Energy", g.energy, g.max_energy(), k.TEAL, "Energy for today. Most actions use some. Refills every morning.", mw))
 	row.add_child(meter("bag", "Carry", g.carry_used, g.effective_bag_capacity(), k.BLUE, "What you can carry home today (%s)." % g.vehicle()["name"], mw))
 	row.add_child(meter("box", "Storage", g.inventory_space_used(), g.storage_capacity(), k.ORANGE, "Space at your %s." % g.premises()["name"], mw))
-	row.add_child(k.spacer(0, 0, true))
+	var gap = k.vbox(2)
+	k.expand(gap)
+	if logical.x >= 1500:
+		gap.add_child(k.label("NEXT GOAL", "xs", k.TEXT3))
+		var gl = k.label(g.current_goal_text(), "s", k.GOLD)
+		gl.clip_text = true
+		gap.add_child(gl)
+	row.add_child(gap)
 	# level
 	var lv = k.vbox(3)
 	lv.custom_minimum_size = Vector2(100 if compact else 130, 0)
@@ -524,6 +538,8 @@ func meter(glyph_name, name, v, maxv, color, tip, w = 96):
 	var h = k.hbox(5)
 	h.add_child(k.glyph(glyph_name, color, 14))
 	h.add_child(k.label("%d/%d" % [int(v), int(maxv)], "s", k.TEXT))
+	if w >= 90:
+		h.add_child(k.label(name.to_lower(), "xs", k.TEXT3))
 	b.add_child(h)
 	var over = float(v) / max(1.0, float(maxv))
 	b.add_child(k.bar(v, maxv, color if over < 0.9 or glyph_name == "bolt" else k.RED, 6))
@@ -550,7 +566,7 @@ func build_hud_mobile():
 	eh.add_child(k.glyph("bolt", k.TEAL, 12))
 	eh.add_child(k.label(str(g.energy), "s", k.TEXT))
 	ev.add_child(eh)
-	ev.add_child(k.bar(g.energy, 100, k.TEAL, 4))
+	ev.add_child(k.bar(g.energy, g.max_energy(), k.TEAL, 4))
 	ev.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(ev)
 	var tv = k.vbox(2)
@@ -565,7 +581,8 @@ func build_hud_mobile():
 	tv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(tv)
 	row.add_child(k.spacer(0, 0, true))
-	var end = k.button("End day", "primary", func(): g.end_day(), "", "s", 0, 40)
+	var late = g.current_time_minutes >= 11 * 60 or g.energy < 25 or g.clearance != null
+	var end = k.button("End day", "primary" if late else "ghost", func(): request_end_day(), "", "s", 0, 40)
 	row.add_child(end)
 	hud_refs["end_day"] = end
 
@@ -596,6 +613,7 @@ func begin(name, args = []):
 		scroll_memory = {}
 	current = name
 	current_args = args
+	fx_pending = []
 	g.current_screen_name = name
 	for c in content.get_children():
 		content.remove_child(c)
@@ -613,6 +631,9 @@ func begin(name, args = []):
 		build_nav()
 		if not mobile:
 			refresh_goal_box()
+	var ed = hud_refs.get("end_day", null)
+	if ed != null and is_instance_valid(ed):
+		ed.visible = name != "show_day_summary"
 	g.call_deferred("_ui_restore_scrolls")
 
 func remember_scrolls(node):
@@ -727,7 +748,7 @@ func show_notes():
 
 # --- master/detail + sheets ---------------------------------------------------------
 
-func master_detail(parent, list_key, list_node, detail_node, detail_ratio = 0.9):
+func master_detail(parent, list_key, list_node, detail_node, detail_ratio = 0.9, detail_footer = null):
 	# Desktop: list and detail side by side. Mobile: only the list; detail goes in a sheet.
 	if mobile:
 		parent.add_child(keyed_scroll(list_key, list_node))
@@ -742,7 +763,13 @@ func master_detail(parent, list_key, list_node, detail_node, detail_ratio = 0.9)
 	dp.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	dp.size_flags_stretch_ratio = detail_ratio
 	var ds = keyed_scroll(list_key + "_detail", detail_node)
-	dp.add_child(ds)
+	if detail_footer != null:
+		var dv = k.vbox(10)
+		dv.add_child(ds)
+		dv.add_child(detail_footer)
+		dp.add_child(dv)
+	else:
+		dp.add_child(ds)
 	row.add_child(dp)
 	parent.add_child(row)
 
@@ -812,10 +839,9 @@ func toast(text, kind = "info"):
 	p.add_child(h)
 	p.gui_input.connect(_toast_input.bind(p))
 	toast_box.add_child(p)
-	if mobile:
-		toast_box.move_child(p, 0)
-	while toast_box.get_child_count() > 3:
-		var old = toast_box.get_child(toast_box.get_child_count() - 1 if mobile else 0)
+	var maxn = 2 if mobile else 3
+	while toast_box.get_child_count() > maxn:
+		var old = toast_box.get_child(0)
 		toast_box.remove_child(old)
 		old.queue_free()
 	p.modulate = Color(1, 1, 1, 0)
@@ -839,6 +865,8 @@ func clear_toasts():
 var fx_pending = []
 
 func fx_money(amount):
+	if not chrome_visible:
+		return
 	fx_pending.append(amount)
 	g.get_tree().create_timer(0.06).timeout.connect(_fx_flush)
 
@@ -859,15 +887,15 @@ func _fx_spawn(amount, yoff):
 	l.add_theme_constant_override("outline_size", 4)
 	overlay.add_child(l)
 	var pos = anchor.global_position - root.global_position
-	l.position = pos + Vector2(40, 30 + yoff)
+	l.position = pos + (Vector2(10, 44 + yoff) if mobile else Vector2(40, 30 + yoff))
 	var tw = l.create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(l, "position", l.position + Vector2(0, 36 if amount >= 0 else 46), 1.1).set_ease(Tween.EASE_OUT)
 	tw.tween_property(l, "modulate", Color(1, 1, 1, 0), 1.1).set_delay(0.4)
 	tw.chain().tween_callback(l.queue_free)
 
-func big_popup(title_text, body_text, kind = "info"):
-	popup_queue.append([title_text, body_text, kind])
+func big_popup(title_text, body_text, kind = "info", extra = {}):
+	popup_queue.append([title_text, body_text, kind, extra])
 	if not popup_open:
 		_next_popup()
 
@@ -901,10 +929,24 @@ func _next_popup():
 	var v = k.vbox(12)
 	p.add_child(v)
 	var glyph_for = {"level": "star", "achievement": "trophy", "rare": "spark", "grail": "spark", "bad": "cross", "info": "spark"}
-	var gl = k.glyph(glyph_for.get(kind, "spark"), c, 40)
-	gl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(gl)
+	var extra = entry[3] if entry.size() > 3 else {}
+	if extra.has("icon"):
+		var ic = k.cat_icon(extra["icon"], 72)
+		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		v.add_child(ic)
+	else:
+		var gl = k.glyph(glyph_for.get(kind, "spark"), c, 40)
+		gl.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		v.add_child(gl)
 	v.add_child(k.label(entry[0], "xl", c, true, HORIZONTAL_ALIGNMENT_CENTER))
+	if extra.has("big"):
+		var bl = k.label(str(extra["big"]), "hero", k.GREEN, false, HORIZONTAL_ALIGNMENT_CENTER)
+		v.add_child(bl)
+		bl.pivot_offset = Vector2(100, 20)
+		var btw = bl.create_tween()
+		btw.set_loops(3)
+		btw.tween_property(bl, "modulate", Color(1.3, 1.3, 1.3, 1), 0.25)
+		btw.tween_property(bl, "modulate", Color(1, 1, 1, 1), 0.25)
 	v.add_child(k.rich(str(entry[1]), "b", k.TEXT2, "center"))
 	var ok = k.button("Nice" if kind in ["level", "rare", "grail", "achievement"] else "OK", "primary" if kind != "bad" else "ghost", func(): _close_popup(), "", "m", 180, 46)
 	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -971,7 +1013,7 @@ func handle_key(ev):
 		KEY_8:
 			show_more()
 		KEY_E:
-			g.end_day()
+			request_end_day()
 		KEY_N:
 			if current == "show_stall":
 				g.next_stall()
@@ -1007,3 +1049,56 @@ func coach(parent, id):
 		g.save_settings()
 		refresh(), "", "s"))
 	parent.add_child(p)
+
+
+func request_end_day():
+	if current == "show_day_summary":
+		return
+	var early = g.current_time_minutes < 11 * 60 and g.energy >= 25 and g.clearance == null and g.stalls.size() > 0
+	if early:
+		confirm("End the day now?", "It's only %s and you've still got %d energy. The stalls are still open." % [g.format_time(), g.energy], "Go home", func(): g.end_day())
+	else:
+		g.end_day()
+
+func confirm(title_text, body_text, yes_text, yes_cb):
+	var dim = ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.6)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	popup_layer.add_child(dim)
+	var center = CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	popup_layer.add_child(center)
+	var p = k.panel("modal", 20)
+	p.custom_minimum_size = Vector2(min(440, logical.x - 30), 0)
+	center.add_child(p)
+	var v = k.vbox(12)
+	p.add_child(v)
+	v.add_child(k.label(title_text, "l", k.TEXT, true))
+	v.add_child(k.label(body_text, "b", k.TEXT2, true))
+	var row = k.hbox(10)
+	var close = func():
+		for c in popup_layer.get_children():
+			popup_layer.remove_child(c)
+			c.queue_free()
+		popup_open = false
+	var yes = k.button(yes_text, "primary", func():
+		close.call()
+		yes_cb.call(), "", "m", 0, 46)
+	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var no = k.button("Not yet", "ghost", func(): close.call(), "", "m", 0, 46)
+	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(no)
+	row.add_child(yes)
+	v.add_child(row)
+	popup_open = true
+
+
+func cap_width(node, maxw = 1180):
+	# Keep reading-heavy screens from stretching across ultra-wide windows.
+	if mobile:
+		return node
+	var avail = logical.x - (240 if not mobile else 0)
+	var side = int(max(0.0, (avail - maxw) / 2.0))
+	return k.margin(node, side, 0, side, 0)

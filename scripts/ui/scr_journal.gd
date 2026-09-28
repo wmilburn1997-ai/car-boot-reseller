@@ -18,16 +18,24 @@ func build(parent, want_tab = ""):
 	if want_tab != "":
 		tab = want_tab
 	var v = k.vbox(12)
-	var tabs = k.flow(6, 6)
-	var names = [["story", "Story"], ["discoveries", "Discoveries"], ["collection", "Collection"], ["achievements", "Achievements"], ["sales", "Sales"], ["logs", "Logs"]]
+	var tabs = k.hbox(6)
+	var names = [["story", "Story"], ["discoveries", "Discoveries"], ["collection", "Collection"], ["achievements", "Achievements"], ["sales", "Sales"]]
 	if ui.mobile:
-		names.insert(2, ["expertise", "Expertise"])
+		names.insert(1, ["expertise", "Expertise"])
+		names.insert(2, ["perks", "Perks"])
 	for t in names:
 		var id = t[0]
 		tabs.add_child(k.button(t[1], "tab_on" if tab == id else "ghost", func():
 			tab = id
-			ui.refresh(), "", "s", 0, 36))
-	v.add_child(tabs)
+			ui.refresh(), "", "s", 0, 40))
+	if ui.mobile:
+		var ts = ScrollContainer.new()
+		ts.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		ts.custom_minimum_size = Vector2(0, 52)
+		ts.add_child(tabs)
+		v.add_child(ts)
+	else:
+		v.add_child(tabs)
 	match tab:
 		"story":
 			story(v)
@@ -43,8 +51,10 @@ func build(parent, want_tab = ""):
 			logs(v)
 		"expertise":
 			v.add_child(ui.business.knowledge_content())
+		"perks":
+			v.add_child(ui.business.perks_content())
 	v.add_child(k.spacer(0, 20))
-	parent.add_child(ui.keyed_scroll("journal_" + tab, v))
+	parent.add_child(ui.keyed_scroll("journal_" + tab, ui.cap_width(v, 1250)))
 
 func story(v):
 	var p = k.panel("card2", 14)
@@ -59,20 +69,62 @@ func story(v):
 	if g.journal.size() == 0:
 		v.add_child(k.label("Nothing written yet. Go and find something.", "b", k.TEXT3))
 		return
-	var last_day = -1
+	# One card per day: the headline, the good news, and the setbacks folded up.
+	var days = {}
+	var order = []
+	for e in g.journal:
+		var d = int(e["day"])
+		if not days.has(d):
+			days[d] = []
+			order.append(d)
+		days[d].append(e)
+	order.reverse()
 	var colors = {"good": k.GREEN, "bad": k.RED, "level": k.GOLD, "info": k.TEXT2}
 	var glyphs = {"good": "spark", "bad": "cross", "level": "star", "info": "dots"}
-	for i in range(g.journal.size() - 1, max(-1, g.journal.size() - 81), -1):
-		var e = g.journal[i]
-		if int(e["day"]) != last_day:
-			last_day = int(e["day"])
-			v.add_child(k.section("Day %d" % last_day))
-		var h = k.hbox(8)
-		var gl = k.glyph(glyphs.get(e["kind"], "dots"), colors.get(e["kind"], k.TEXT2), 14)
-		gl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-		h.add_child(gl)
-		h.add_child(k.label(e["text"], "s", colors.get(e["kind"], k.TEXT2).lerp(k.TEXT, 0.4), true))
-		v.add_child(h)
+	for d in order.slice(0, 20):
+		var entries = days[d]
+		var card = k.panel("card", 12)
+		var cv = k.vbox(6)
+		card.add_child(cv)
+		var head = null
+		for e in entries:
+			if e["kind"] == "level":
+				head = e
+		if head == null:
+			for e in entries:
+				if e["kind"] == "good":
+					head = e
+					break
+		var th = k.hbox(10)
+		th.add_child(k.label("DAY %d" % d, "s", k.TEXT3))
+		if head != null:
+			th.add_child(k.label(head["text"], "m", colors.get(head["kind"], k.TEXT), true))
+		cv.add_child(th)
+		var bads = []
+		for e in entries:
+			if e == head:
+				continue
+			if e["kind"] == "bad":
+				bads.append(e)
+				continue
+			var h = k.hbox(8)
+			var gl = k.glyph(glyphs.get(e["kind"], "dots"), colors.get(e["kind"], k.TEXT2), 14)
+			gl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+			h.add_child(gl)
+			h.add_child(k.label(e["text"], "s", k.TEXT2, true))
+			cv.add_child(h)
+		if bads.size() > 0:
+			var shown = bads.slice(0, 2)
+			for e in shown:
+				var h2 = k.hbox(8)
+				var gl2 = k.glyph("cross", k.RED, 14)
+				gl2.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+				h2.add_child(gl2)
+				h2.add_child(k.label(e["text"], "s", k.RED.lerp(k.TEXT2, 0.5), true))
+				cv.add_child(h2)
+			if bads.size() > 2:
+				cv.add_child(k.label("…and %d more setbacks." % (bads.size() - 2), "xs", k.TEXT3))
+		v.add_child(card)
 
 func discoveries(v):
 	if disc_cat == "":
@@ -237,33 +289,55 @@ func achievements(v):
 
 func sales(v):
 	var total = 0.0
-	for s in g.sold_history:
-		total += g.sale_profit_of(s)
+	for sl in g.sold_history:
+		total += g.sale_profit_of(sl)
 	v.add_child(k.label("Sales  ·  %d sold  ·  %s profit" % [g.sold_history.size(), g.money_signed(total)], "xl", k.TEXT))
 	if g.sold_history.size() == 0:
 		v.add_child(k.label("Nothing sold yet.", "b", k.TEXT3))
 		return
-	for i in range(g.sold_history.size() - 1, max(-1, g.sold_history.size() - 61), -1):
-		var s = g.sold_history[i]
-		var prof = g.sale_profit_of(s)
-		var p = k.panel("card", 10)
+	if not ui.mobile:
+		var hr = k.hbox(10)
+		for col in [["Item", 0], ["Day", 60], ["Channel", 130], ["Paid", 80], ["Sold", 80], ["Profit", 90]]:
+			var l = k.label(col[0].to_upper(), "xs", k.TEXT3, false, HORIZONTAL_ALIGNMENT_RIGHT if col[1] > 0 else HORIZONTAL_ALIGNMENT_LEFT)
+			if col[1] > 0:
+				l.custom_minimum_size = Vector2(col[1], 0)
+			else:
+				k.expand(l)
+			hr.add_child(l)
+		v.add_child(k.margin(hr, 12, 0, 12, 0))
+	for i in range(g.sold_history.size() - 1, max(-1, g.sold_history.size() - 81), -1):
+		var sl = g.sold_history[i]
+		var prof = g.sale_profit_of(sl)
+		var p = k.panel("card", 8)
 		var h = k.hbox(10)
 		p.add_child(h)
-		h.add_child(k.cat_icon(s.get("category", "Home"), 32))
-		var tv = k.vbox(2)
+		h.add_child(k.cat_icon(sl.get("category", "Home"), 28))
+		var tv = k.vbox(1)
 		k.expand(tv)
-		tv.add_child(k.label(s["name"], "b", k.TEXT))
-		var sub = "Day %d · %s · paid %s" % [int(s["day"]), g.channel_name(s.get("channel", "listing")), g.fmt_money(s.get("paid", 0))]
-		tv.add_child(k.label(sub, "xs", k.TEXT3))
-		if s.get("traits", []).size() > 0:
-			tv.add_child(k.label("Found: " + ", ".join(s["traits"]), "xs", k.GREEN, true))
-		if s.get("missed", []).size() > 0:
-			tv.add_child(k.label("Missed: " + ", ".join(s["missed"]), "xs", k.RED, true))
+		tv.add_child(k.label(sl["name"], "b", k.TEXT))
+		var notes = []
+		if sl.get("traits", []).size() > 0:
+			notes.append("found " + ", ".join(sl["traits"]))
+		if sl.get("missed", []).size() > 0:
+			notes.append("missed " + ", ".join(sl["missed"]))
+		if ui.mobile:
+			notes.insert(0, "Day %d · %s · paid %s" % [int(sl["day"]), g.channel_name(sl.get("channel", "listing")), g.fmt_money(sl.get("paid", 0))])
+		if notes.size() > 0:
+			tv.add_child(k.label(" · ".join(notes), "xs", k.RED if sl.get("missed", []).size() > 0 else k.TEXT3, true))
 		h.add_child(tv)
-		var pv = k.vbox(0)
-		pv.add_child(k.label(g.fmt_money(s["price"]), "m", k.TEXT, false, HORIZONTAL_ALIGNMENT_RIGHT))
-		pv.add_child(k.label(g.money_signed(prof), "s", k.GREEN if prof >= 0 else k.RED, false, HORIZONTAL_ALIGNMENT_RIGHT))
-		h.add_child(pv)
+		if not ui.mobile:
+			for c in [[str(int(sl["day"])), 60, k.TEXT3], [g.channel_name(sl.get("channel", "listing")), 130, k.TEXT2], [g.fmt_money(sl.get("paid", 0)), 80, k.TEXT2], [g.fmt_money(sl["price"]), 80, k.TEXT]]:
+				var cl = k.label(c[0], "s", c[2], false, HORIZONTAL_ALIGNMENT_RIGHT)
+				cl.custom_minimum_size = Vector2(c[1], 0)
+				h.add_child(cl)
+			var pl = k.label(g.money_signed(prof), "m", k.GREEN if prof >= 0 else k.RED, false, HORIZONTAL_ALIGNMENT_RIGHT)
+			pl.custom_minimum_size = Vector2(90, 0)
+			h.add_child(pl)
+		else:
+			var pv = k.vbox(0)
+			pv.add_child(k.label(g.fmt_money(sl["price"]), "m", k.TEXT, false, HORIZONTAL_ALIGNMENT_RIGHT))
+			pv.add_child(k.label(g.money_signed(prof), "s", k.GREEN if prof >= 0 else k.RED, false, HORIZONTAL_ALIGNMENT_RIGHT))
+			h.add_child(pv)
 		v.add_child(p)
 
 func logs(v):

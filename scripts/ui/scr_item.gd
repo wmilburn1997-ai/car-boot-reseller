@@ -6,6 +6,7 @@ var g
 var k
 var offer_values = {}   # uid -> haggle offer
 var price_values = {}   # uid -> listing price
+var footer_btn = null
 
 func _init(root):
 	ui = root
@@ -66,6 +67,8 @@ func tile(it, ctx, selected, on_press, extra = {}):
 	var pv = k.vbox(0)
 	pv.alignment = BoxContainer.ALIGNMENT_CENTER
 	pv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pv.custom_minimum_size = Vector2(76 if k.mobile else 90, 0)
+	v.clip_contents = true
 	var price_text = ""
 	var price_color = k.TEXT
 	var sub = ""
@@ -73,7 +76,14 @@ func tile(it, ctx, selected, on_press, extra = {}):
 	if ctx == "stall":
 		price_text = g.fmt_money(it["asking"])
 		price_color = k.GOLD if float(it["asking"]) <= g.cash else k.TEXT3
-		if it["haggle_result"] == "accepted":
+		var mg = stall_margin(it)
+		if float(it["asking"]) > g.cash:
+			sub = "can't afford"
+			sub_color = k.TEXT3
+		elif mg != null:
+			sub = "%s margin" % g.money_signed(mg)
+			sub_color = margin_color(mg, float(it["asking"]))
+		if it["haggle_result"] == "accepted" and sub == "":
 			sub = "haggled"
 			sub_color = k.GREEN
 		elif it["haggle_result"] == "refused":
@@ -102,7 +112,7 @@ func tile(it, ctx, selected, on_press, extra = {}):
 			price_text = "%s–%s" % [g.fmt_money(pot[0]), g.fmt_money(pot[1])]
 			price_color = k.TEXT2
 			sub = todo_hint(it)
-			sub_color = k.ORANGE if sub != "ready" else k.GREEN
+			sub_color = k.ORANGE if sub != "ready to list" else k.GREEN
 	if price_text != "":
 		var pl = k.label(price_text, "m" if ctx == "stall" else "b", price_color, false, HORIZONTAL_ALIGNMENT_RIGHT)
 		pv.add_child(pl)
@@ -125,25 +135,30 @@ func todo_hint(it):
 	for t in it.get("traits", []):
 		if t.get("clue", false) and not t.get("known", false):
 			return "clue"
-	return "ready"
+	return "ready to list"
+
+func stall_margin(it):
+	# Your margin after fees at the middle of the sold prices, once researched.
+	if not it["basic_researched"]:
+		return null
+	var med = g.comps_median_value(it)
+	var costs = g.selling_costs(it, med)
+	var net = med - float(costs["fee"]) - float(costs["postage"]) - float(costs["insurance"]) - float(costs["packaging"])
+	return net - float(it["asking"])
+
+func margin_color(margin, asking):
+	if margin >= asking * 0.3 and margin >= 5.0:
+		return k.GREEN
+	if margin > 0.0:
+		return k.GOLD
+	return k.RED
 
 func status_row(it, ctx):
 	var row = k.hbox(6)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var gs = 12 if not k.mobile else 14
+	var entries = []   # [priority (lower first), node]
 	if it["rarity"] != "Common":
-		row.add_child(k.label("%s 1/%d" % [it["rarity"].to_upper(), int(it["one_in"])], "xs", k.rarity_color(it["rarity"])))
-	if it["condition_checked"]:
-		row.add_child(mini_stat("eye", "%d/10" % int(it["condition"]), cond_color(int(it["condition"]))))
-	elif it["quick_look_done"]:
-		row.add_child(mini_stat("eye", "~%d" % int(it.get("perceived_condition", 6)), k.TEXT3))
-	if it["basic_researched"]:
-		row.add_child(mini_stat("glass", "", k.BLUE))
-	if it["testable"]:
-		if it["tested"]:
-			row.add_child(mini_stat("bolt", "", k.GREEN if not it["fault"] else k.RED))
-		else:
-			row.add_child(mini_stat("bolt", "?", k.TEXT3))
+		entries.append([1, k.label("%s 1/%d" % [it["rarity"].to_upper(), int(it["one_in"])], "xs", k.rarity_color(it["rarity"]))])
 	var good = 0
 	var bad = 0
 	var clue = 0
@@ -158,31 +173,51 @@ func status_row(it, ctx):
 				bad += 1
 		elif t.get("clue", false):
 			clue += 1
-	if good > 0:
-		row.add_child(mini_stat("spark", str(good) if good > 1 else "", k.GREEN))
-	if bad > 0:
-		row.add_child(mini_stat("cross", str(bad) if bad > 1 else "", k.RED))
-	if clue > 0:
-		row.add_child(mini_stat("q", str(clue) if clue > 1 else "", k.PURPLE))
 	if it["auth_status"] == "Confirmed Genuine":
-		row.add_child(mini_stat("check", "genuine", k.GREEN))
+		entries.append([6, mini_stat("check", "genuine", k.GREEN)])
 	elif it["auth_status"] in ["Confirmed Counterfeit", "Suspected Counterfeit"]:
-		row.add_child(mini_stat("skull", "fake", k.RED))
+		entries.append([0, mini_stat("skull", "fake", k.RED)])
 	elif float(it["fake_chance"]) >= 0.10 and ctx != "clearance":
-		row.add_child(mini_stat("skull", "risk", k.ORANGE))
+		entries.append([2, mini_stat("skull", "risk", k.ORANGE)])
+	if clue > 0:
+		entries.append([2, mini_stat("q", str(clue) if clue > 1 else "", k.PURPLE)])
+	if good > 0:
+		entries.append([3, mini_stat("spark", str(good) if good > 1 else "", k.GREEN)])
+	if bad > 0:
+		entries.append([3, mini_stat("cross", str(bad) if bad > 1 else "", k.RED)])
+	if it["condition_checked"]:
+		entries.append([4, mini_stat("eye", "%d/10" % int(it["condition"]), cond_color(int(it["condition"])))])
+	elif it["quick_look_done"]:
+		entries.append([5, mini_stat("eye", "~%d" % int(it.get("perceived_condition", 6)), k.TEXT3)])
+	if it["testable"]:
+		if it["tested"]:
+			entries.append([4, mini_stat("bolt", "", k.GREEN if not it["fault"] else k.RED)])
+		else:
+			entries.append([5, mini_stat("bolt", "?", k.TEXT3)])
+	if it["basic_researched"]:
+		entries.append([7, mini_stat("glass", "", k.BLUE)])
 	if it.get("saved_for_player", false):
-		row.add_child(mini_stat("heart", "saved for you", k.GOLD))
+		entries.append([1, mini_stat("heart", "saved" if k.mobile else "saved for you", k.GOLD)])
 	var trend = float(g.current_trends.get(it["category"], 1.0))
 	if trend >= 1.10:
-		row.add_child(mini_stat("up", "%d%%" % int(round((trend - 1.0) * 100)), k.PURPLE))
+		entries.append([6, mini_stat("up", "%d%%" % int(round((trend - 1.0) * 100)), k.PURPLE)])
 	elif trend <= 0.90:
-		row.add_child(mini_stat("down", "%d%%" % int(round((1.0 - trend) * 100)), k.RED))
+		entries.append([6, mini_stat("down", "%d%%" % int(round((1.0 - trend) * 100)), k.RED)])
+	entries.sort_custom(func(a, b): return a[0] < b[0])
+	var cap = 4 if k.mobile else 8
+	for n in range(entries.size()):
+		if n < cap:
+			row.add_child(entries[n][1])
+		else:
+			entries[n][1].free()
+	if entries.size() > cap:
+		row.add_child(k.label("+%d" % (entries.size() - cap), "xs", k.TEXT3))
 	return row
 
 func mini_stat(glyph_name, text, color):
-	var h = k.hbox(2)
+	var h = k.hbox(3)
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var gl = k.glyph(glyph_name, color, 12 if not k.mobile else 14)
+	var gl = k.glyph(glyph_name, color, 14 if not k.mobile else 16)
 	gl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	h.add_child(gl)
 	if text != "":
@@ -233,12 +268,13 @@ func to_bool_banned(stall):
 func header(it, ctx):
 	var v = k.vbox(6)
 	var h = k.hbox(12)
-	var ic = k.cat_icon(it["category"], 56 if not k.mobile else 52)
+	var ic = k.cat_icon(it["category"], 56 if not k.mobile else 40)
 	h.add_child(ic)
 	var tv = k.vbox(4)
 	k.expand(tv)
-	var name_l = k.label(it["name"], "xl", k.TEXT, true)
-	tv.add_child(name_l)
+	if not k.mobile:
+		var name_l = k.label(it["name"], "xl", k.TEXT, true)
+		tv.add_child(name_l)
 	var chips = k.flow(6, 4)
 	var tier = g.expertise_tier(it["category"])
 	chips.add_child(k.chip("%s · %s" % [it["category"], g.EXPERTISE_TIER_NAMES[tier]], k.tier_color(tier) if tier > 0 else k.TEXT2))
@@ -291,8 +327,14 @@ func stall_verdict(it, index, stall):
 		right.add_child(k.label("%s–%s" % [g.fmt_money(pot[0]), g.fmt_money(pot[1])], "l", k.TEAL))
 		right.add_child(k.label("Rough, before fees. Research for real sold prices.", "xs", k.TEXT3, true))
 	else:
+		var fam = g.content.family(it["name"])
 		right.add_child(k.label("WHAT'S IT WORTH?", "xs", k.TEXT3))
-		right.add_child(k.label("Research to see recent sold prices and your margin after fees.", "s", k.TEXT2, true))
+		if fam != null:
+			right.add_child(k.label("These usually go for %s–%s. This one? Find out." % [g.fmt_money(fam["value"][0]), g.fmt_money(fam["value"][1])], "s", k.TEXT2, true))
+		var rc = g.research_cost()
+		var rb = k.button("Research  %s" % (g.fmt_money(rc) if rc > 0 else "free"), "action", func(): g.prebuy_research(index), "Recent sold prices, and your margin after fees. 2 energy, 4 minutes.", "s", 0, 36)
+		rb.disabled = g.cash < rc or g.energy < 2
+		right.add_child(rb)
 	h.add_child(right)
 	return p
 
@@ -598,7 +640,16 @@ func buy_button(it, index, stall, big = true):
 		b = k.button("No room at home", "ghost", null, "Storage full. Sell stock, add shelving or move premises.", "m", 0, 52 if big else 44)
 		b.disabled = true
 	else:
-		b = k.button("BUY  %s" % g.fmt_money(asking), "buy", func(): g.buy_item(index), "Pay the asking price. Anything you haven't checked is a gamble.", "l" if big else "m", 0, 52 if big else 44)
+		var mg = stall_margin(it)
+		var style = "action"
+		var txt = "BUY  %s" % g.fmt_money(asking)
+		if mg != null:
+			if margin_color(mg, asking) == k.GREEN:
+				style = "buy"
+			elif mg <= 0.0:
+				style = "ghost"
+				txt = "Buy anyway  %s" % g.fmt_money(asking)
+		b = k.button(txt, style, func(): g.buy_item(index), "Pay the asking price. Anything you haven't checked is a gamble.", "l" if big else "m", 0, 52 if big else 44)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	return b
 
@@ -627,7 +678,7 @@ func inv_actions(it, index):
 	if g.has_equip("parts") and parts.size() > 0:
 		gr.add_child(k.action_tile("gear", "Fit parts", time_cost(3, 10, 4.0 * parts.size()), "action", func(): g.parts_fix(index), g.cash < 4.0 * parts.size() or g.energy < 3, "Replace the missing bits from your parts bin."))
 	if g.can_repair(it) or (g.has_equip("repair") and it["repair_attempted"]):
-		var cost = g.repair_cost(it) if it["fault"] else 6.0
+		var cost = g.repair_cost(it) if (it["fault"] and g.fault_is_known(it)) else 6.0
 		gr.add_child(k.action_tile("hammer", "Repair" if not it["repair_attempted"] else "Repair tried", time_cost(10, 30, cost), "action", func(): g.repair_item(index), g.cash < cost or g.energy < 10, "One attempt at fixing known faults and broken parts. Better benches, better odds.", it["repair_attempted"]))
 	if float(it["fake_chance"]) > 0.0 or it["auth_status"] != "Unauthenticated":
 		var ac = g.authentication_cost(it)
@@ -696,6 +747,8 @@ func sell_panel(it, index):
 		profit_l.add_theme_color_override("font_color", k.GREEN if prof >= 0 else k.RED)
 		var lbl = g.buyer_interest_label(it, p)
 		info.text = "Expected interest: %s" % lbl.to_lower()
+		if footer_btn != null and is_instance_valid(footer_btn) and not footer_btn.disabled:
+			footer_btn.text = "List at %s  (%s)" % [g.fmt_money(p), g.money_signed(prof)]
 	var row = k.hbox(6)
 	var step = max(1.0, round(price * 0.05))
 	row.add_child(k.button("-", "ghost", func():
@@ -752,3 +805,27 @@ func sell_panel(it, index):
 	alt.add_child(k.button("Scrap", "ghost", func(): g.scrap_item(index), "Parts value only.", "s"))
 	v.add_child(alt)
 	return v
+
+
+func inv_footer(it, index):
+	# Mobile sheet footer: the sell decision, always visible.
+	if it["listed"] or it["auctioned"] or it.get("on_shop_floor", false) or it["auth_status"] == "Confirmed Counterfeit":
+		return null
+	var uid = int(it["uid"])
+	if not price_values.has(uid):
+		price_values[uid] = g.suggested_price(it)
+	var price = float(price_values[uid])
+	var h = k.hbox(8)
+	var can_sell = not (it["testable"] and not it["tested"])
+	var cap_full = g.active_listing_count() >= g.listing_cap()
+	var prof = g.estimated_profit_at(it, price)
+	var b = k.button("List at %s  (%s)" % [g.fmt_money(price), g.money_signed(prof)], "buy" if prof >= 0 else "action", func(): g.create_listing(index, float(price_values[uid])), "", "m", 0, 50)
+	if not can_sell:
+		b.text = "Test it before selling"
+	elif cap_full:
+		b.text = "Listings full (%d)" % g.listing_cap()
+	b.disabled = not can_sell or cap_full
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(b)
+	footer_btn = b
+	return h
