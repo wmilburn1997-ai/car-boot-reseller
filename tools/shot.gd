@@ -36,7 +36,7 @@ func _run(outdir, steps):
 			_collect(main, found)
 			var hit = null
 			for b in found:
-				if b.text.begins_with(want):
+				if button_text(b).begins_with(want):
 					hit = b
 					break
 			if hit == null:
@@ -60,3 +60,16 @@ func _collect(node, out):
 		out.append(node)
 	for c in node.get_children():
 		_collect(c, out)
+
+func button_text(b):
+	if b.text != "":
+		return b.text
+	var labels = []
+	_labels(b, labels)
+	return labels[0] if labels.size() > 0 else ""
+
+func _labels(node, out):
+	for c in node.get_children():
+		if c is Label:
+			out.append(c.text)
+		_labels(c, out)

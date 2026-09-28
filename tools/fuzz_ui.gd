@@ -30,8 +30,12 @@ func _run(steps):
 	for step in range(steps):
 		var targets = []
 		# modal popup takes priority, like a real player
-		if main.big_popup != null and main.big_popup.visible:
-			collect(main.big_popup, targets)
+		if main.ui.popup_open:
+			collect(main.ui.popup_layer, targets)
+		elif main.ui.sheet_layer.get_child_count() > 0:
+			collect(main.ui.sheet_layer, targets)
+			if randf() < 0.3:
+				collect(main.ui.hud_box, targets)
 		else:
 			collect(main, targets)
 		if targets.size() == 0:
@@ -42,15 +46,17 @@ func _run(steps):
 			t.text = str(randi() % 300)
 			t.text_submitted.emit(t.text)
 		else:
-			var label = t.text if t is Button else ""
+			var label = button_text(t)
 			# don't quit the app / wipe the run constantly
 			if label == "Quit":
 				continue
-			if label.begins_with("Yes, wipe") and randf() < 0.9:
+			if label.begins_with("Yes, start again") and randf() < 0.9:
 				continue
-			if label.begins_with("Load save code") and randf() < 0.8:
+			if label.begins_with("Load this code"):
 				continue
-			if label.begins_with("End Day") and randf() < 0.85:
+			if (label.begins_with("End day") or label.begins_with("End Day")) and randf() < 0.85:
+				continue
+			if label.begins_with("Title screen") and randf() < 0.8:
 				continue
 			t.pressed.emit()
 			presses += 1
@@ -61,3 +67,18 @@ func _run(steps):
 		print("  LOG ", l)
 	print("FUZZ DONE presses=%d day=%d cash=%.2f screen=%s game_over=%s" % [presses, main.day, main.cash, main.current_screen_name, str(main.game_over)])
 	quit()
+
+func button_text(b):
+	if not (b is Button):
+		return ""
+	if b.text != "":
+		return b.text
+	var labels = []
+	_labels(b, labels)
+	return labels[0] if labels.size() > 0 else ""
+
+func _labels(node, out):
+	for c in node.get_children():
+		if c is Label:
+			out.append(c.text)
+		_labels(c, out)

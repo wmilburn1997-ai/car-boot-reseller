@@ -3279,7 +3279,9 @@ func fx_money(amount):
 func _screen(name, args = []):
 	if sim_mode or ui == null:
 		return
-	if game_over and not on_title_screen and name != "show_bankruptcy_screen":
+	if has_save and not on_title_screen and not game_over:
+		save_game()
+	if game_over and name in ["show_market", "show_stall", "show_inventory", "show_business", "show_clearance", "show_perks"]:
 		ui.call("show_bankruptcy_screen")
 		return
 	ui.callv(name, args)
@@ -4677,3 +4679,62 @@ func expire_leads():
 	clearance_leads = out
 	if can_do_clearances() and clearance_leads.size() < 2 and rng.randf() < 0.18:
 		add_clearance_lead("paper")
+
+
+func _ui_rerender():
+	if ui != null:
+		ui.rerender()
+
+func _ui_restore_scrolls():
+	if ui != null:
+		ui.restore_scrolls()
+
+func _unhandled_input(event):
+	if ui != null and ui.handle_key(event):
+		get_viewport().set_input_as_handled()
+# --- debug helpers (used by tools/shot.gd) ---
+func _debug_open_first():
+	if stalls.size() == 0:
+		return
+	var st = stalls[current_stall_index]
+	if st["stock"].size() == 0:
+		return
+	selected_stall_uid = int(st["stock"][0]["uid"])
+	if ui != null:
+		ui.sheet_open = true
+		ui.refresh()
+
+func _debug_open_inv(i = 0):
+	if i >= inventory.size():
+		return
+	selected_inv_uid = int(inventory[i]["uid"])
+	if ui != null:
+		ui.sheet_open = true
+		ui.show_inventory()
+
+func _debug_rich_state():
+	# Mid-game state for screenshots: some cash, stock with discoveries, a garage.
+	cash = 1840.0
+	player_level = 7
+	premises_level = 1
+	vehicle_level = 2
+	equipment = {"cleaning": 1, "repair": 1}
+	expertise = {"Vinyl": 230.0, "Cameras": 70.0, "Jewellery": 20.0}
+	for i in range(8):
+		var it = generate_item("Collector")
+		it["paid"] = it["asking"]
+		inventory.append(it)
+		for t in it["traits"]:
+			t["clue"] = true
+			if rng.randf() < 0.5:
+				t["known"] = true
+	inventory[0]["listed"] = true
+	inventory[0]["listing"] = 45.0
+	inventory[1]["condition_checked"] = true
+	inventory[1]["basic_researched"] = true
+	inventory[1]["basic_comps"] = make_comps(inventory[1], false)
+	for r in regulars.slice(0, 4):
+		r["rel"] = 55.0
+		r["visits"] = 5
+	if ui != null:
+		ui.refresh()
