@@ -1,10 +1,13 @@
 extends SceneTree
 # Headless bot playtests that drive the real game code.
 # Usage: godot --headless --path . --script tools/sim.gd -- <strategy> <runs> <days> [seed]
+# Strategies: careful, casual_fee, naive, reckless, greedy, gambler, researcher, haggler, specialist, tycoon, hoarder
 # Prints one JSON summary line per run, then an aggregate line.
 
 var g
 var strategy = "careful"
+var focus = []
+var stats = {}
 
 func _initialize():
 	var args = OS.get_cmdline_user_args()
@@ -14,7 +17,6 @@ func _initialize():
 	var seed_base = int(args[3]) if args.size() > 3 else 1000
 	var finals = []
 	var bankrupt = 0
-	var errors = 0
 	for r in range(runs):
 		var res = run_one(seed_base + r, days)
 		finals.append(res)
@@ -29,7 +31,13 @@ func _initialize():
 	for v in nw:
 		mean += v
 	mean /= max(1, nw.size())
-	print("AGG " + JSON.stringify({"strategy": strategy, "runs": runs, "days": days, "bankrupt": bankrupt, "median_net_worth": nw[nw.size() / 2], "mean_net_worth": mean, "p10": nw[int(nw.size() * 0.1)], "p90": nw[int(nw.size() * 0.9)]}))
+	var agg = {"strategy": strategy, "runs": runs, "days": days, "bankrupt": bankrupt, "median_net_worth": nw[nw.size() / 2], "mean_net_worth": snapped(mean, 1), "p10": nw[int(nw.size() * 0.1)], "p90": nw[int(nw.size() * 0.9)]}
+	for k in ["premises", "vehicle", "clearances", "discoveries", "missed", "returns", "max_tier", "level", "sold"]:
+		var tot = 0.0
+		for f in finals:
+			tot += float(f.get(k, 0))
+		agg["avg_" + k] = snapped(tot / max(1, finals.size()), 0.1)
+	print("AGG " + JSON.stringify(agg))
 	quit()
 
 func new_game(seed):
@@ -39,16 +47,12 @@ func new_game(seed):
 	g.sim_mode = true
 	g.rng.seed = seed
 	seed(seed)
-	# minimal UI stubs so functions that touch labels don't crash
-	g.status_label = Label.new()
-	g.footer_label = Label.new()
 	g.init_new_run()
-
-func comps_median(item):
-	var v = item.get("comps_values", [])
-	if v.size() == 0:
-		return 0.0
-	return float(v[v.size() / 2])
+	focus = []
+	var cats = g.CATEGORIES.duplicate()
+	cats.shuffle()
+	focus = [cats[0], cats[1]]
+	stats = {"clearances": 0}
 
 func est_net(item, gross):
 	var costs = g.selling_costs(item, gross)
@@ -58,9 +62,9 @@ func run_one(seed, days):
 	new_game(seed)
 	var curve = []
 	var bankrupt_day = 0
-	var bought = 0
 	for d in range(days):
-		play_market()
+		if not try_clearance():
+			play_market()
 		play_home()
 		var before_day = g.day
 		g.end_day()
@@ -68,23 +72,56 @@ func run_one(seed, days):
 			bankrupt_day = before_day
 			break
 		spend_upgrades()
-		curve.append(int(g.cash + g.inventory_book_value()))
+		if d % 5 == 4:
+			curve.append(int(g.business_value()))
 	var returns = 0
-	return {"seed": seed, "strategy": strategy, "day": g.day, "cash": snapped(g.cash, 0.01), "stock": g.inventory.size(),
-		"net_worth": snapped(g.cash + g.inventory_book_value(), 0.01), "bankrupt_day": bankrupt_day,
-		"sold": g.sold_history.size(), "level": g.player_level, "profit": snapped(g.total_lifetime_profit, 0.01),
-		"rating": snapped(g.seller_rating, 0.1), "upgrades": [g.bag_level, g.storage_level, g.toolbox_level, g.eye_level, g.fee_level],
-		"curve": curve}
+	var missed = 0
+	for s in g.sold_history:
+		missed += s.get("missed", []).size()
+	var disc = 0
+	for k in g.discoveries_log:
+		disc += int(g.discoveries_log[k])
+	return {"seed": seed, "strategy": strategy, "day": g.day, "cash": snapped(g.cash, 1), "stock": g.inventory.size(),
+		"net_worth": snapped(g.business_value(), 1), "bankrupt_day": bankrupt_day,
+		"sold": g.sold_history.size(), "level": g.player_level, "profit": snapped(g.total_lifetime_profit, 1),
+		"rating": snapped(g.seller_rating, 0.1), "premises": g.premises_level, "vehicle": g.vehicle_level,
+		"equip": g.equipment.keys(), "clearances": stats["clearances"], "discoveries": disc, "missed": missed,
+		"max_tier": g.max_expertise_tier(), "goals": g.goals_done, "curve": curve}
+
+func try_clearance():
+	if strategy in ["naive", "reckless", "gambler", "greedy"]:
+		return false
+	if not g.can_do_clearances() or g.clearance_leads.size() == 0:
+		return false
+	var lead = g.clearance_leads[0]
+	g.start_clearance(lead["id"])
+	if g.clearance == null:
+		return false
+	for r in range(g.clearance["rooms"].size()):
+		if g.energy >= 30:
+			g.clearance_look(r)
+	var est = 0.0
+	for it in g.clearance["items"]:
+		var c = g.perceived_center(it)
+		est += est_net(it, c)
+	var price = float(g.clearance["price"])
+	if est > price * 1.5 and g.cash > price + 80 and g.inventory_space_used() + g.clearance_space_needed() <= g.storage_capacity():
+		g.accept_clearance()
+		stats["clearances"] += 1
+	else:
+		g.walk_away_clearance()
+	return true
 
 func play_market():
 	var reserve_energy = 38
-	for s in range(g.stalls.size()):
+	var order = range(g.stalls.size())
+	for s in order:
 		if g.current_time_minutes >= 12 * 60 - 10 or g.energy < reserve_energy:
 			return
 		var stall = g.stalls[s]
 		if g.current_time_minutes >= int(stall["packing_minute"]) or stall.get("banned_today", false):
 			continue
-		if s != g.current_stall_index:
+		if s != g.current_stall_index or not stall.get("visited", false):
 			g.go_to_stall(s)
 		var digs = 0
 		while true:
@@ -132,11 +169,8 @@ func consider_item(stall, i):
 			g.buy_item(i)
 		return
 	if strategy == "naive":
-		# No research: buys whatever looks cheap vs a rough idea of what that kind of thing costs.
-		var fam_mid = 0.0
-		for f in g.item_families:
-			if f["name"] == item["name"]:
-				fam_mid = (float(f["value"][0]) + float(f["value"][1])) / 2.0
+		var fam = g.content.family(item["name"])
+		var fam_mid = (float(fam["value"][0]) + float(fam["value"][1])) / 2.0
 		if not item["quick_look_done"] and g.energy > 45:
 			g.quick_look(i)
 		if item.get("perceived_condition", 6) <= 3:
@@ -144,111 +178,153 @@ func consider_item(stall, i):
 		if asking < fam_mid * 0.6 and g.rng.randf() < 0.7:
 			g.buy_item(i)
 		return
-	# careful / quickseller / researcher / greedy: research first
+	var in_focus = focus.has(item["category"])
+	if strategy == "specialist" and not in_focus and g.rng.randf() < 0.6:
+		return
+	if not item["quick_look_done"] and g.energy > 45:
+		g.quick_look(i)
+	if g.can_specialist_check(item) and g.energy > 45:
+		g.specialist_check("stall", i)
 	if not item["basic_researched"]:
 		if g.energy < 4:
 			return
-		g.current_stall_index = g.stalls.find(stall)
 		g.prebuy_research(i)
-	var med = comps_median(item)
+	var med = g.perceived_center(item) if not item["basic_researched"] else comps_median(item)
 	if med <= 0.0:
-		return
-	if strategy == "casual":
-		if med > asking * 1.2:
-			g.buy_item(i)
 		return
 	if strategy == "casual_fee":
 		if est_net(item, med) > asking * 1.2 and est_net(item, med) - asking > 3.0:
 			g.buy_item(i)
 		return
-	var expected_net = est_net(item, med * 0.95)
-	if expected_net < asking * 1.45 or expected_net - asking < 6.0:
+	var margin = 1.45 if strategy != "specialist" else 1.35
+	var expected_net = est_net(item, max(med * 0.95, g.perceived_center(item) * 0.95))
+	if expected_net < asking * margin or expected_net - asking < 6.0:
 		return
-	# Worth a closer look: check condition on anything non-trivial
 	if asking >= 15.0 and not item["condition_checked"] and g.cash > 40 and g.energy > 45:
 		g.check_condition(i)
 		if item["condition"] <= 4:
 			return
 		if (not item["testable"]) and item["fault"] and item["fault_severity"] in ["Major", "Dead"]:
 			return
-	# haggle once, gently
+		expected_net = est_net(item, g.perceived_center(item) * 0.95)
+		if expected_net < asking * (margin - 0.1):
+			return
 	if not item["haggle_attempted"]:
-		var offer = round(asking * 0.85)
-		if g.compute_haggle_chance(item, stall["seller"], offer) >= 0.6 and asking >= 8:
-			var le = LineEdit.new()
-			le.text = str(int(offer))
-			g.haggle_item(i, le)
-			le.free()
+		var pct = 0.70 if strategy == "haggler" else 0.85
+		var offer = round(asking * pct)
+		if (strategy == "haggler" or g.haggle_chance_here(i, offer) >= 0.6) and asking >= 8:
+			g.haggle_item(i, offer)
 			if item["haggle_result"] == "refused" or stall.get("banned_today", false):
 				return
 	g.buy_item(i)
+
+func comps_median(item):
+	var v = item.get("comps_values", [])
+	if v.size() == 0:
+		return 0.0
+	return float(v[v.size() / 2])
 
 func play_home():
 	for idx in range(g.inventory.size() - 1, -1, -1):
 		if idx >= g.inventory.size():
 			continue
 		var item = g.inventory[idx]
-		if item["listed"] or item["auctioned"]:
+		if item["listed"] or item["auctioned"] or item.get("on_shop_floor", false):
 			continue
+		if g.is_unsorted_lot(item) and g.energy >= 6 and strategy != "naive":
+			g.sort_lot(idx)
+			item = g.inventory[idx]
 		if item["testable"] and not item["tested"]:
-			if g.cash >= 2 and g.energy >= 5:
+			if g.cash >= g.test_cost() and g.energy >= g.test_energy():
 				g.test_item(idx)
 			else:
 				continue
-		if strategy == "researcher" and not item["deep_researched"] and float(item["paid"]) >= 25 and g.energy >= 12 and g.cash > 80:
+		if g.can_clean(item) and g.energy >= 4 and g.cash > 20:
+			g.clean_item(idx)
+		if g.has_equip("parts") and g.known_fixable(item, "parts").size() > 0 and g.cash > 20 and g.energy >= 3:
+			g.parts_fix(idx)
+		if g.can_specialist_check(item) and g.energy >= 3:
+			g.specialist_check("inv", idx)
+		if (strategy == "researcher" or (strategy in ["specialist", "tycoon"] and focus.has(item["category"]))) and not item["deep_researched"] and float(item["paid"]) >= 20 and g.energy >= 12 and g.cash > 80:
 			g.deep_research(idx)
 		if item["auth_status"] == "Unauthenticated" and float(item["fake_chance"]) >= 0.08 and float(item["paid"]) >= 30 and strategy != "reckless" and g.cash > 60 and g.energy >= 6:
 			g.authenticate_item(idx)
 		if item["auth_status"] == "Confirmed Counterfeit":
 			g.scrap_item(idx)
 			continue
-		if strategy == "quickseller":
-			g.quick_sell_item(idx)
-			continue
-		var pot = g.estimate_identified_potential(item)
-		var price = round((pot[0] + pot[1]) / 2.0 * (1.0 if strategy != "careful" else 1.02))
-		if strategy == "greedy":
-			price = round(float(pot[1]) * 1.6)
-		if item["fault"] and g.fault_is_known(item) and g.toolbox_level > 0 and not item["repair_attempted"] and g.energy >= 10 and g.cash > 30:
+		if g.can_repair(item) and g.energy >= 10 and g.cash > 30:
 			g.repair_item(idx)
-			pot = g.estimate_identified_potential(item)
-			price = round((pot[0] + pot[1]) / 2.0)
-		if g.player_level >= 6 and (item["rarity"] != "Common" or float(g.current_trends.get(item["category"], 1.0)) >= 1.10):
-			g.start_auction(idx)
+		if g.collector_contact_available(item) and g.collector_offer_for(item) > g.perceived_center(item) * 0.85:
+			g.sell_to_collector(idx)
+			continue
+		var price = g.suggested_price(item) * (1.02 if strategy == "careful" else 1.0)
+		if strategy == "greedy":
+			price = round(float(g.estimate_identified_potential(item)[1]) * 1.6)
+		if g.auctions_unlocked() and (item["rarity"] != "Common" or float(g.current_trends.get(item["category"], 1.0)) >= 1.10):
+			if g.active_listing_count() < g.listing_cap():
+				g.start_auction(idx)
+				continue
+		if g.shop_floor_enabled() and g.shop_floor_count() < g.shop_floor_cap():
+			g.put_on_shop_floor(idx, price)
 			continue
 		if g.cash < 25 and float(item["paid"]) < 15:
 			g.quick_sell_item(idx)
 			continue
-		var le = LineEdit.new()
-		le.text = str(int(price))
-		g.create_listing(idx, le)
-		le.free()
-	# Stale stock: drop price on anything listed for 4+ days
+		if g.active_listing_count() >= g.listing_cap():
+			if strategy == "hoarder":
+				continue
+			if g.estimated_profit_at(item, price) < 0 or float(item.get("days_owned", 0)) > 10:
+				g.quick_sell_item(idx)
+			continue
+		g.create_listing(idx, price)
+	# Stale stock: drop the price on anything listed for 4+ days
 	for idx in range(g.inventory.size() - 1, -1, -1):
 		var item = g.inventory[idx]
 		if item["listed"] and strategy != "greedy" and g.day - int(item.get("listed_day", g.day)) >= 4:
 			var newp = round(float(item["listing"]) * 0.85)
 			g.unlist_item(idx)
-			var le = LineEdit.new()
-			le.text = str(int(max(1, newp)))
-			g.create_listing(idx, le)
-			le.free()
+			g.create_listing(idx, max(1, newp))
 
 func spend_upgrades():
-	if strategy == "reckless":
+	if strategy in ["reckless", "naive", "gambler"]:
 		return
-	# Sensible upgrade path: storage when near full, eye, bag, fees
 	var cash = g.cash
+	var reserve = 150.0 if strategy != "tycoon" else 100.0
 	var used = g.inventory_space_used()
-	var cap = int(g.storage_upgrades[g.storage_level]["capacity"])
-	if used > cap * 0.7 and g.storage_level < g.storage_upgrades.size() - 1 and cash > float(g.storage_upgrades[g.storage_level + 1]["cost"]) * 2.5:
-		g.buy_upgrade("storage")
-		return
-	if g.bag_level < g.bag_upgrades.size() - 1 and cash > float(g.bag_upgrades[g.bag_level + 1]["cost"]) * 3.0:
-		g.buy_upgrade("bag")
-		return
-	if g.fee_level < g.fee_upgrades.size() - 1 and cash > float(g.fee_upgrades[g.fee_level + 1]["cost"]) * 3.0:
-		g.buy_upgrade("fee")
-		return
-	if g.toolbox_level < 1 and cash > 400:
-		g.buy_upgrade("toolbox")
+	var cap = g.storage_capacity()
+	var Biz = g.Biz
+	# vehicle: trolley early, estate/van later
+	if g.vehicle_level < Biz.VEHICLES.size() - 1:
+		var nv = Biz.VEHICLES[g.vehicle_level + 1]
+		var mult = 2.0 if g.vehicle_level == 0 else 2.5
+		if cash - float(nv["cost"]) > reserve and cash > float(nv["cost"]) * mult:
+			g.buy_vehicle()
+			return
+	if used > cap * 0.7 and g.can_buy_premises():
+		var np = Biz.PREMISES[g.premises_level + 1]
+		if cash > float(np["cost"]) * 2.0:
+			g.buy_premises()
+			return
+	if used > cap * 0.75 and g.equip_level("shelving") < 2 and g.workshop_slots_used() < g.workshop_slots() or (g.equip_level("shelving") == 1 and used > cap * 0.8):
+		var c = g.equipment_next_cost("shelving")
+		if c > 0 and cash > c * 2.5:
+			g.buy_equipment("shelving")
+			return
+	for id in ["cleaning", "photo", "repair", "parts", "test_rig", "library", "packing", "auth"]:
+		if g.workshop_slots_used() >= g.workshop_slots() and g.equip_level(id) == 0:
+			continue
+		var c = g.equipment_next_cost(id)
+		if c > 0 and cash > c * 3.0 + reserve:
+			g.buy_equipment(id)
+			return
+	if g.fee_level < Biz.ACCOUNTS.size() - 1 and g.account_requirements_met(g.fee_level + 1):
+		var na = Biz.ACCOUNTS[g.fee_level + 1]
+		if cash > float(na["cost"]) * 3.0:
+			g.buy_account()
+			return
+	if g.skill_points_available() > 0:
+		for id in ["keen_eye", "good_photos", "trade_contacts", "quick_study", "silver_tongue", "hunch", "frugal", "auctioneer", "early_bird", "thick_skin", "polymath"]:
+			var p = g.perk_def(id)
+			if not g.has_perk(id) and g.skill_points_available() >= int(p["cost"]) and (p["requires"] == "" or g.has_perk(p["requires"])):
+				g.buy_perk(id)
+				break

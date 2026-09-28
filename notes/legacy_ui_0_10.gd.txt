@@ -1,0 +1,3629 @@
+func package_insight_cost(level):
+	return round(50.0 * pow(1.28, level))
+
+func persuasion_cost(level):
+	return round(50.0 * pow(1.28, level))
+
+func adapt_layout():
+	if header_grid_ref != null:
+		header_grid_ref.columns = 4 if is_narrow() else 8
+	if nav_grid_ref != null:
+		nav_grid_ref.columns = 3 if is_narrow() else 6
+
+func _on_size_changed():
+	if sim_mode:
+		return
+	adjust_scale_for_device()
+	call_deferred("_rerender_after_resize")
+
+func _rerender_after_resize():
+	adapt_layout()
+	match current_screen_name:
+		"show_stall":
+			show_stall()
+		"show_stall_list":
+			show_stall_list()
+		"show_special_offer":
+			show_special_offer()
+		"show_inventory":
+			show_inventory()
+		"show_trends":
+			show_trends()
+		"show_shop":
+			show_shop()
+		"show_sold_history":
+			show_sold_history()
+		"show_collection_log":
+			show_collection_log()
+		"show_achievements":
+			show_achievements()
+		"show_title_screen":
+			show_title_screen()
+		"show_settings_screen":
+			show_settings_screen()
+		"show_tutorial":
+			show_tutorial()
+		"show_more_menu":
+			show_more_menu()
+		"show_skill_tree":
+			show_skill_tree()
+		_:
+			pass
+
+func adjust_scale_for_device():
+	if sim_mode:
+		return
+	var w = 0.0
+	var h = 0.0
+	if OS.has_feature("web") and Engine.has_singleton("JavaScriptBridge"):
+		var js = Engine.get_singleton("JavaScriptBridge")
+		w = float(js.call("eval", "window.innerWidth"))
+		h = float(js.call("eval", "window.innerHeight"))
+	if w <= 0.0 or h <= 0.0:
+		var vp_size = get_window().size
+		w = float(vp_size.x)
+		h = float(vp_size.y)
+	var auto_shrink = min(w / 1600.0, h / 900.0)
+	auto_shrink = max(auto_shrink, 0.05)
+	var factor = clamp(1.0 / auto_shrink, 1.0, 4.5) * ui_scale
+	# Never let the logical canvas get narrower than MIN_LOGICAL_WIDTH units, or
+	# the layout can't fit (phones in portrait). Logical width = window width / (base scale * factor).
+	var base_scale = min(float(get_window().size.x) / 1600.0, float(get_window().size.y) / 900.0)
+	if base_scale > 0.0:
+		var logical_w = float(get_window().size.x) / (base_scale * factor)
+		if logical_w < MIN_LOGICAL_WIDTH:
+			factor *= logical_w / MIN_LOGICAL_WIDTH
+	get_window().content_scale_factor = max(0.25, factor)
+
+func build_ui():
+	# Global UI font: Jersey 10.
+	# Keep Jersey10-Regular.ttf in res://fonts/
+	var global_theme = Theme.new()
+	var jersey_font = load("res://fonts/Jersey10-Regular.ttf")
+	if jersey_font != null:
+		if ResourceLoader.exists("res://fonts/Symbols.ttf"):
+			var sym = load("res://fonts/Symbols.ttf")
+			if sym != null:
+				jersey_font.fallbacks = [sym]
+		global_theme.default_font = jersey_font
+		# Use Godot's imported font resource so the same font is packaged correctly for Web exports.
+		for control_type in ["Label", "Button", "CheckButton", "CheckBox", "LineEdit", "TextEdit", "RichTextLabel", "SpinBox", "OptionButton", "MenuButton", "TooltipLabel"]:
+			global_theme.set_font("font", control_type, jersey_font)
+		theme = global_theme
+	else:
+		push_error("Could not load UI font: res://fonts/Jersey10-Regular.ttf")
+
+	var bg = ColorRect.new()
+	bg.color = Color(0.035, 0.045, 0.06, 1.0)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(bg)
+
+	var pattern_size = 22
+	var pattern_img = Image.create(pattern_size, pattern_size, false, Image.FORMAT_RGBA8)
+	pattern_img.fill(Color(0, 0, 0, 0))
+	var dot_color = Color(0.55, 0.70, 0.95, 0.10)
+	for dx in range(3):
+		for dy in range(3):
+			pattern_img.set_pixel(3 + dx, 3 + dy, dot_color)
+	var pattern_tex = ImageTexture.create_from_image(pattern_img)
+	var pattern_rect = TextureRect.new()
+	pattern_rect.texture = pattern_tex
+	pattern_rect.stretch_mode = TextureRect.STRETCH_TILE
+	pattern_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pattern_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(pattern_rect)
+
+	var pattern2_size = 64
+	var pattern2_img = Image.create(pattern2_size, pattern2_size, false, Image.FORMAT_RGBA8)
+	pattern2_img.fill(Color(0, 0, 0, 0))
+	var dot2_color = Color(0.55, 0.70, 0.95, 0.045)
+	for dx in range(5):
+		for dy in range(5):
+			pattern2_img.set_pixel(8 + dx, 8 + dy, dot2_color)
+	var pattern2_tex = ImageTexture.create_from_image(pattern2_img)
+	var pattern2_rect = TextureRect.new()
+	pattern2_rect.texture = pattern2_tex
+	pattern2_rect.stretch_mode = TextureRect.STRETCH_TILE
+	pattern2_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pattern2_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(pattern2_rect)
+
+	root_vbox = VBoxContainer.new()
+	root_vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_vbox.add_theme_constant_override("separation", 8)
+	root_vbox.offset_left = 16
+	root_vbox.offset_top = 12
+	root_vbox.offset_right = -16
+	root_vbox.offset_bottom = -12
+	add_child(root_vbox)
+
+	var header_row = PanelContainer.new()
+	var header_style = StyleBoxFlat.new()
+	header_style.bg_color = Color(0.055,0.07,0.095,1.0)
+	header_style.corner_radius_top_left = 8
+	header_style.corner_radius_top_right = 8
+	header_style.corner_radius_bottom_left = 8
+	header_style.corner_radius_bottom_right = 8
+	header_style.content_margin_left = 10
+	header_style.content_margin_right = 10
+	header_style.content_margin_top = 6
+	header_style.content_margin_bottom = 6
+	header_row.add_theme_stylebox_override("panel", header_style)
+	root_vbox.add_child(header_row)
+	header_row_ref = header_row
+
+	var header_vbox = VBoxContainer.new()
+	header_vbox.add_theme_constant_override("separation", 6)
+	header_row.add_child(header_vbox)
+
+	var primary_row = GridContainer.new()
+	primary_row.columns = 8
+	primary_row.add_theme_constant_override("h_separation", 6)
+	primary_row.add_theme_constant_override("v_separation", 6)
+	header_vbox.add_child(primary_row)
+	header_grid_ref = primary_row
+	add_stat_chip(primary_row, "cash", "Cash on hand. Negative cash costs 6% a day in overdraft interest, and 4 days in a row in the red is bankruptcy.", true)
+	add_stat_chip(primary_row, "energy", "Energy left today. Most actions cost some; it refills to 100 each morning.", true)
+	add_stat_chip(primary_row, "carry", "Bag space used today. Resets each morning. Bigger bags in the Shop.", true)
+	add_stat_chip(primary_row, "storage", "Space used at home. Everything you own takes space until it sells.", true)
+	add_stat_chip(primary_row, "listed", "Items listed for sale, and your seller rating (returns lower it, and a low rating slows sales).", true)
+	add_stat_chip(primary_row, "level", "Level and XP. Levels give Skill Points and unlock perks.", true)
+	add_stat_chip(primary_row, "day", "Day and time. Stalls pack up from late morning; the car boot shuts at 12:00. Buyers come overnight.", true)
+	var end_day_button = Button.new()
+	end_day_button.text = "End Day  >"
+	end_day_button.tooltip_text = "Go home for the night: pay the day's costs (pitch fee & fuel, plus upkeep on upgrades) and see what sells overnight."
+	style_button(end_day_button, "gold")
+	end_day_button.custom_minimum_size = Vector2(0, 36)
+	end_day_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	end_day_button.add_theme_font_size_override("font_size", 17)
+	end_day_button.pressed.connect(end_day)
+	primary_row.add_child(end_day_button)
+
+	var nav_panel = PanelContainer.new()
+	var nav_style = StyleBoxFlat.new()
+	nav_style.bg_color = Color(0.07,0.09,0.12,1.0)
+	nav_style.corner_radius_top_left = 8
+	nav_style.corner_radius_top_right = 8
+	nav_style.corner_radius_bottom_left = 8
+	nav_style.corner_radius_bottom_right = 8
+	nav_style.content_margin_left = 8
+	nav_style.content_margin_right = 8
+	nav_style.content_margin_top = 7
+	nav_style.content_margin_bottom = 7
+	nav_panel.add_theme_stylebox_override("panel", nav_style)
+	root_vbox.add_child(nav_panel)
+	nav_panel_ref = nav_panel
+
+	var nav = GridContainer.new()
+	nav.columns = 6
+	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_theme_constant_override("h_separation", 5)
+	nav.add_theme_constant_override("v_separation", 5)
+	nav_grid_ref = nav
+	nav_panel.add_child(nav)
+	add_nav_button(nav, "This Stall", Callable(self, "show_stall"))
+	add_nav_button(nav, "All Stalls", Callable(self, "show_stall_list"))
+	add_nav_button(nav, "Inventory", Callable(self, "show_inventory_fresh"))
+	add_nav_button(nav, "Sales", Callable(self, "show_sold_history"))
+	add_nav_button(nav, "Shop", Callable(self, "show_shop"))
+	add_nav_button(nav, "More", Callable(self, "show_more_menu"))
+
+	page_scroll = ScrollContainer.new()
+	page_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root_vbox.add_child(page_scroll)
+	remember_scroll(page_scroll)
+
+	var page_content = VBoxContainer.new()
+	page_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page_content.add_theme_constant_override("separation", 7)
+	page_scroll.add_child(page_content)
+
+	body = VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 7)
+	page_content.add_child(body)
+
+	status_label = Label.new()
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_label.add_theme_font_size_override("font_size", 14)
+	status_label.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
+
+	tooltip_panel = PanelContainer.new()
+	tooltip_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	tooltip_panel.offset_left = 16
+	tooltip_panel.offset_right = -16
+	tooltip_panel.offset_top = -64
+	tooltip_panel.offset_bottom = -14
+	tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tooltip_panel.visible = false
+	var tooltip_style = StyleBoxFlat.new()
+	tooltip_style.bg_color = Color(0.06,0.07,0.09,0.96)
+	tooltip_style.border_width_left = 1
+	tooltip_style.border_width_top = 1
+	tooltip_style.border_width_right = 1
+	tooltip_style.border_width_bottom = 1
+	tooltip_style.border_color = Color(0.30,0.28,0.22,1.0)
+	tooltip_style.corner_radius_top_left = 8
+	tooltip_style.corner_radius_top_right = 8
+	tooltip_style.corner_radius_bottom_left = 8
+	tooltip_style.corner_radius_bottom_right = 8
+	tooltip_style.content_margin_left = 10
+	tooltip_style.content_margin_right = 10
+	tooltip_style.content_margin_top = 8
+	tooltip_style.content_margin_bottom = 8
+	tooltip_panel.add_theme_stylebox_override("panel", tooltip_style)
+	add_child(tooltip_panel)
+	tooltip_panel.add_child(status_label)
+
+	footer_label = Label.new()
+	footer_label.visible = false
+
+	blocked_popup = PanelContainer.new()
+	blocked_popup.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	blocked_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	blocked_popup.visible = false
+	blocked_popup.z_index = 100
+	var blocked_style = StyleBoxFlat.new()
+	blocked_popup_style = blocked_style
+	blocked_style.bg_color = Color(0.16,0.05,0.05,0.97)
+	blocked_style.border_width_left = 2
+	blocked_style.border_width_top = 2
+	blocked_style.border_width_right = 2
+	blocked_style.border_width_bottom = 2
+	blocked_style.border_color = Color(0.75,0.35,0.32,1.0)
+	blocked_style.corner_radius_top_left = 10
+	blocked_style.corner_radius_top_right = 10
+	blocked_style.corner_radius_bottom_left = 10
+	blocked_style.corner_radius_bottom_right = 10
+	blocked_style.content_margin_left = 22
+	blocked_style.content_margin_right = 22
+	blocked_style.content_margin_top = 16
+	blocked_style.content_margin_bottom = 16
+	blocked_popup.add_theme_stylebox_override("panel", blocked_style)
+	add_child(blocked_popup)
+
+	blocked_popup_label = Label.new()
+	blocked_popup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	blocked_popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	blocked_popup_label.custom_minimum_size = Vector2(220, 0)
+	blocked_popup_label.add_theme_font_size_override("font_size", 16)
+	blocked_popup_label.add_theme_color_override("font_color", Color(0.95,0.88,0.86,1.0))
+	blocked_popup.add_child(blocked_popup_label)
+
+	blocked_popup_timer = Timer.new()
+	blocked_popup_timer.one_shot = true
+	blocked_popup_timer.wait_time = 2.6
+	blocked_popup_timer.timeout.connect(Callable(self, "_hide_blocked_popup"))
+	add_child(blocked_popup_timer)
+	build_overlays()
+	call_deferred("adapt_layout")
+
+	update_header()
+
+func show_daily_challenges():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_daily_challenges"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 24)
+	title.text = "DAILY CHALLENGES"
+	body.add_child(title)
+
+	var completed = daily_challenges_completed_count()
+	var bonus_panel = make_card()
+	body.add_child(bonus_panel)
+	var bonus_label = RichTextLabel.new()
+	bonus_label.bbcode_enabled = true
+	bonus_label.fit_content = true
+	bonus_label.scroll_active = false
+	bonus_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bonus_label.add_theme_font_size_override("normal_font_size", 17)
+	if daily_challenge_bonus_given:
+		bonus_label.text = "[color=#8cd98f][b]Bonus claimed today: +£40 and +30 XP![/b][/color]"
+	else:
+		bonus_label.text = "[color=#e8c15a][b]Complete ALL %d challenges today for an extra bonus on top: +£40 and +30 XP![/b][/color]" % daily_challenges.size()
+	bonus_panel.add_child(bonus_label)
+
+	for c in daily_challenges:
+		var done = check_daily_challenge(c)
+		var card = make_card()
+		body.add_child(card)
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		card.add_child(row)
+		var check_label = Label.new()
+		check_label.text = "[DONE]" if done else "[ ]"
+		check_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0) if done else Color(0.50,0.55,0.62,1.0))
+		row.add_child(check_label)
+		var desc_label = Label.new()
+		desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var progress_val = float(day_stats.get(c["type"], 0))
+		var target_val = float(c["target"])
+		desc_label.text = "%s (%d/%d) — Reward: +£%d, +%d XP" % [c["desc"], int(min(progress_val, target_val)), int(target_val), int(c["reward_cash"]), int(c["reward_xp"])]
+		if done:
+			desc_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+		row.add_child(desc_label)
+
+func show_level_unlocks():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_level_unlocks"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 24)
+	title.text = "LEVEL UNLOCKS"
+	body.add_child(title)
+
+	var progress_panel = make_card()
+	body.add_child(progress_panel)
+	var progress_box = VBoxContainer.new()
+	progress_box.add_theme_constant_override("separation", 4)
+	progress_panel.add_child(progress_box)
+	var level_label = Label.new()
+	level_label.add_theme_font_size_override("font_size", 18)
+	level_label.text = "Level %d" % player_level
+	progress_box.add_child(level_label)
+	var xp_needed = xp_needed_for_level(player_level)
+	var xp_bar = ProgressBar.new()
+	xp_bar.min_value = 0
+	xp_bar.max_value = xp_needed
+	xp_bar.value = clamp(player_xp, 0, xp_needed)
+	xp_bar.show_percentage = false
+	xp_bar.custom_minimum_size = Vector2(0, 20)
+	var fill_style = StyleBoxFlat.new()
+	fill_style.bg_color = Color(0.55,0.45,0.85,1.0)
+	fill_style.corner_radius_top_left = 6
+	fill_style.corner_radius_top_right = 6
+	fill_style.corner_radius_bottom_left = 6
+	fill_style.corner_radius_bottom_right = 6
+	xp_bar.add_theme_stylebox_override("fill", fill_style)
+	progress_box.add_child(xp_bar)
+	var xp_label = Label.new()
+	xp_label.add_theme_font_size_override("font_size", 16)
+	xp_label.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+	xp_label.text = "XP %d/%d — %d XP to Level %d" % [player_xp, xp_needed, xp_needed - player_xp, player_level + 1]
+	progress_box.add_child(xp_label)
+
+	for tier in level_unlock_tiers:
+		var unlocked = player_level >= tier["level"]
+		var card = make_card()
+		body.add_child(card)
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		card.add_child(row)
+		var status_label = Label.new()
+		status_label.text = "[UNLOCKED]" if unlocked else "[LEVEL %d]" % tier["level"]
+		status_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0) if unlocked else Color(0.50,0.55,0.62,1.0))
+		row.add_child(status_label)
+		var desc_label = Label.new()
+		desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		desc_label.text = tier["desc"]
+		if unlocked:
+			desc_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+		row.add_child(desc_label)
+
+func make_skill_node(s):
+	var col = VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var unlocked = has_skill(s["name"])
+	var prereq_ok = s["requires"] == "" or has_skill(s["requires"])
+	var can_afford = skill_points_available() >= int(s["cost"])
+
+	var node_color = Color(0.16,0.17,0.20,1.0)
+	var border_color = Color(0.32,0.35,0.40,0.5)
+	if unlocked:
+		node_color = Color(0.11,0.30,0.19,1.0)
+		border_color = Color(0.45,0.85,0.55,0.95)
+	elif prereq_ok and can_afford:
+		node_color = Color(0.32,0.25,0.09,1.0)
+		border_color = Color(0.90,0.76,0.35,0.95)
+
+	var node_button = Button.new()
+	var initials = ""
+	for word in s["name"].split(" "):
+		initials += word[0]
+	node_button.text = initials
+	node_button.custom_minimum_size = Vector2(64, 64)
+	var sb_normal = StyleBoxFlat.new()
+	sb_normal.bg_color = node_color
+	sb_normal.border_color = border_color
+	sb_normal.border_width_left = 3
+	sb_normal.border_width_right = 3
+	sb_normal.border_width_top = 3
+	sb_normal.border_width_bottom = 3
+	sb_normal.corner_radius_top_left = 32
+	sb_normal.corner_radius_top_right = 32
+	sb_normal.corner_radius_bottom_left = 32
+	sb_normal.corner_radius_bottom_right = 32
+	sb_normal.shadow_color = Color(0,0,0,0.4)
+	sb_normal.shadow_size = 5
+	var sb_hover = sb_normal.duplicate()
+	sb_hover.bg_color = node_color.lightened(0.15)
+	var sb_pressed = sb_normal.duplicate()
+	sb_pressed.bg_color = node_color.darkened(0.15)
+	node_button.add_theme_stylebox_override("normal", sb_normal)
+	node_button.add_theme_stylebox_override("hover", sb_hover)
+	node_button.add_theme_stylebox_override("pressed", sb_pressed)
+	node_button.add_theme_font_size_override("font_size", 18)
+	node_button.tooltip_text = s["desc"]
+	node_button.pressed.connect(Callable(self, "queue_popup").bind("%s: %s" % [s["name"], s["desc"]], "info"))
+	col.add_child(node_button)
+
+	var name_label = Label.new()
+	name_label.text = s["name"]
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.custom_minimum_size = Vector2(78, 0)
+	name_label.add_theme_font_size_override("font_size", 11)
+	if unlocked:
+		name_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+	col.add_child(name_label)
+
+	if unlocked:
+		var done_label = Label.new()
+		done_label.text = "UNLOCKED"
+		done_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		done_label.add_theme_font_size_override("font_size", 9)
+		done_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+		col.add_child(done_label)
+	else:
+		var buy_button = Button.new()
+		var point_word = "pt" if int(s["cost"]) == 1 else "pts"
+		buy_button.text = "%d %s" % [int(s["cost"]), point_word]
+		buy_button.custom_minimum_size = Vector2(64, 26)
+		style_button(buy_button, "buy")
+		buy_button.add_theme_font_size_override("font_size", 11)
+		buy_button.disabled = not can_afford or not prereq_ok
+		buy_button.pressed.connect(Callable(self, "buy_skill").bind(s["name"]))
+		col.add_child(buy_button)
+
+	return col
+
+func make_skill_connector(from_unlocked):
+	var connector = ColorRect.new()
+	connector.custom_minimum_size = Vector2(4, 22)
+	connector.color = Color(0.45,0.85,0.55,0.9) if from_unlocked else Color(0.32,0.35,0.40,0.5)
+	var wrap = CenterContainer.new()
+	wrap.add_child(connector)
+	return wrap
+
+func show_skill_tree():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_skill_tree"
+	clear_body()
+	update_header()
+	body.add_child(small_label("SKILL TREE", 24, Color(0.95,0.96,1.0,1.0)))
+	body.add_child(small_label("Skill Points to spend: %d   (you earn 1 each time you level up — %d spent so far)" % [skill_points_available(), skill_points_spent()], 18, Color(0.78,0.60,0.98,1.0)))
+	var cols = GridContainer.new()
+	cols.columns = 1 if is_narrow() else 3
+	cols.add_theme_constant_override("h_separation", 12)
+	cols.add_theme_constant_override("v_separation", 12)
+	cols.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(cols)
+	for cat in ["Trading", "Appraisal", "Fortune"]:
+		var col = VBoxContainer.new()
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.add_theme_constant_override("separation", 8)
+		cols.add_child(col)
+		col.add_child(small_label(cat.to_upper(), 20, Color(0.95,0.84,0.62,1.0)))
+		for s in skill_tree:
+			if s["category"] != cat:
+				continue
+			var unlocked = has_skill(s["name"])
+			var prereq_ok = s["requires"] == "" or has_skill(s["requires"])
+			var can_afford = skill_points_available() >= int(s["cost"])
+			var card = make_card()
+			var sb = card.get_theme_stylebox("panel").duplicate()
+			if unlocked:
+				sb.border_color = Color(0.45,0.85,0.55,0.95)
+			elif prereq_ok and can_afford:
+				sb.border_color = Color(0.95,0.78,0.35,0.95)
+			else:
+				sb.border_color = Color(0.32,0.35,0.40,0.6)
+			card.add_theme_stylebox_override("panel", sb)
+			col.add_child(card)
+			var box = VBoxContainer.new()
+			box.add_theme_constant_override("separation", 5)
+			card.add_child(box)
+			box.add_child(small_label(("★ " if unlocked else "") + s["name"], 19, Color(0.55,0.88,0.58,1.0) if unlocked else Color(0.92,0.95,1.0,1.0)))
+			var d = small_label(s["desc"], 16, Color(0.78,0.83,0.90,1.0))
+			d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			box.add_child(d)
+			if s["requires"] != "":
+				box.add_child(small_label("Needs %s first" % s["requires"], 15, Color(0.55,0.88,0.58,1.0) if has_skill(s["requires"]) else Color(0.90,0.60,0.50,1.0)))
+			if unlocked:
+				box.add_child(small_label("Unlocked", 16, Color(0.55,0.88,0.58,1.0)))
+			else:
+				var b = action_button("Unlock — %d point%s" % [int(s["cost"]), "" if int(s["cost"]) == 1 else "s"], "buy", Callable(self, "buy_skill").bind(s["name"]))
+				b.disabled = not can_afford or not prereq_ok
+				box.add_child(b)
+
+func show_tutorial():
+	if sim_mode:
+		return
+	current_screen_name = "show_tutorial"
+	clear_body()
+	set_chrome_visible(false)
+	tutorial_slide_index = clamp(tutorial_slide_index, 0, tutorial_slides.size() - 1)
+	var slide = tutorial_slides[tutorial_slide_index]
+	var outer = CenterContainer.new()
+	outer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(outer)
+	var column = VBoxContainer.new()
+	column.custom_minimum_size = Vector2(cw(860), 0)
+	column.add_theme_constant_override("separation", 12)
+	outer.add_child(column)
+	var spacer_top = Control.new()
+	spacer_top.custom_minimum_size = Vector2(0, 60)
+	column.add_child(spacer_top)
+	var progress_label = Label.new()
+	progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	progress_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	progress_label.add_theme_font_size_override("font_size", 16)
+	progress_label.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
+	progress_label.text = "%d / %d" % [tutorial_slide_index + 1, tutorial_slides.size()]
+	column.add_child(progress_label)
+
+	var panel = make_card()
+	column.add_child(panel)
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	panel.add_child(box)
+
+	var title_label = Label.new()
+	title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.add_theme_font_size_override("font_size", 30)
+	title_label.text = slide["title"]
+	box.add_child(title_label)
+
+	var body_label = Label.new()
+	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body_label.add_theme_font_size_override("font_size", 20)
+	body_label.add_theme_color_override("font_color", Color(0.80,0.85,0.90,1.0))
+	body_label.text = slide["body"]
+	box.add_child(body_label)
+
+	var nav_row = HBoxContainer.new()
+	nav_row.add_theme_constant_override("separation", 10)
+	column.add_child(nav_row)
+
+	var back_button = Button.new()
+	back_button.text = "Back"
+	back_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(back_button, "nav")
+	back_button.add_theme_font_size_override("font_size", 20)
+	back_button.custom_minimum_size.y = 50
+	back_button.disabled = tutorial_slide_index == 0
+	back_button.pressed.connect(func():
+		tutorial_slide_index -= 1
+		show_tutorial()
+	)
+	nav_row.add_child(back_button)
+
+	var next_button = Button.new()
+	var is_last = tutorial_slide_index >= tutorial_slides.size() - 1
+	next_button.text = "Let's Go!" if is_last else "Next"
+	next_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(next_button, "buy")
+	next_button.add_theme_font_size_override("font_size", 20)
+	next_button.custom_minimum_size.y = 50
+	next_button.pressed.connect(func():
+		if is_last:
+			tutorial_seen = true
+			tutorial_slide_index = 0
+			if on_title_screen:
+				save_settings()
+				show_title_screen()
+			else:
+				save_game()
+				show_stall()
+		else:
+			tutorial_slide_index += 1
+			show_tutorial()
+	)
+	nav_row.add_child(next_button)
+
+	if not tutorial_seen:
+		var skip_button = Button.new()
+		skip_button.text = "Skip — I'll figure it out"
+		style_button(skip_button, "nav")
+		skip_button.add_theme_font_size_override("font_size", 16)
+		skip_button.pressed.connect(func():
+			tutorial_seen = true
+			tutorial_slide_index = 0
+			if on_title_screen:
+				show_title_screen()
+			else:
+				save_game()
+				show_stall()
+		)
+		column.add_child(skip_button)
+
+func make_icon(kind, color):
+	var icon = Control.new()
+	icon.custom_minimum_size = Vector2(18, 18)
+	icon.draw.connect(Callable(self, "_draw_icon").bind(icon, kind, color))
+	icon.queue_redraw()
+	return icon
+
+func _draw_icon(icon, kind, color):
+	var shade = Color(0, 0, 0, 0.35)
+	match kind:
+		"cash":
+			icon.draw_circle(Vector2(9, 9), 8, color)
+			icon.draw_arc(Vector2(9, 9), 5, 0, TAU, 20, shade, 1.5, true)
+		"carry":
+			var pts = PackedVector2Array([Vector2(4, 7), Vector2(14, 7), Vector2(15, 17), Vector2(3, 17)])
+			icon.draw_colored_polygon(pts, color)
+			icon.draw_rect(Rect2(6, 2, 6, 5), color)
+			icon.draw_line(Vector2(6, 2), Vector2(6, 7), shade, 1.0)
+			icon.draw_line(Vector2(12, 2), Vector2(12, 7), shade, 1.0)
+		"storage":
+			icon.draw_rect(Rect2(3, 6, 10, 10), color, false, 2.0)
+			icon.draw_rect(Rect2(6, 3, 10, 10), color, false, 2.0)
+			icon.draw_line(Vector2(3, 6), Vector2(6, 3), color, 2.0)
+			icon.draw_line(Vector2(13, 6), Vector2(16, 3), color, 2.0)
+			icon.draw_line(Vector2(3, 16), Vector2(6, 13), color, 2.0)
+			icon.draw_line(Vector2(13, 16), Vector2(16, 13), color, 2.0)
+
+func add_stat_chip(parent, key, tooltip, compact = false):
+	var pill = PanelContainer.new()
+	var sb = StyleBoxFlat.new()
+	var bg = Color(0.10,0.13,0.18,1.0)
+	var border = Color(0.18,0.22,0.28,1.0)
+	if key == "cash":
+		bg = Color(0.07,0.16,0.11,1.0)
+		border = Color(0.20,0.55,0.32,1.0)
+	elif key == "carry":
+		bg = Color(0.06,0.12,0.20,1.0)
+		border = Color(0.20,0.45,0.72,1.0)
+	elif key == "storage":
+		bg = Color(0.20,0.13,0.05,1.0)
+		border = Color(0.72,0.50,0.18,1.0)
+	elif key == "energy":
+		bg = Color(0.06,0.16,0.16,1.0)
+		border = Color(0.25,0.62,0.62,0.75)
+	elif key == "level":
+		bg = Color(0.13,0.09,0.19,1.0)
+		border = Color(0.55,0.40,0.78,0.75)
+	sb.bg_color = bg
+	sb.border_color = border
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.corner_radius_top_left = 10
+	sb.corner_radius_top_right = 10
+	sb.corner_radius_bottom_left = 10
+	sb.corner_radius_bottom_right = 10
+	sb.content_margin_left = 6 if compact else 12
+	sb.content_margin_right = 6 if compact else 12
+	sb.content_margin_top = 2 if compact else 5
+	sb.content_margin_bottom = 2 if compact else 5
+	sb.shadow_color = Color(0.0,0.0,0.0,0.35)
+	sb.shadow_size = 5
+	sb.shadow_offset = Vector2(0, 2)
+	pill.add_theme_stylebox_override("panel", sb)
+	stat_chip_styles[key] = sb
+	pill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pill.size_flags_stretch_ratio = 1.0
+	parent.add_child(pill)
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	if compact:
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+	pill.add_child(row)
+	var stat_icon_tex = null
+	if key == "cash":
+		stat_icon_tex = cash_icon
+	elif key == "carry":
+		stat_icon_tex = carry_icon
+	elif key == "storage":
+		stat_icon_tex = storage_icon
+	elif key == "energy":
+		stat_icon_tex = energy_icon
+	if stat_icon_tex != null:
+		var stat_icon_rect = TextureRect.new()
+		stat_icon_rect.texture = stat_icon_tex
+		stat_icon_rect.custom_minimum_size = Vector2(28, 28)
+		stat_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		stat_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		stat_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		row.add_child(stat_icon_rect)
+	elif key == "cash" or key == "carry" or key == "storage":
+		var icon_color = border
+		row.add_child(make_icon(key, icon_color))
+	var lbl = Label.new()
+	lbl.tooltip_text = tooltip
+	lbl.add_theme_font_size_override("font_size", 17 if key == "cash" else 15)
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+	lbl.add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
+	row.add_child(lbl)
+	stat_labels[key] = lbl
+
+func add_nav_button(parent, text, callback):
+	var b = Button.new()
+	b.text = text
+	b.pressed.connect(func(): last_scroll_value = 0.0; page_scroll.scroll_vertical = 0; clear_toasts())
+	b.pressed.connect(callback)
+	style_button(b, "nav")
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Give the longer primary destinations a little more room while keeping all six on one line.
+	b.size_flags_stretch_ratio = 1.0
+	b.add_theme_font_size_override("font_size", 17)
+	nav_buttons[text] = b
+	parent.add_child(b)
+
+func style_button(button, kind):
+	var normal = StyleBoxFlat.new()
+	var hover = StyleBoxFlat.new()
+	var pressed = StyleBoxFlat.new()
+	var accent_border = Color(0.35,0.62,0.68,0.65)
+	if kind == "buy":
+		normal.bg_color = Color(0.09,0.30,0.22,1.0)
+		hover.bg_color = Color(0.11,0.40,0.28,1.0)
+		pressed.bg_color = Color(0.07,0.24,0.18,1.0)
+		accent_border = Color(0.35,0.80,0.55,0.85)
+	elif kind == "danger":
+		normal.bg_color = Color(0.34,0.10,0.12,1.0)
+		hover.bg_color = Color(0.46,0.13,0.16,1.0)
+		pressed.bg_color = Color(0.26,0.07,0.09,1.0)
+		accent_border = Color(0.85,0.40,0.38,0.85)
+	elif kind == "gold":
+		normal.bg_color = Color(0.36,0.27,0.07,1.0)
+		hover.bg_color = Color(0.48,0.36,0.09,1.0)
+		pressed.bg_color = Color(0.28,0.21,0.05,1.0)
+		accent_border = Color(0.95,0.78,0.35,0.95)
+	elif kind == "action":
+		normal.bg_color = Color(0.10,0.20,0.35,1.0)
+		hover.bg_color = Color(0.13,0.27,0.46,1.0)
+		pressed.bg_color = Color(0.08,0.16,0.29,1.0)
+		accent_border = Color(0.40,0.65,0.95,0.85)
+	else:
+		normal.bg_color = Color(0.12,0.15,0.19,1.0)
+		hover.bg_color = Color(0.19,0.23,0.29,1.0)
+		pressed.bg_color = Color(0.08,0.10,0.14,1.0)
+	for sb in [normal, hover, pressed]:
+		sb.corner_radius_top_left = 6
+		sb.corner_radius_top_right = 6
+		sb.corner_radius_bottom_left = 6
+		sb.corner_radius_bottom_right = 6
+		sb.content_margin_left = 6
+		sb.content_margin_right = 6
+		sb.content_margin_top = 6
+		sb.content_margin_bottom = 6
+		sb.border_width_top = 2
+		sb.border_color = accent_border
+	normal.shadow_color = Color(0.0,0.0,0.0,0.40)
+	normal.shadow_size = 5
+	normal.shadow_offset = Vector2(0, 3)
+	hover.shadow_color = Color(0.0,0.0,0.0,0.45)
+	hover.shadow_size = 6
+	hover.shadow_offset = Vector2(0, 3)
+	button.custom_minimum_size.y = 36
+	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	var disabled_sb = normal.duplicate()
+	disabled_sb.bg_color = Color(0.10,0.10,0.11,0.55)
+	disabled_sb.border_color = Color(0.25,0.25,0.27,0.30)
+	disabled_sb.shadow_color = Color(0,0,0,0)
+	button.add_theme_stylebox_override("disabled", disabled_sb)
+	button.add_theme_color_override("font_disabled_color", Color(0.62,0.64,0.68,0.95))
+	if not button.has_meta("click_sfx"):
+		button.set_meta("click_sfx", true)
+		button.pressed.connect(func(): play_sfx("click"))
+	button.button_down.connect(Callable(self, "_on_tooltip_button_down").bind(button))
+	button.button_up.connect(Callable(self, "_on_tooltip_button_up"))
+
+func _on_tooltip_button_down(button):
+	if button.tooltip_text == "":
+		return
+	tooltip_is_held = true
+	status_label.text = button.tooltip_text
+	if tooltip_panel != null:
+		tooltip_panel.visible = true
+		tooltip_panel.move_to_front()
+
+func _on_tooltip_button_up():
+	tooltip_is_held = false
+	if tooltip_panel != null:
+		tooltip_panel.visible = false
+
+func flatten_button_corner(button, side):
+	for state in ["normal", "hover", "pressed"]:
+		var sb = button.get_theme_stylebox(state)
+		if sb != null and sb is StyleBoxFlat:
+			if side == "right":
+				sb.corner_radius_top_right = 0
+				sb.corner_radius_bottom_right = 0
+			elif side == "left":
+				sb.corner_radius_top_left = 0
+				sb.corner_radius_bottom_left = 0
+
+func wrap_button_with_help(button, help_text):
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 0)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flatten_button_corner(button, "right")
+	row.add_child(button)
+	if help_text != "":
+		var help_btn = Button.new()
+		help_btn.text = "?"
+		help_btn.custom_minimum_size = Vector2(36, 0)
+		help_btn.size_flags_vertical = Control.SIZE_FILL
+		help_btn.add_theme_font_size_override("font_size", 13)
+		for state in ["normal", "hover", "pressed"]:
+			var src = button.get_theme_stylebox(state)
+			if src != null and src is StyleBoxFlat:
+				var copy = src.duplicate()
+				copy.corner_radius_top_left = 0
+				copy.corner_radius_bottom_left = 0
+				copy.corner_radius_top_right = 6
+				copy.corner_radius_bottom_right = 6
+				help_btn.add_theme_stylebox_override(state, copy)
+		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
+		row.add_child(help_btn)
+	return row
+
+func apply_button_icon(button, icon_tex):
+	if icon_tex != null:
+		button.icon = icon_tex
+		button.add_theme_constant_override("icon_max_width", 32)
+		button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+
+func get_highlight_color(item, action_key):
+	if item["highlight_action"] != action_key:
+		return "#b8dcff"
+	if item["highlight_color"] == "gold":
+		return "#d4af37"
+	return "#f0d060"
+
+func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8dcff", header_icon = null, help_text = ""):
+	var panel = PanelContainer.new()
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color(0.095,0.11,0.135,1.0)
+	sb.border_width_left = 5
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.border_color = Color(0.45,0.65,0.90,0.80)
+	sb.corner_radius_top_left = 8
+	sb.corner_radius_top_right = 8
+	sb.corner_radius_bottom_left = 8
+	sb.corner_radius_bottom_right = 8
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	sb.shadow_color = Color(0.0,0.0,0.0,0.35)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(0, 2)
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	panel.add_child(box)
+	var header_row = HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	box.add_child(header_row)
+	if header_icon != null:
+		var header_icon_rect = TextureRect.new()
+		header_icon_rect.texture = header_icon
+		header_icon_rect.custom_minimum_size = Vector2(32, 32)
+		header_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		header_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		header_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		header_row.add_child(header_icon_rect)
+	var header = Label.new()
+	header.text = header_text
+	header.add_theme_font_size_override("font_size", 15)
+	header.add_theme_color_override("font_color", Color(0.58,0.63,0.70,1.0))
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header_row.add_child(header)
+	if help_text != "":
+		var help_btn = Button.new()
+		help_btn.text = "?"
+		style_button(help_btn, "nav")
+		help_btn.custom_minimum_size = Vector2(28, 28)
+		help_btn.add_theme_font_size_override("font_size", 13)
+		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
+		header_row.add_child(help_btn)
+	if note_bbcode_text != "" and show_action_details:
+		var note = RichTextLabel.new()
+		note.bbcode_enabled = true
+		note.fit_content = true
+		note.scroll_active = false
+		note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		note.add_theme_font_size_override("normal_font_size", 14)
+		note.add_theme_color_override("default_color", Color(note_color))
+		note.text = note_bbcode_text
+		box.add_child(note)
+	return panel
+
+func apply_grail_glow(panel):
+	var grail_sb = StyleBoxFlat.new()
+	grail_sb.bg_color = Color(0.15,0.12,0.04,1.0)
+	grail_sb.border_width_left = 5
+	grail_sb.border_width_top = 3
+	grail_sb.border_width_right = 3
+	grail_sb.border_width_bottom = 3
+	grail_sb.border_color = Color(1.0,0.84,0.35,1.0)
+	grail_sb.corner_radius_top_left = 10
+	grail_sb.corner_radius_top_right = 10
+	grail_sb.corner_radius_bottom_left = 10
+	grail_sb.corner_radius_bottom_right = 10
+	grail_sb.content_margin_left = 12
+	grail_sb.content_margin_right = 10
+	grail_sb.content_margin_top = 8
+	grail_sb.content_margin_bottom = 8
+	grail_sb.shadow_color = Color(1.0,0.84,0.35,0.45)
+	grail_sb.shadow_size = 10
+	grail_sb.shadow_offset = Vector2(0, 0)
+	panel.add_theme_stylebox_override("panel", grail_sb)
+
+func make_grail_badge():
+	var badge = Label.new()
+	badge.text = "GRAIL FIND"
+	badge.add_theme_font_size_override("font_size", 13)
+	badge.add_theme_color_override("font_color", Color(1.0,0.84,0.35,1.0))
+	return badge
+
+func make_action_details_toggle():
+	var btn = Button.new()
+	btn.text = "Hide Action Details" if show_action_details else "Show Action Details"
+	btn.tooltip_text = "Toggles whether Condition/Research/Test/etc. results show their full detail text, or just a compact header."
+	style_button(btn, "nav")
+	btn.pressed.connect(func():
+		show_action_details = not show_action_details
+		if current_screen_name == "show_stall":
+			show_stall()
+		else:
+			show_inventory()
+	)
+	return btn
+
+func make_pricing_details_toggle():
+	var btn = Button.new()
+	btn.text = "Hide Pricing Details" if show_pricing_details else "Show Pricing Details"
+	btn.tooltip_text = "Toggles whether the fee/postage/profit breakdown shows in full, or just the estimated profit."
+	style_button(btn, "nav")
+	btn.pressed.connect(func():
+		show_pricing_details = not show_pricing_details
+		show_inventory()
+	)
+	return btn
+
+func make_category_icon_rect(category):
+	if not category_icons.has(category):
+		return null
+	var icon_rect = TextureRect.new()
+	icon_rect.texture = category_icons[category]
+	icon_rect.custom_minimum_size = Vector2(22, 22)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return icon_rect
+
+func make_card():
+	var panel = PanelContainer.new()
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color(0.075,0.090,0.118,1.0)
+	sb.border_width_left = 5
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.border_color = Color(0.35,0.55,0.85,0.85)
+	sb.corner_radius_top_left = 10
+	sb.corner_radius_top_right = 10
+	sb.corner_radius_bottom_left = 10
+	sb.corner_radius_bottom_right = 10
+	sb.content_margin_left = 12
+	sb.content_margin_right = 10
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	sb.shadow_color = Color(0.0,0.0,0.0,0.40)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 3)
+	panel.add_theme_stylebox_override("panel", sb)
+	return panel
+
+func clear_body():
+	for c in body.get_children():
+		body.remove_child(c)
+		c.queue_free()
+
+func remember_scroll(scroll):
+	active_scroll_container = scroll
+	scroll.get_v_scroll_bar().value_changed.connect(Callable(self, "_on_scroll_changed"))
+	call_deferred("_restore_scroll", scroll)
+
+func _input(event):
+	if active_scroll_container == null or not is_instance_valid(active_scroll_container):
+		return
+	if event is InputEventScreenDrag:
+		active_scroll_container.scroll_vertical += int(-event.relative.y)
+	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		active_scroll_container.scroll_vertical += int(-event.relative.y)
+
+func manual_save():
+	save_game()
+	queue_popup("Game Saved!", "success")
+	show_more_menu()
+
+func effective_bag_capacity():
+	return int(bag_upgrades[bag_level]["capacity"]) + (1 if has_skill("Bulk Buyer") else 0)
+
+func effective_look_accuracy():
+	var acc = float(eye_upgrades[eye_level]["accuracy"])
+	if has_skill("Keen Eye"):
+		acc = min(0.97, acc + 0.10)
+	return acc
+
+func has_skill(name):
+	return skills_unlocked.has(name)
+
+func skill_points_spent():
+	var total = 0
+	for s in skill_tree:
+		if has_skill(s["name"]):
+			total += int(s["cost"])
+	return total
+
+func skill_points_available():
+	return max(0, (player_level - 1) - skill_points_spent())
+
+func buy_skill(name):
+	for s in skill_tree:
+		if s["name"] != name:
+			continue
+		if has_skill(name):
+			queue_popup("Already unlocked.")
+			return
+		if s["requires"] != "" and not has_skill(s["requires"]):
+			queue_popup("Requires %s first." % s["requires"])
+			return
+		if skill_points_available() < int(s["cost"]):
+			queue_popup("Not enough skill points.")
+			return
+		skills_unlocked[name] = true
+		queue_popup("Skill unlocked: %s!" % name, "success")
+		save_game()
+		show_skill_tree()
+		return
+
+func set_status(text, color = null):
+	if status_label != null:
+		status_label.text = str(text)
+	var kind = "info"
+	if color != null and typeof(color) == TYPE_COLOR:
+		if color.g > color.r + 0.15:
+			kind = "success"
+		elif color.r > color.g + 0.2:
+			kind = "error"
+	add_toast(str(text), kind)
+
+func queue_popup(text, kind = "error"):
+	add_toast(str(text), kind)
+	if kind == "error":
+		play_sfx("error")
+
+func _advance_popup_queue():
+	if popup_queue.size() == 0:
+		return
+	var next_popup = popup_queue.pop_front()
+	show_blocked_popup(next_popup["text"], next_popup["kind"])
+
+func show_blocked_popup(text, kind = "error"):
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	if blocked_popup == null:
+		return
+	if blocked_popup_style != null:
+		if kind == "success":
+			blocked_popup_style.bg_color = Color(0.05,0.14,0.07,0.97)
+			blocked_popup_style.border_color = Color(0.35,0.72,0.40,1.0)
+		elif kind == "info":
+			blocked_popup_style.bg_color = Color(0.06,0.09,0.15,0.97)
+			blocked_popup_style.border_color = Color(0.35,0.55,0.80,1.0)
+		else:
+			blocked_popup_style.bg_color = Color(0.16,0.05,0.05,0.97)
+			blocked_popup_style.border_color = Color(0.75,0.35,0.32,1.0)
+	blocked_popup_label.text = text
+	blocked_popup.visible = true
+	blocked_popup.move_to_front()
+	call_deferred("_center_blocked_popup")
+	blocked_popup_timer.start()
+
+func _center_blocked_popup():
+	if blocked_popup == null or not blocked_popup.visible:
+		return
+	var viewport_size = get_viewport_rect().size
+	blocked_popup.position = (viewport_size - blocked_popup.size) / 2.0
+
+func _hide_blocked_popup():
+	if blocked_popup != null:
+		blocked_popup.visible = false
+	if popup_queue.size() > 0:
+		_advance_popup_queue()
+
+func _show_status_overlay(auto_hide = true):
+	if status_panel == null:
+		return
+	status_panel.visible = true
+	status_panel.move_to_front()
+	if auto_hide and not tooltip_is_held and status_hide_timer != null:
+		status_hide_timer.start()
+
+func _hide_status_overlay():
+	if tooltip_is_held:
+		return
+	if status_panel != null:
+		status_panel.visible = false
+
+func _on_scroll_changed(value):
+	last_scroll_value = value
+
+func _restore_scroll(scroll):
+	if is_instance_valid(scroll):
+		scroll.scroll_vertical = int(last_scroll_value)
+
+func update_header():
+	check_daily_challenge_rewards()
+	check_daily_challenge_bonus()
+	check_milestone_achievements()
+	check_goals()
+	if sim_mode:
+		return
+	if not on_title_screen:
+		set_chrome_visible(not game_over)
+		save_game()
+	flash_cash_if_changed()
+	var listed_count = 0
+	for item in inventory:
+		if item["listed"] or item["auctioned"]:
+			listed_count += 1
+	var bag = bag_upgrades[bag_level]
+	var storage = storage_upgrades[storage_level]
+	stat_labels["day"].text = "Day %d  %s" % [day, format_time()]
+	var tab_for = {"show_stall":"This Stall", "show_special_offer":"This Stall", "show_stall_list":"All Stalls", "show_inventory":"Inventory", "show_sold_history":"Sales", "show_shop":"Shop"}
+	var more_screens = ["show_more_menu", "show_skill_tree", "show_daily_challenges", "show_level_unlocks", "show_trends", "show_collection_log", "show_achievements", "show_log_screen", "show_settings_screen", "show_patch_notes", "show_confirm_new_game"]
+	var active_tab = tab_for.get(current_screen_name, "More" if current_screen_name in more_screens else "")
+	for k in nav_buttons.keys():
+		var nb = nav_buttons[k]
+		if is_instance_valid(nb):
+			nb.add_theme_color_override("font_color", Color(1.0,0.85,0.40,1.0) if k == active_tab else Color(0.85,0.88,0.92,1.0))
+			nb.add_theme_color_override("font_hover_color", Color(1.0,0.90,0.55,1.0))
+	stat_labels["cash"].text = "£%.2f" % cash
+	if cash < 0.0:
+		stat_labels["cash"].add_theme_color_override("font_color", Color(0.95,0.55,0.45,1.0))
+		if stat_chip_styles.has("cash"):
+			stat_chip_styles["cash"].bg_color = Color(0.20,0.07,0.08,1.0)
+			stat_chip_styles["cash"].border_color = Color(0.75,0.32,0.30,1.0)
+	else:
+		stat_labels["cash"].add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
+		if stat_chip_styles.has("cash"):
+			stat_chip_styles["cash"].bg_color = Color(0.07,0.16,0.11,1.0)
+			stat_chip_styles["cash"].border_color = Color(0.20,0.55,0.32,1.0)
+	stat_labels["energy"].text = "%d/100" % energy
+	if energy <= 15:
+		stat_labels["energy"].add_theme_color_override("font_color", Color(0.95,0.55,0.45,1.0))
+	elif energy <= 35:
+		stat_labels["energy"].add_theme_color_override("font_color", Color(0.90,0.78,0.45,1.0))
+	else:
+		stat_labels["energy"].add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
+	stat_labels["level"].text = "Lv %d  •  %d/%d XP" % [player_level, player_xp, xp_needed_for_level(player_level)]
+	stat_labels["carry"].text = "Bag %d/%d" % [carry_used, effective_bag_capacity()]
+	stat_labels["storage"].text = "Storage %d/%d" % [inventory_space_used(), storage["capacity"]]
+	stat_labels["listed"].text = "For sale %d  •  ★ %.0f%%" % [listed_count, seller_rating]
+	footer_label.text = "Last RNG: " + last_rng_line
+
+func upkeep_per_tier():
+	var u = 1.75
+	if player_level >= 12:
+		u *= 0.9
+	if has_skill("Frugal Living"):
+		u *= 0.85
+	return u
+
+func compute_upkeep():
+	var tier_sum = bag_level + storage_level + toolbox_level + eye_level + fee_level
+	var upkeep = float(tier_sum) * 1.75
+	if player_level >= 12:
+		upkeep *= 0.9
+	if has_skill("Frugal Living"):
+		upkeep *= 0.85
+	return upkeep
+
+func vw():
+	if is_inside_tree():
+		return get_viewport_rect().size.x
+	return 1600.0
+
+func cw(px):
+	# Clamp a desired minimum width to what actually fits on screen (phones!).
+	return min(float(px), max(160.0, vw() - 64.0))
+
+func is_narrow():
+	return vw() < 900.0
+
+func small_label(text, size = 15, color = Color(0.62,0.68,0.76,1.0)):
+	var l = Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	return l
+
+func rich_line(text, size = 15, color = Color(0.72,0.88,1.0,1.0)):
+	var r = RichTextLabel.new()
+	r.bbcode_enabled = true
+	r.fit_content = true
+	r.scroll_active = false
+	r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r.add_theme_font_size_override("normal_font_size", size)
+	r.add_theme_font_size_override("bold_font_size", size)
+	r.add_theme_color_override("default_color", color)
+	r.text = text
+	return r
+
+func action_button(text, kind, callback, tooltip = "", icon_tex = null, min_w = 0):
+	var b = Button.new()
+	b.text = text
+	style_button(b, kind)
+	b.add_theme_font_size_override("font_size", 16)
+	b.custom_minimum_size = Vector2(min_w, 40)
+	b.tooltip_text = tooltip
+	if icon_tex != null:
+		b.icon = icon_tex
+		b.add_theme_constant_override("icon_max_width", 24)
+		b.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	if callback != null:
+		b.pressed.connect(callback)
+	return b
+
+func style_item_card(panel, item):
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color(0.075,0.090,0.118,1.0)
+	sb.border_width_left = 5
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.border_color = Color(0.30,0.45,0.70,0.8)
+	if item["rarity"] != "Common":
+		sb.border_color = rarity_color(item["rarity"])
+		sb.border_width_top = 2
+		sb.border_width_right = 2
+		sb.border_width_bottom = 2
+	sb.set_corner_radius_all(10)
+	sb.content_margin_left = 14
+	sb.content_margin_right = 12
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	sb.shadow_color = Color(0,0,0,0.4)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(0, 3)
+	if item["rarity"] == "Grail":
+		sb.bg_color = Color(0.15,0.12,0.04,1.0)
+		sb.shadow_color = Color(1.0,0.84,0.35,0.45)
+		sb.shadow_size = 12
+		sb.shadow_offset = Vector2.ZERO
+	panel.add_theme_stylebox_override("panel", sb)
+
+func show_stall():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	on_title_screen = false
+	set_chrome_visible(true)
+	current_screen_name = "show_stall"
+	if page_scroll != null:
+		last_scroll_value = page_scroll.scroll_vertical
+		call_deferred("_restore_scroll", page_scroll)
+	clear_body()
+	update_header()
+	if game_over:
+		show_bankruptcy_screen()
+		return
+	if pending_special_offer != null:
+		show_special_offer()
+		return
+	if current_time_minutes >= 12 * 60:
+		var card = make_card()
+		body.add_child(card)
+		var box = VBoxContainer.new()
+		box.add_theme_constant_override("separation", 10)
+		card.add_child(box)
+		box.add_child(small_label("The car boot's packing up for the day.", 24, Color(0.95,0.84,0.62,1.0)))
+		var hint = small_label("Head home: test, research and list what you bought in Inventory, then End Day to see what sells overnight.", 17, Color(0.78,0.83,0.90,1.0))
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(hint)
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		box.add_child(row)
+		row.add_child(action_button("Go to Inventory", "action", show_inventory_fresh, "", null, 220))
+		row.add_child(action_button("End Day", "danger", end_day, "", null, 160))
+		return
+
+	var stall = stalls[current_stall_index]
+	var seller = stall["seller"]
+	var seller_display = stall["seller_display_name"]
+	var closed = current_time_minutes >= int(stall["packing_minute"]) or to_bool(stall.get("banned_today", false))
+
+	# --- stall header
+	var head = make_card()
+	body.add_child(head)
+	var head_box = VBoxContainer.new()
+	head_box.add_theme_constant_override("separation", 6)
+	head.add_child(head_box)
+	var title_row = HFlowContainer.new()
+	title_row.add_theme_constant_override("h_separation", 10)
+	title_row.add_theme_constant_override("v_separation", 6)
+	head_box.add_child(title_row)
+	var st_title = small_label("Stall %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display], 24, Color(0.95,0.96,1.0,1.0))
+	title_row.add_child(st_title)
+	var spacer = Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(spacer)
+	if not closed:
+		var dig_left = stall["stock"].size() - int(stall["revealed"])
+		var dig = action_button("Dig Deeper  •  ⚡4, 8 min" if dig_left > 0 else "Nothing left to dig", "action", browse_stall, "Rummage through the boxes under the table to reveal a few more items. Takes time — rivals may grab things meanwhile.")
+		dig.disabled = dig_left <= 0
+		title_row.add_child(dig)
+		if mystery_packages_left > 0:
+			var package_button = action_button("Mystery Package £30 (%d left)" % mystery_packages_left, "nav", buy_mystery_package, "")
+			package_button.disabled = cash < 30.0
+			var odds_lines = []
+			var budget_ranges = {"Poor":"£5-20", "Average":"£18-35", "Good":"£35-60", "Excellent":"£60-120", "Jackpot":"£150-400", "Grail":"£500-900"}
+			for row in get_package_chances():
+				odds_lines.append("%s %.1f%% (%s)" % [row["tier"], row["chance"] * 100.0, budget_ranges.get(row["tier"], "")])
+			package_button.tooltip_text = "A sealed box for £30: 1-2 items (30% chance of 2). On average it's worth LESS than you pay — it's a gamble.\n" + "\n".join(odds_lines)
+			title_row.add_child(package_button)
+	title_row.add_child(action_button(("Next Stall  >  5 min" if current_stall_index < stalls.size() - 1 else "Back to Stall 1  >  5 min"), "nav", next_stall, "Walk to the next stall. Costs 5 minutes."))
+
+	var blurb = rich_line("[color=#e8c15a]%s[/color] — %s" % [seller, seller_blurbs.get(seller, "")], 16, Color(0.78,0.83,0.90,1.0))
+	head_box.add_child(blurb)
+	var info_text = "Seen %d of %d items  •  Crowd %d%% (busier = rivals grab more while you dig)  •  Packs up %s  •  Bag %d/%d  •  Tonight's costs £%.2f" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"]), carry_used, effective_bag_capacity(), daily_expenses + compute_upkeep()]
+	if special_event_profiles.has(seller):
+		info_text += "  •  [color=#e8c15a]~%.1f%% side-deal chance per purchase[/color]" % (float(seller_profiles[seller]["side"]) * 100.0)
+	head_box.add_child(rich_line(info_text, 15, Color(0.62,0.68,0.76,1.0)))
+	head_box.add_child(rich_line("[color=#e8c15a]>[/color] %s" % current_goal_text(), 15, Color(0.90,0.80,0.55,1.0)))
+
+	if closed:
+		var msg = "You've been kicked off %s's stall for the rest of the day." % seller_display if to_bool(stall.get("banned_today", false)) else "%s has packed up and gone home." % seller_display
+		head_box.add_child(small_label(msg, 18, Color(0.95,0.60,0.50,1.0)))
+		head_box.add_child(action_button("See which stalls are still open", "action", show_stall_list))
+		return
+
+	var shown = 0
+	for i in range(stall["revealed"]):
+		var item = stall["stock"][i]
+		if item["dismissed"]:
+			continue
+		shown += 1
+		var card_node = build_stall_item_card(item, i, seller)
+		if i >= int(stall.get("new_from", 999)):
+			var badge = small_label("NEW", 14, Color(0.10,0.10,0.10,1.0))
+			var bsb = StyleBoxFlat.new()
+			bsb.bg_color = Color(0.95,0.78,0.35,1.0)
+			bsb.set_corner_radius_all(4)
+			bsb.content_margin_left = 6
+			bsb.content_margin_right = 6
+			badge.add_theme_stylebox_override("normal", bsb)
+			var top_row = card_node.get_child(0).get_child(0)
+			top_row.add_child(badge)
+			top_row.move_child(badge, 0)
+		body.add_child(card_node)
+	if shown == 0:
+		body.add_child(small_label("Nothing on the table interests you. Dig deeper or move on.", 17))
+	if first_day_hint_needed():
+		body.add_child(make_hint_card())
+	var bottom_pad = Control.new()
+	bottom_pad.custom_minimum_size = Vector2(0, 140)
+	body.add_child(bottom_pad)
+
+func make_hint_card():
+	var card = make_card()
+	var t = rich_line("[color=#e8c15a][b]First morning tip:[/b][/color] Asking prices mean nothing on their own. [b]Research[/b] (£1) shows what this item recently sold for — and what that works out to [i]after[/i] fees and postage. Only buy when there's a real gap. Cheap stuff rarely covers postage.", 16, Color(0.85,0.88,0.92,1.0))
+	card.add_child(t)
+	return card
+
+func build_stall_item_card(item, i, seller):
+	var panel = PanelContainer.new()
+	style_item_card(panel, item)
+	var card = VBoxContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_constant_override("separation", 6)
+	panel.add_child(card)
+
+	# --- line 1: rarity, name, price, dismiss
+	var top = HBoxContainer.new()
+	top.add_theme_constant_override("separation", 10)
+	card.add_child(top)
+	var cat_icon_rect = make_category_icon_rect(item["category"])
+	if cat_icon_rect != null:
+		top.add_child(cat_icon_rect)
+	if item["rarity"] != "Common":
+		var rl = small_label("%s 1/%d" % [item["rarity"].to_upper(), int(item["one_in"])], 16, rarity_color(item["rarity"]))
+		rl.tooltip_text = "Rarity: roughly 1 in %d items you'll see is a find like this. Rarer versions are worth more — and fill your Collection Log." % int(item["one_in"])
+		rl.mouse_filter = Control.MOUSE_FILTER_PASS
+		top.add_child(rl)
+	var name_l = small_label(item["name"], 22, Color(0.95,0.96,1.0,1.0))
+	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	top.add_child(name_l)
+	var buy_button = Button.new()
+	style_button(buy_button, "buy")
+	buy_button.add_theme_font_size_override("font_size", 22)
+	buy_button.custom_minimum_size = Vector2(190, 44)
+	if item["haggle_result"] == "refused":
+		buy_button.text = "Won't sell to you"
+		buy_button.disabled = true
+	else:
+		buy_button.text = "BUY  £%.0f" % float(item["asking"])
+		buy_button.tooltip_text = "Pay the asking price. Anything you haven't checked is a gamble."
+		buy_button.pressed.connect(Callable(self, "buy_item").bind(i))
+		if float(item["asking"]) > cash:
+			buy_button.disabled = true
+			buy_button.text = "£%.0f — can't afford" % float(item["asking"])
+	top.add_child(buy_button)
+	var dismiss_button = Button.new()
+	dismiss_button.text = "×"
+	dismiss_button.tooltip_text = "Not interested — hide it. Free."
+	style_button(dismiss_button, "nav")
+	dismiss_button.custom_minimum_size = Vector2(44, 44)
+	dismiss_button.add_theme_font_size_override("font_size", 22)
+	dismiss_button.pressed.connect(Callable(self, "dismiss_stall_item").bind(i))
+	top.add_child(dismiss_button)
+
+	# --- line 2: facts
+	var condition_text = "[color=#e88c7a]Unknown[/color]"
+	if item["condition_checked"]:
+		condition_text = "[b]%d/10[/b]" % int(item["condition"])
+	var func_text = "N/A"
+	if item["testable"]:
+		func_text = "Untested (electronic)"
+	var trend_mult = float(current_trends.get(item["category"], 1.0))
+	var trend_text = ""
+	if trend_mult >= 1.10:
+		trend_text = "  •  [color=#b088e8][b]TRENDING +%d%%[/b][/color]" % int(round((trend_mult - 1.0) * 100.0))
+	elif trend_mult <= 0.90:
+		trend_text = "  •  [color=#e88c7a]Weak demand %d%%[/color]" % int(round((trend_mult - 1.0) * 100.0))
+	var fake_text = ""
+	if float(item["fake_chance"]) >= 0.05:
+		fake_text = "  •  Fake risk: [color=#e8c15a]%s[/color]" % fake_risk_label(float(item["fake_chance"]))
+	card.add_child(rich_line("%s  •  %s  •  Condition %s  •  Function: %s%s%s" % [item["category"], size_text(item), condition_text, func_text, fake_text, trend_text], 15, Color(0.66,0.72,0.80,1.0)))
+
+	# --- actions
+	var actions = HFlowContainer.new()
+	actions.add_theme_constant_override("h_separation", 6)
+	actions.add_theme_constant_override("v_separation", 6)
+	card.add_child(actions)
+	var insp = action_button("Inspect (%d%% reliable)  •  ⚡1, 1m" % int(effective_look_accuracy() * 100.0) if not item["quick_look_done"] else "Inspected", "nav", Callable(self, "quick_look").bind(i), "A quick glance at condition. Cheap, but only %d%% reliable, and you won't know if it was right until you check properly. It never gives the exact score." % int(effective_look_accuracy() * 100.0), inspect_icon, 190)
+	insp.disabled = item["quick_look_done"] or energy < 1
+	actions.add_child(insp)
+	var cc = action_button("Check Condition £%d  •  ⚡4, 5m" % int(condition_cost()) if not item["condition_checked"] else "Condition %d/10" % int(item["condition"]), "action", Callable(self, "check_condition").bind(i), "Reveals the exact Condition score — and hidden flaws on non-electronic items. Better condition sells for much more.", condition_icon, 250)
+	cc.disabled = item["condition_checked"] or cash < condition_cost() or energy < 4
+	actions.add_child(cc)
+	var rb = action_button("Research £%.2f  •  ⚡2, 4m" % research_cost() if not item["basic_researched"] else "Researched", "action", Callable(self, "prebuy_research").bind(i), "Shows five recent sold prices for this kind of item, and what the middle one works out to after fees. Evidence, not a guarantee.", research_icon, 210)
+	rb.disabled = item["basic_researched"] or cash < research_cost() or energy < 2
+	actions.add_child(rb)
+
+	var sep = Control.new()
+	sep.custom_minimum_size = Vector2(12, 0)
+	actions.add_child(sep)
+
+	if not item["haggle_attempted"]:
+		var haggle_cluster = HBoxContainer.new()
+		haggle_cluster.add_theme_constant_override("separation", 4)
+		var haggle_asking = max(1.0, float(item["asking"]))
+		var haggle_initial = max(1.0, round(haggle_asking * 0.85))
+		haggle_cluster.add_child(small_label("£", 16, Color(0.85,0.90,0.96,1.0)))
+		var haggle_minus = Button.new()
+		haggle_minus.text = "-"
+		style_button(haggle_minus, "nav")
+		haggle_minus.custom_minimum_size = Vector2(36, 40)
+		haggle_cluster.add_child(haggle_minus)
+		var haggle_value_edit = LineEdit.new()
+		haggle_value_edit.text = str(int(haggle_initial))
+		haggle_value_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+		haggle_value_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		haggle_value_edit.custom_minimum_size = Vector2(70, 40)
+		haggle_value_edit.add_theme_font_size_override("font_size", 18)
+		haggle_cluster.add_child(haggle_value_edit)
+		var haggle_plus = Button.new()
+		haggle_plus.text = "+"
+		style_button(haggle_plus, "nav")
+		haggle_plus.custom_minimum_size = Vector2(36, 40)
+		haggle_cluster.add_child(haggle_plus)
+		var haggle_chance_label = small_label("%.0f%% accept" % (compute_haggle_chance(item, seller, haggle_initial) * 100.0), 16, Color(0.88,0.62,0.85,1.0))
+		haggle_chance_label.custom_minimum_size = Vector2(90, 0)
+		haggle_chance_label.tooltip_text = "Chance the seller accepts this offer."
+		haggle_chance_label.mouse_filter = Control.MOUSE_FILTER_PASS
+		haggle_cluster.add_child(haggle_chance_label)
+		haggle_minus.pressed.connect(Callable(self, "_adjust_haggle_value").bind(haggle_value_edit, -1.0, haggle_asking, haggle_chance_label, item, seller))
+		haggle_plus.pressed.connect(Callable(self, "_adjust_haggle_value").bind(haggle_value_edit, 1.0, haggle_asking, haggle_chance_label, item, seller))
+		haggle_value_edit.text_submitted.connect(Callable(self, "_on_haggle_value_submitted").bind(haggle_value_edit, haggle_asking, haggle_chance_label, item, seller))
+		haggle_value_edit.text_changed.connect(func(_t): haggle_chance_label.text = "%.0f%% accept" % (compute_haggle_chance(item, seller, clamp(_parse_price(haggle_value_edit.text), 1.0, haggle_asking)) * 100.0))
+		haggle_value_edit.focus_exited.connect(Callable(self, "_adjust_haggle_value").bind(haggle_value_edit, 0.0, haggle_asking, haggle_chance_label, item, seller))
+		haggle_cluster.add_child(action_button("Offer  •  ⚡2, 2m", "nav", Callable(self, "haggle_item").bind(i, haggle_value_edit), "Make ONE offer at the price in the box. The % is the chance they accept. A cheeky lowball can get it refused for good — or get you thrown off the stall."))
+		actions.add_child(haggle_cluster)
+	else:
+		var done = action_button("Offer made — %s" % str(item["haggle_result"]).capitalize(), "nav", null)
+		done.disabled = true
+		done.custom_minimum_size = Vector2(cw(300), 40)
+		actions.add_child(done)
+
+	# --- findings (below the buttons, so nothing shifts when you click)
+	if item["quick_look_done"] and item["quick_look_note"] != "":
+		card.add_child(rich_line(item["quick_look_note"], 15))
+	if item["condition_checked"]:
+		var cn = item["condition_price_note"]
+		if not item["testable"]:
+			if item["fault"]:
+				cn += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % fault_label(item)
+			else:
+				cn += "  [color=#8cd98f]No hidden defects.[/color]"
+		card.add_child(rich_line(cn, 15))
+	if item["basic_researched"]:
+		var hint = float(item["locked_gamble_hint"])
+		if has_skill("Deep Pockets"):
+			hint = min(0.45, hint * 1.25)
+		card.add_child(rich_line("Sold recently for: [b]%s[/b]\n%s" % [item["basic_comps"], comps_after_fees_text(item)], 15))
+	if item["haggle_note"] != "":
+		card.add_child(rich_line(item["haggle_note"], 15))
+
+	return panel
+
+func _adjust_haggle_value(value_edit, delta, asking, chance_label, item, seller):
+	var v = clamp(_parse_price(value_edit.text) + delta, 1.0, max(1.0, asking - 1.0))
+	value_edit.text = str(int(v))
+	chance_label.text = "%.0f%% accept" % (compute_haggle_chance(item, seller, v) * 100.0)
+
+func _on_haggle_value_submitted(submitted_text, value_edit, asking, chance_label, item, seller):
+	_adjust_haggle_value(value_edit, 0.0, asking, chance_label, item, seller)
+
+func _scroll_to_bottom():
+	if page_scroll != null:
+		page_scroll.scroll_vertical = int(page_scroll.get_v_scroll_bar().max_value)
+
+func show_stall_list():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_stall_list"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "CAR BOOT — %d STALLS TODAY" % stalls.size()
+	body.add_child(title)
+
+	if pending_special_offer != null:
+		var note = Label.new()
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		note.text = "You have a special offer waiting — resolve it before moving on."
+		body.add_child(note)
+		var go_button = Button.new()
+		go_button.text = "View Offer"
+		go_button.pressed.connect(show_special_offer)
+		style_button(go_button, "action")
+		body.add_child(go_button)
+		return
+
+	if current_time_minutes >= 12 * 60:
+		var closing = Label.new()
+		closing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		closing.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		closing.text = "The car boot is closing. End the day or manage your inventory."
+		body.add_child(closing)
+		return
+
+
+	add_tip("stalls")
+	for i in range(stalls.size()):
+		var stall = stalls[i]
+		var panel = make_card()
+		body.add_child(panel)
+		var row = HFlowContainer.new()
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_theme_constant_override("separation", 10)
+		panel.add_child(row)
+
+		var info_box = VBoxContainer.new()
+		info_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(info_box)
+
+		var banned = to_bool(stall.get("banned_today", false))
+		var packed = current_time_minutes >= stall["packing_minute"] or banned
+		var here_tag = " (here now)" if i == current_stall_index else ""
+		var name_line = Label.new()
+		name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_line.add_theme_font_size_override("font_size", 17)
+		name_line.text = "Stall %d — %s%s" % [i + 1, stall["seller_display_name"], here_tag]
+		if packed:
+			name_line.add_theme_color_override("font_color", Color(0.5,0.5,0.55,1.0))
+		info_box.add_child(name_line)
+
+		var status_line = Label.new()
+		status_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		status_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if banned:
+			status_line.text = "You've been kicked off this stall for the day."
+		elif packed:
+			status_line.text = "Packed up and gone for the day."
+		else:
+			status_line.text = "Revealed %d/%d in stock  •  Crowd %d%%  •  Packs up %s" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"])]
+		info_box.add_child(status_line)
+
+		if special_event_profiles.has(stall["seller"]) and not packed and not banned:
+			var side_line = Label.new()
+			side_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			side_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			side_line.add_theme_font_size_override("font_size", 13)
+			side_line.add_theme_color_override("font_color", Color(0.95,0.78,0.35,1.0))
+			var side_chance = float(seller_profiles[stall["seller"]]["side"]) * 100.0
+			side_line.text = "~%.1f%% chance per purchase of a side deal: \"%s\"" % [side_chance, special_event_profiles[stall["seller"]]["title"]]
+			info_box.add_child(side_line)
+
+		var go_button = Button.new()
+		if i == current_stall_index:
+			go_button.text = "You're Here"
+			go_button.disabled = true
+			style_button(go_button, "nav")
+		elif packed:
+			go_button.text = "Closed"
+			go_button.disabled = true
+			style_button(go_button, "nav")
+		else:
+			go_button.text = "Go | 5 min"
+			go_button.tooltip_text = "Travel to this stall. Costs 5 minutes either way."
+			go_button.pressed.connect(Callable(self, "go_to_stall").bind(i))
+			style_button(go_button, "action")
+		row.add_child(go_button)
+
+	body.add_child(build_fixer_card())
+	footer_label.text = ""
+
+func build_fixer_card():
+	var panel = make_card()
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	var fixer_done_today = fixer_uses_today >= fixer_max_uses()
+	var fixer_win_pct = 49 if has_skill("Lucky Streak") else 46
+	box.add_child(small_label("Round the back of the burger van — The Fixer", 20, Color(0.80,0.60,0.98,1.0)))
+	var d = small_label("\"Double or nothing, mate. %d%% you walk away with twice the money.\"  Pure luck, and the odds are against you. %s" % [fixer_win_pct, "(Done for today.)" if fixer_done_today else "(%d/%d goes left today)" % [fixer_max_uses() - fixer_uses_today, fixer_max_uses()]], 16, Color(0.78,0.83,0.90,1.0))
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(d)
+	var row = HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 6)
+	box.add_child(row)
+	var fixer_wagers = [25, 75, 200]
+	if player_level >= 5:
+		fixer_wagers.append(350)
+	for wager in fixer_wagers:
+		var b = action_button("Bet £%d" % wager, "danger", Callable(self, "fixer_gamble").bind(wager), "%d%% chance to get £%d back. Otherwise it's gone." % [fixer_win_pct, wager * 2])
+		b.disabled = fixer_done_today or cash < wager
+		row.add_child(b)
+	return panel
+
+func show_special_offer():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_special_offer"
+	clear_body()
+	update_header()
+	if pending_special_offer == null:
+		show_stall()
+		return
+	var offer = pending_special_offer
+	var item = offer["item"]
+	var head = make_card()
+	body.add_child(head)
+	var hb = VBoxContainer.new()
+	hb.add_theme_constant_override("separation", 8)
+	head.add_child(hb)
+	hb.add_child(small_label("\"Actually mate, before you go...\"", 26, Color(0.95,0.84,0.62,1.0)))
+	hb.add_child(small_label("%s — %s" % [offer["seller_display_name"], offer["title"]], 19, Color(0.92,0.95,1.0,1.0)))
+	var fl = small_label(offer["flavor"], 18, Color(0.85,0.80,0.70,1.0))
+	fl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hb.add_child(fl)
+	var panel = PanelContainer.new()
+	style_item_card(panel, item)
+	body.add_child(panel)
+	var card = VBoxContainer.new()
+	card.add_theme_constant_override("separation", 8)
+	panel.add_child(card)
+	var top = HBoxContainer.new()
+	top.add_theme_constant_override("separation", 10)
+	card.add_child(top)
+	if item["rarity"] != "Common":
+		top.add_child(small_label("%s 1/%d" % [item["rarity"].to_upper(), int(item["one_in"])], 16, rarity_color(item["rarity"])))
+	var nl = small_label(item["name"], 24, Color(0.95,0.96,1.0,1.0))
+	nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(nl)
+	top.add_child(small_label("£%.0f" % float(item["asking"]), 28, Color(0.55,0.90,0.62,1.0)))
+	var facts = "%s  •  %s  •  Condition [color=#e88c7a]Unknown[/color]  •  Function: %s" % [item["category"], size_text(item), "Untested (electronic)" if item["testable"] else "N/A"]
+	if float(item["fake_chance"]) >= 0.05:
+		facts += "  •  Fake risk: [color=#e8c15a]%s[/color]" % fake_risk_label(float(item["fake_chance"]))
+	card.add_child(rich_line(facts, 16, Color(0.66,0.72,0.80,1.0)))
+	var note = small_label("One-off deal, straight out of their car: no inspecting, no research, no haggling. Take it or leave it — right now.", 17, Color(0.85,0.88,0.92,1.0))
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card.add_child(note)
+	var actions = HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 10)
+	card.add_child(actions)
+	var buy_button = action_button("Take it — £%.0f" % float(item["asking"]), "buy", accept_special_offer)
+	buy_button.custom_minimum_size = Vector2(cw(260), 50)
+	buy_button.add_theme_font_size_override("font_size", 20)
+	buy_button.disabled = float(item["asking"]) > cash
+	actions.add_child(buy_button)
+	var decline_button = action_button("Walk away", "nav", decline_special_offer)
+	decline_button.custom_minimum_size = Vector2(200, 50)
+	decline_button.add_theme_font_size_override("font_size", 20)
+	actions.add_child(decline_button)
+	footer_label.text = ""
+
+func rival_pressure(chance):
+	if rng.randf() < chance:
+		var stall = stalls[current_stall_index]
+		if stall["stock"].size() > stall["revealed"] and stall["stock"].size() > 0:
+			var idx = rng.randi_range(stall["revealed"], stall["stock"].size() - 1)
+			var gone = stall["stock"][idx]["name"]
+			stall["stock"].remove_at(idx)
+			add_toast("A rival reseller grabbed something from the back of this stall (%s) while you were busy." % gone, "warn")
+
+func show_inventory_fresh():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	inventory_tab = "unlisted"
+	show_inventory()
+
+func show_inventory():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_inventory"
+	if page_scroll != null:
+		last_scroll_value = page_scroll.scroll_vertical
+		call_deferred("_restore_scroll", page_scroll)
+	clear_body()
+	update_header()
+	var unlisted_count = 0
+	var listed_count = 0
+	for it in inventory:
+		if it["listed"] or it["auctioned"]:
+			listed_count += 1
+		else:
+			unlisted_count += 1
+
+	if inventory.size() > 0:
+		add_tip("for_sale" if inventory_tab == "listed" else "inventory")
+	var head = make_card()
+	body.add_child(head)
+	var head_box = VBoxContainer.new()
+	head_box.add_theme_constant_override("separation", 8)
+	head.add_child(head_box)
+	var title_row = HFlowContainer.new()
+	title_row.add_theme_constant_override("h_separation", 10)
+	head_box.add_child(title_row)
+	title_row.add_child(small_label("INVENTORY", 24, Color(0.95,0.96,1.0,1.0)))
+	title_row.add_child(small_label("Storage %d/%d  •  Stock cost £%.0f  •  Seller rating %.0f%%" % [inventory_space_used(), int(storage_upgrades[storage_level]["capacity"]), inventory_book_value(), seller_rating], 17, Color(0.66,0.72,0.80,1.0)))
+	var sp = Control.new()
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_row.add_child(sp)
+	title_row.add_child(make_pricing_details_toggle())
+	if inventory_tab == "unlisted" and unlisted_count > 0:
+		var bulk_row = HFlowContainer.new()
+		bulk_row.add_theme_constant_override("h_separation", 8)
+		head_box.add_child(bulk_row)
+		var untested = 0
+		for it in inventory:
+			if it["testable"] and not it["tested"]:
+				untested += 1
+		if untested > 0:
+			bulk_row.add_child(action_button("Test all electricals (%d)  •  £2 + ⚡5 each" % untested, "buy", bulk_test_all, "Plug everything in. Same as pressing Test on each one."))
+		bulk_row.add_child(action_button("List everything profitable at my estimate", "action", bulk_list_at_estimate, "Lists every unlisted item that would make a profit at the middle of your estimate. Loss-makers and untested electricals are left for you to decide."))
+	var tab_row = HBoxContainer.new()
+	tab_row.add_theme_constant_override("separation", 8)
+	head_box.add_child(tab_row)
+	var unlisted_tab = action_button("TO SORT / UNLISTED (%d)" % unlisted_count, "buy" if inventory_tab == "unlisted" else "nav", Callable(self, "_switch_inventory_tab").bind("unlisted"))
+	unlisted_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tab_row.add_child(unlisted_tab)
+	var listed_tab = action_button("FOR SALE (%d)" % listed_count, "buy" if inventory_tab == "listed" else "nav", Callable(self, "_switch_inventory_tab").bind("listed"))
+	listed_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tab_row.add_child(listed_tab)
+
+	if inventory.size() == 0:
+		var empty = small_label("No stock yet. Buy something at the car boot first — everything you buy lands here.", 18, Color(0.78,0.83,0.90,1.0))
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.add_child(empty)
+		return
+	var showing_any = false
+	var indices = []
+	for i in range(inventory.size()):
+		var item = inventory[i]
+		var is_live = item["listed"] or item["auctioned"]
+		if is_live == (inventory_tab == "listed"):
+			indices.append(i)
+	match inventory_sort:
+		"needs_action":
+			indices.sort_custom(func(a, b): return inventory_action_rank(inventory[a]) < inventory_action_rank(inventory[b]))
+		"paid_high":
+			indices.sort_custom(func(a, b): return float(inventory[a]["paid"]) > float(inventory[b]["paid"]))
+		"oldest":
+			indices.sort_custom(func(a, b): return int(inventory[a].get("days_owned", 0)) > int(inventory[b].get("days_owned", 0)))
+	var pages = max(1, int(ceil(float(indices.size()) / float(INVENTORY_PAGE_SIZE))))
+	inventory_page = clamp(inventory_page, 0, pages - 1)
+	if indices.size() > 0:
+		body.add_child(inventory_pager(pages, indices.size()))
+	for k in range(inventory_page * INVENTORY_PAGE_SIZE, min(indices.size(), (inventory_page + 1) * INVENTORY_PAGE_SIZE)):
+		showing_any = true
+		body.add_child(build_inventory_card(inventory[indices[k]], indices[k]))
+	if pages > 1:
+		body.add_child(inventory_pager(pages, indices.size()))
+	var inv_pad = Control.new()
+	inv_pad.custom_minimum_size = Vector2(0, 140)
+	body.add_child(inv_pad)
+	if not showing_any:
+		var empty_tab = small_label("Nothing listed yet — list items from the Unlisted tab." if inventory_tab == "listed" else "Everything you own is listed for sale. End the day to see what sells.", 18, Color(0.78,0.83,0.90,1.0))
+		empty_tab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.add_child(empty_tab)
+
+func inventory_pager(pages, count):
+	var row = HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 6)
+	row.add_child(small_label("Sort:", 16, Color(0.78,0.83,0.90,1.0)))
+	for opt in [["needs_action", "Needs attention"], ["paid_high", "Most expensive"], ["oldest", "Held longest"]]:
+		var b = action_button(opt[1], "buy" if inventory_sort == opt[0] else "nav", func():
+			inventory_sort = opt[0]
+			inventory_page = 0
+			show_inventory()
+		)
+		row.add_child(b)
+	if pages > 1:
+		var sp = Control.new()
+		sp.custom_minimum_size = Vector2(20, 0)
+		row.add_child(sp)
+		var prev = action_button("<  Prev", "nav", func():
+			inventory_page -= 1
+			last_scroll_value = 0.0
+			show_inventory()
+		)
+		prev.disabled = inventory_page <= 0
+		row.add_child(prev)
+		row.add_child(small_label("Page %d of %d  (%d items)" % [inventory_page + 1, pages, count], 16, Color(0.85,0.90,0.96,1.0)))
+		var nxt = action_button("Next  >", "nav", func():
+			inventory_page += 1
+			last_scroll_value = 0.0
+			show_inventory()
+		)
+		nxt.disabled = inventory_page >= pages - 1
+		row.add_child(nxt)
+	return row
+
+func build_inventory_card(item, i):
+	var panel = PanelContainer.new()
+	style_item_card(panel, item)
+	var card = VBoxContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_constant_override("separation", 6)
+	panel.add_child(card)
+
+	var top = HBoxContainer.new()
+	top.add_theme_constant_override("separation", 10)
+	card.add_child(top)
+	var cat_icon_rect = make_category_icon_rect(item["category"])
+	if cat_icon_rect != null:
+		top.add_child(cat_icon_rect)
+	if item["rarity"] != "Common":
+		top.add_child(small_label("%s 1/%d" % [item["rarity"].to_upper(), int(item["one_in"])], 16, rarity_color(item["rarity"])))
+	var name_l = small_label(item["name"], 22, Color(0.95,0.96,1.0,1.0))
+	name_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	top.add_child(name_l)
+	var spent = float(item["paid"]) + float(item.get("extra_spend", 0.0))
+	top.add_child(small_label("Paid £%.2f%s" % [float(item["paid"]), ("  (+£%.2f on checks)" % float(item.get("extra_spend", 0.0))) if float(item.get("extra_spend", 0.0)) > 0.0 else ""], 17, Color(0.78,0.83,0.90,1.0)))
+
+	var cond = "[color=#e88c7a]Unknown[/color]" if not item["condition_checked"] else "[b]%d/10[/b]" % int(item["condition"])
+	var func_s = function_status(item)
+	if func_s == "TEST REQUIRED":
+		func_s = "[color=#e8c15a]TEST REQUIRED[/color]"
+	elif item["fault"] and fault_is_known(item):
+		func_s = "[color=#e88c7a]%s[/color]" % func_s
+	var auth = item["auth_status"]
+	if auth == "Confirmed Genuine":
+		auth = "[color=#8cd98f]Genuine[/color]"
+	elif auth == "Confirmed Counterfeit" or auth == "Suspected Counterfeit":
+		auth = "[color=#e88c7a]%s[/color]" % auth
+	elif float(item["fake_chance"]) >= 0.05:
+		auth = "Unauthenticated (fake risk %s)" % fake_risk_label(float(item["fake_chance"]))
+	else:
+		auth = ""
+	var trend_mult = float(current_trends.get(item["category"], 1.0))
+	var facts = "%s  •  Condition %s  •  Function: %s" % [item["category"], cond, func_s]
+	if auth != "":
+		facts += "  •  " + auth
+	if abs(trend_mult - 1.0) >= 0.03:
+		facts += "  •  Trend [color=%s]%+d%%[/color]" % ["#b088e8" if trend_mult > 1.0 else "#e88c7a", int(round((trend_mult - 1.0) * 100.0))]
+	if not item["condition_checked"] and not (item["fault"] and fault_is_known(item)) and not item["testable"]:
+		pass
+	card.add_child(rich_line(facts, 15, Color(0.66,0.72,0.80,1.0)))
+
+	var potential = estimate_identified_potential(item)
+	card.add_child(rich_line("Your estimate: [b]£%d – £%d[/b]   (%s — more checks narrow it down)" % [potential[0], potential[1], confidence_label(item)], 17, Color(0.85,0.90,0.96,1.0)))
+
+	# Findings
+	if item["quick_look_done"] and item["quick_look_note"] != "" and not item["condition_checked"]:
+		card.add_child(rich_line(item["quick_look_note"], 15))
+	if item["condition_checked"] and item["condition_price_note"] != "":
+		var cn = item["condition_price_note"]
+		if not item["testable"]:
+			cn += ("\n[color=#e88c7a][!] Hidden flaw: %s[/color]" % fault_label(item)) if item["fault"] else "  [color=#8cd98f]No hidden defects.[/color]"
+		card.add_child(rich_line(cn, 15))
+	if item["basic_researched"]:
+		card.add_child(rich_line("Sold recently for: [b]%s[/b]" % item["basic_comps"], 15))
+	if item["deep_researched"]:
+		var deep_note = item["research_note"]
+		if item["rare_variant_hit"]:
+			deep_note += "\n[color=#e08fd0][b]RARE VARIANT[/b] — rolled %.2f%% (%s) — value x%.1f[/color]" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
+		card.add_child(rich_line(deep_note, 15))
+	if item["testable"] and item["tested"]:
+		card.add_child(rich_line(item.get("test_note", ""), 15))
+	if item["auth_attempted"] and item["auth_note"] != "":
+		card.add_child(rich_line(item["auth_note"], 15))
+	if item["repair_note"] != "":
+		card.add_child(rich_line(item["repair_note"], 15))
+
+	var is_live = item["listed"] or item["auctioned"]
+	var actions = HFlowContainer.new()
+	actions.add_theme_constant_override("h_separation", 6)
+	actions.add_theme_constant_override("v_separation", 6)
+	if not is_live and item["auth_status"] != "Confirmed Counterfeit":
+		card.add_child(actions)
+		if item["testable"] and not item["tested"]:
+			var tb = action_button("Test it  £2  •  ⚡5   (fault chance %.0f%%)" % (float(item["fault_chance"]) * 100.0), "buy", Callable(self, "test_item").bind(i), "Plug it in and see if it works. Every electrical item must be tested before you can list it.", test_icon)
+			actions.add_child(tb)
+		if not item["condition_checked"]:
+			actions.add_child(action_button("Check Condition £%d  •  ⚡4" % int(condition_cost()), "action", Callable(self, "inventory_check_condition").bind(i), "Exact Condition score (and hidden flaws on non-electronics). Tightens your estimate and cuts return risk.", condition_icon))
+		if not item["basic_researched"]:
+			actions.add_child(action_button("Research £%.2f  •  ⚡2" % research_cost(), "action", Callable(self, "inventory_basic_research").bind(i), "Five recent sold prices. Tightens your estimate.", research_icon))
+		if not item["deep_researched"]:
+			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
+			var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
+			var real_rare_chance = 0.20
+			if item["basic_researched"]:
+				real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.04, 0.32)
+			if has_skill("Deep Pockets"):
+				real_rare_chance = min(0.45, real_rare_chance * 1.25)
+			actions.add_child(action_button("Deep Research £%d  •  ⚡10   (find %.0f%%, rare %.0f%%)" % [int(deep_research_cost(item)), deep_chance * 100.0, real_rare_chance * 100.0], "action", Callable(self, "deep_research").bind(i), "Pin down the exact model/edition. Chance to identify something more desirable, plus a separate chance it's a rare variant worth far more. Always tightens your estimate. One go only.", deep_research_icon))
+		if not item["auth_attempted"] and (float(item["fake_chance"]) >= 0.03 or item["auth_status"] == "Suspected Counterfeit"):
+			actions.add_child(action_button("Authenticate £%d  •  ⚡6   (%.0f%% accurate)" % [int(authentication_cost(item)), authentication_accuracy(item) * 100.0], "action", Callable(self, "authenticate_item").bind(i), "Checks it's genuine. Confirmed genuine sells better; confirmed fakes can't be sold. Selling unchecked risks a fake being returned — and your seller rating.", authenticate_icon))
+		if toolbox_level > 0 and item["fault"] and fault_is_known(item):
+			if item["repair_attempted"]:
+				var rb = action_button("Repair attempt used", "nav", null)
+				rb.disabled = true
+				actions.add_child(rb)
+			else:
+				actions.add_child(action_button("Repair £%d  •  ⚡10" % int(repair_cost(item)), "buy", Callable(self, "repair_item").bind(i), "One attempt to fix the fault. Better tools = better odds. A failed attempt still costs the fee."))
+		elif toolbox_level == 0 and item["fault"] and fault_is_known(item):
+			actions.add_child(small_label("Buy Repair Tools in the Shop to try fixing faults.", 15))
+
+	if item["auth_status"] == "Confirmed Counterfeit":
+		var row = HBoxContainer.new()
+		card.add_child(row)
+		row.add_child(action_button("Scrap / sell for parts", "danger", Callable(self, "scrap_item").bind(i), "Counterfeits can't be sold. Recover a few quid for parts."))
+		return panel
+	add_listing_controls(card, i, item, potential)
+	return panel
+
+func _switch_inventory_tab(tab):
+	inventory_tab = tab
+	inventory_page = 0
+	last_scroll_value = 0.0
+	show_inventory()
+
+func add_listing_controls(card, index, item, potential):
+	if item["auctioned"]:
+		card.add_child(rich_line("[color=#e8c15a][b]AUCTION LIVE[/b][/color] — current bid £%.2f — ends in %d day%s" % [float(item["auction_current_bid"]), int(item["auction_days_left"]), "" if int(item["auction_days_left"]) == 1 else "s"], 17))
+		return
+	if item["listed"]:
+		var live_row = HFlowContainer.new()
+		live_row.add_theme_constant_override("h_separation", 10)
+		card.add_child(live_row)
+		var days_up = day - int(item.get("listed_day", day))
+		live_row.add_child(rich_line("[color=#8cd98f][b]LISTED at £%.2f[/b][/color]  •  up %d day%s  •  expected interest [color=%s]%s[/color]" % [float(item["listing"]), days_up, "" if days_up == 1 else "s", buyer_interest_color(buyer_interest_label(item, float(item["listing"]))), buyer_interest_label(item, float(item["listing"]))], 17))
+		live_row.add_child(action_button("Unlist / reprice", "danger", Callable(self, "unlist_item").bind(index), "Take the listing down so you can change the price or sell another way."))
+		if days_up >= 3:
+			card.add_child(rich_line("[color=#e8c15a]No bites for %d days.[/color] Could be bad luck — or buyers think it's worth less than you do. Checking condition or researching sharpens your estimate." % days_up, 15))
+		var breakdown_live = rich_line(format_sale_breakdown(item, float(item["listing"])) if show_pricing_details else format_sale_summary(item, float(item["listing"])), 15, Color(0.72,0.78,0.85,1.0))
+		card.add_child(breakdown_live)
+		return
+
+	var needs_test = item["testable"] and not item["tested"]
+	var sell_box = VBoxContainer.new()
+	sell_box.add_theme_constant_override("separation", 6)
+	card.add_child(sell_box)
+	if needs_test:
+		sell_box.add_child(small_label("Electrical — test it before you can sell it.", 16, Color(0.90,0.78,0.40,1.0)))
+		return
+
+	var initial_value = round((float(potential[0]) + float(potential[1])) / 2.0)
+	var price_min = 1.0
+	var price_max = max(20.0, float(potential[1]) * 3.0)
+	var row = HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 6)
+	sell_box.add_child(row)
+	row.add_child(small_label("List for £", 18, Color(0.85,0.90,0.96,1.0)))
+	var minus_btn = Button.new()
+	minus_btn.text = "-"
+	style_button(minus_btn, "nav")
+	minus_btn.custom_minimum_size = Vector2(40, 40)
+	row.add_child(minus_btn)
+	var value_edit = LineEdit.new()
+	value_edit.text = str(int(initial_value))
+	value_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+	value_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	value_edit.custom_minimum_size = Vector2(90, 40)
+	value_edit.add_theme_font_size_override("font_size", 20)
+	row.add_child(value_edit)
+	var plus_btn = Button.new()
+	plus_btn.text = "+"
+	style_button(plus_btn, "nav")
+	plus_btn.custom_minimum_size = Vector2(40, 40)
+	row.add_child(plus_btn)
+	var interest = rich_line("", 17)
+	interest.custom_minimum_size = Vector2(cw(340), 0)
+	interest.size_flags_horizontal = Control.SIZE_FILL
+	row.add_child(interest)
+	var list_button = action_button("List for sale", "buy", Callable(self, "create_listing").bind(index, value_edit), "Put it online at your price. Buyers roll every night; the first day also gets one quick chance of an instant sale.")
+	list_button.custom_minimum_size = Vector2(170, 40)
+	list_button.add_theme_font_size_override("font_size", 18)
+	row.add_child(list_button)
+	var breakdown = rich_line("", 15, Color(0.72,0.78,0.85,1.0))
+	sell_box.add_child(breakdown)
+	var step = max(1.0, round(initial_value * 0.05))
+	minus_btn.pressed.connect(Callable(self, "_adjust_listing_price").bind(value_edit, -step, price_min, price_max, index, interest, breakdown))
+	plus_btn.pressed.connect(Callable(self, "_adjust_listing_price").bind(value_edit, step, price_min, price_max, index, interest, breakdown))
+	value_edit.text_submitted.connect(Callable(self, "_on_listing_price_submitted").bind(value_edit, price_min, price_max, index, interest, breakdown))
+	value_edit.text_changed.connect(func(_t): _refresh_listing_price(value_edit, price_min, price_max, index, interest, breakdown, false))
+	value_edit.focus_exited.connect(Callable(self, "_refresh_listing_price").bind(value_edit, price_min, price_max, index, interest, breakdown))
+	_refresh_listing_price(value_edit, price_min, price_max, index, interest, breakdown)
+
+	var alt = HFlowContainer.new()
+	alt.add_theme_constant_override("h_separation", 8)
+	sell_box.add_child(alt)
+	var qc = perceived_center(item)
+	var quick_sell_low = max(1.0, round(qc * 0.40))
+	var quick_sell_high = max(1.0, round(qc * 0.60))
+	alt.add_child(action_button("Sell to a trader now  ~£%d–£%d" % [quick_sell_low, quick_sell_high], "nav", Callable(self, "quick_sell_item").bind(index), "Cash in hand today: a trader pays roughly 40-60% of what it's really worth. No fees, postage or returns."))
+	var auction_button = action_button("Auction (3 days)" if player_level >= 6 else "Auction — unlocks at Level 6", "action", Callable(self, "start_auction").bind(index), "Three-day auction. Final price swings well above or below value; rare and trending items attract bidding wars. Extra 5% auction fee, no returns.")
+	auction_button.disabled = player_level < 6
+	alt.add_child(auction_button)
+
+func _refresh_listing_price(value_edit, min_val, max_val, index, interest_label, breakdown_label, rewrite = true):
+	var v = clamp(_parse_price(value_edit.text), min_val, max_val)
+	if rewrite:
+		value_edit.text = str(int(v))
+	if index < 0 or index >= inventory.size():
+		return
+	var item = inventory[index]
+	interest_label.text = "Expected interest: [color=%s]%s[/color]" % [buyer_interest_color(buyer_interest_label(item, v)), buyer_interest_label(item, v)]
+	if show_pricing_details:
+		breakdown_label.text = format_sale_breakdown(item, v) + "\n" + format_sale_estimate(item, v)
+	else:
+		breakdown_label.text = format_sale_summary(item, v)
+	var costs = selling_costs(item, v)
+	var prof = v - float(costs["fee"]) - float(costs["postage"]) - float(costs["insurance"]) - float(costs["packaging"]) - float(item["paid"]) - float(item.get("extra_spend", 0.0))
+	if prof < 0.0:
+		breakdown_label.text += "\n[color=#e88c7a][b]At this price you'd lose %s.[/b] Sometimes cutting a loss is right — but check you meant it.[/color]" % money_signed(prof)
+
+func _on_listing_price_submitted(submitted_text, value_edit, min_val, max_val, index, interest_label, breakdown_label):
+	_refresh_listing_price(value_edit, min_val, max_val, index, interest_label, breakdown_label)
+
+func _adjust_listing_price(value_edit, delta, min_val, max_val, index, interest_label, breakdown_label):
+	var v = clamp(_parse_price(value_edit.text) + delta, min_val, max_val)
+	value_edit.text = str(int(v))
+	_refresh_listing_price(value_edit, min_val, max_val, index, interest_label, breakdown_label)
+
+func show_trends():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_trends"
+	clear_body()
+	update_header()
+	var days_left = 7 - ((day - 1) % 7)
+	body.add_child(small_label("MARKET TRENDS — Week %d, %s" % [current_week, get_season_name()], 24, Color(0.95,0.96,1.0,1.0)))
+	var intro = small_label("Demand shifts every week (next change in %d day%s). Trends change what buyers pay and how fast things sell. Your experience in a category sharpens your estimates and helps Deep Research." % [days_left, "" if days_left == 1 else "s"], 16, Color(0.78,0.83,0.90,1.0))
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(intro)
+	var card = make_card()
+	body.add_child(card)
+	var grid = GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 28)
+	grid.add_theme_constant_override("v_separation", 6)
+	card.add_child(grid)
+	for h in ["Category", "Demand", "Price effect", "Your experience"]:
+		grid.add_child(small_label(h, 16, Color(0.95,0.84,0.62,1.0)))
+	var cats = current_trends.keys()
+	cats.sort_custom(func(a, b): return float(current_trends[a]) > float(current_trends[b]))
+	for category in cats:
+		var mult = float(current_trends[category])
+		var direction = "Steady"
+		var col = Color(0.78,0.83,0.90,1.0)
+		if mult >= 1.10:
+			direction = "HOT"
+			col = Color(0.75,0.55,0.98,1.0)
+		elif mult >= 1.03:
+			direction = "Rising"
+			col = Color(0.55,0.88,0.58,1.0)
+		elif mult <= 0.90:
+			direction = "Weak"
+			col = Color(0.95,0.50,0.45,1.0)
+		elif mult <= 0.97:
+			direction = "Cooling"
+			col = Color(0.92,0.70,0.45,1.0)
+		grid.add_child(small_label(category, 17, Color(0.92,0.95,1.0,1.0)))
+		grid.add_child(small_label(direction, 17, col))
+		grid.add_child(small_label("%+d%%" % int(round((mult - 1.0) * 100.0)), 17, col))
+		var k = int(category_knowledge.get(category, 5))
+		grid.add_child(small_label("%s  %d/25" % ["|".repeat(int(k / 2.5)) + ".".repeat(10 - int(k / 2.5)), k], 16, Color(0.60,0.75,0.95,1.0)))
+	var chatter = make_card()
+	body.add_child(chatter)
+	var cb = VBoxContainer.new()
+	chatter.add_child(cb)
+	cb.add_child(small_label("MARKET CHATTER", 17, Color(0.95,0.84,0.62,1.0)))
+	for headline in trend_headlines:
+		cb.add_child(small_label("• " + headline, 16, Color(0.80,0.85,0.92,1.0)))
+
+func show_shop():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_shop"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "SHOP & UPGRADES"
+	body.add_child(title)
+	var upkeep_note = Label.new()
+	upkeep_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	upkeep_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	upkeep_note.text = "Current daily business upkeep: £%.2f (scales with total upgrade levels owned — a bigger operation costs more to run every day, on top of the pitch fee & fuel)." % compute_upkeep()
+	upkeep_note.add_theme_color_override("font_color", Color(0.85,0.68,0.55,1.0))
+	body.add_child(upkeep_note)
+	add_tip("shop")
+	add_upgrade_card("Car Boot Carrying", bag_upgrades, bag_level, "bag")
+	add_upgrade_card("Home Storage", storage_upgrades, storage_level, "storage")
+	add_upgrade_card("Repair Tools", toolbox_upgrades, toolbox_level, "toolbox")
+	add_upgrade_card("Inspect Skill", eye_upgrades, eye_level, "eye")
+	add_upgrade_card("Selling Fees", fee_upgrades, fee_level, "fee")
+	add_scaling_upgrade_card("Package Insight", package_insight_level, PACKAGE_INSIGHT_MAX, package_insight_cost(package_insight_level), "Shifts Mystery Package odds away from Poor and into better tiers. Current: Poor reduced by %d%%, redistributed mostly to Average/Good." % package_insight_level, "package_insight")
+	add_scaling_upgrade_card("Persuasion Knowledge", persuasion_level, PERSUASION_MAX, persuasion_cost(persuasion_level), "A flat bonus to your acceptance chance on every haggle offer. Current: +%d%%." % persuasion_level, "persuasion")
+
+func add_scaling_upgrade_card(title, level, max_level, cost, description, kind, target = null):
+	if target == null:
+		target = body
+	var panel = make_card()
+	target.add_child(panel)
+	var box = VBoxContainer.new()
+	panel.add_child(box)
+	var head = Label.new()
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_theme_font_size_override("font_size", 17)
+	head.text = "%s — Level %d/%d" % [title, level, max_level]
+	box.add_child(head)
+	var desc = Label.new()
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	desc.text = description
+	box.add_child(desc)
+	if level < max_level:
+		var button = Button.new()
+		button.text = "Upgrade to Level %d — £%.0f" % [level + 1, cost]
+		button.pressed.connect(Callable(self, "buy_scaling_upgrade").bind(kind))
+		style_button(button, "buy")
+		box.add_child(button)
+	else:
+		var maxed = Label.new()
+		maxed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		maxed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		maxed.text = "MAX LEVEL"
+		box.add_child(maxed)
+
+func buy_scaling_upgrade(kind):
+	var level = 0
+	var max_level = 0
+	var cost = 0.0
+	if kind == "package_insight":
+		level = package_insight_level
+		max_level = PACKAGE_INSIGHT_MAX
+		cost = package_insight_cost(level)
+	else:
+		level = persuasion_level
+		max_level = PERSUASION_MAX
+		cost = persuasion_cost(level)
+	if level >= max_level:
+		return
+	if cash < cost:
+		set_status("You need £%.0f for that upgrade." % cost)
+		return
+	cash -= cost
+	if kind == "package_insight":
+		package_insight_level += 1
+	else:
+		persuasion_level += 1
+	add_toast("Upgrade bought.", "success")
+	play_sfx("coin")
+	save_game()
+	show_shop()
+
+func add_upgrade_card(title, data, level, kind, target = null):
+	if target == null:
+		target = body
+	var panel = make_card()
+	target.add_child(panel)
+	var box = VBoxContainer.new()
+	panel.add_child(box)
+	var head = Label.new()
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_theme_font_size_override("font_size", 17)
+	head.text = title + " — Current: " + str(data[level]["name"])
+	box.add_child(head)
+	var description = Label.new()
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if kind == "bag":
+		description.text = "Capacity %d per car-boot day. Small=1, Medium=2, Large=4." % data[level]["capacity"]
+	elif kind == "storage":
+		description.text = "Home inventory capacity %d space." % data[level]["capacity"]
+	elif kind == "eye":
+		description.text = "Inspect accuracy %d%%. An Inspect can still be wrong and never reveals exact Condition." % int(float(data[level]["accuracy"]) * 100.0)
+	elif kind == "fee":
+		description.text = "Platform fee %.1f%% on every sale. Lower fees compound the more you sell." % (float(data[level]["fee"]) * 100.0)
+	else:
+		description.text = ("Lets you attempt repairs on faulty items. Current tools add +%d%% to repair odds." % int(float(data[level]["bonus"]) * 100.0)) if level > 0 else "No tools yet — you can't attempt repairs. The first toolbox unlocks repairing."
+	box.add_child(description)
+	if level < data.size() - 1:
+		var next = data[level + 1]
+		var benefit = ""
+		if kind == "bag":
+			benefit = "bag %d -> %d" % [int(data[level]["capacity"]), int(next["capacity"])]
+		elif kind == "storage":
+			benefit = "storage %d -> %d" % [int(data[level]["capacity"]), int(next["capacity"])]
+		elif kind == "eye":
+			benefit = "Inspect accuracy %d%% -> %d%%" % [int(float(data[level]["accuracy"]) * 100.0), int(float(next["accuracy"]) * 100.0)]
+		elif kind == "fee":
+			benefit = "fee %.1f%% -> %.1f%%" % [float(data[level]["fee"]) * 100.0, float(next["fee"]) * 100.0]
+		else:
+			benefit = ("unlocks repairs (+%d%% odds)" % int(float(next["bonus"]) * 100.0)) if level == 0 else "repair odds +%d%% -> +%d%%" % [int(float(data[level]["bonus"]) * 100.0), int(float(next["bonus"]) * 100.0)]
+		var button = Button.new()
+		var cost = float(next["cost"])
+		button.text = "%s:  %s  —  £%.0f   (+£%.2f/day upkeep)" % [next["name"], benefit, cost, upkeep_per_tier()]
+		if cash < cost:
+			button.text += "   — need £%.0f more" % (cost - cash)
+		button.pressed.connect(Callable(self, "buy_upgrade").bind(kind))
+		style_button(button, "buy")
+		button.disabled = cash < cost
+		button.add_theme_font_size_override("font_size", 16)
+		button.custom_minimum_size.y = 42
+		box.add_child(button)
+	else:
+		var maxed = Label.new()
+		maxed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		maxed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		maxed.text = "MAX UPGRADE"
+		box.add_child(maxed)
+
+func buy_upgrade(kind):
+	var data = []
+	var level = 0
+	if kind == "bag":
+		data = bag_upgrades
+		level = bag_level
+	elif kind == "storage":
+		data = storage_upgrades
+		level = storage_level
+	elif kind == "eye":
+		data = eye_upgrades
+		level = eye_level
+	elif kind == "fee":
+		data = fee_upgrades
+		level = fee_level
+	else:
+		data = toolbox_upgrades
+		level = toolbox_level
+	if level >= data.size() - 1:
+		return
+	var cost = float(data[level + 1]["cost"])
+	if cash < cost:
+		set_status("You need £%.0f for that upgrade." % cost)
+		return
+	cash -= cost
+	if kind == "bag":
+		bag_level += 1
+		if bag_level >= 3:
+			unlock_achievement("Van Man")
+	elif kind == "storage":
+		storage_level += 1
+	elif kind == "eye":
+		eye_level += 1
+	elif kind == "fee":
+		fee_level += 1
+	else:
+		toolbox_level += 1
+	add_toast("Upgrade bought.", "success")
+	play_sfx("coin")
+	save_game()
+	show_shop()
+
+
+func render_family_stat_card(family, force_undiscovered = false):
+	var fam_name = family["name"]
+	var known = family_stats.has(fam_name) and not force_undiscovered
+	var panel = make_card()
+	panel.custom_minimum_size = Vector2(cw(370), 0)
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	panel.add_child(box)
+	if known and family_stats[fam_name]["highest_rarity"] == "Grail":
+		apply_grail_glow(panel)
+	var title = fam_name if known else "???"
+	if family.has("season"):
+		title += "  (%s only)" % family["season"]
+	box.add_child(small_label(title, 19, Color(0.92,0.95,1.0,1.0) if known else Color(0.45,0.50,0.58,1.0)))
+	var tiers = HFlowContainer.new()
+	tiers.add_theme_constant_override("h_separation", 10)
+	box.add_child(tiers)
+	for tier_row in rarity_table:
+		var key = family["category"] + "|" + fam_name + "|" + tier_row["tier"]
+		var got = discovered_log.has(key)
+		var tier_name = tier_row["tier"]
+		var txt = ("%s" % tier_name) if got else ("??? 1/%d" % int(tier_row["one_in"]) if int(tier_row["one_in"]) > 1 else "??? common")
+		tiers.add_child(small_label(txt, 15, rarity_color(tier_name) if got else Color(0.40,0.44,0.50,1.0)))
+	if known:
+		var fs = family_stats[fam_name]
+		var cheapest_text = "—" if float(fs["cheapest_bought"]) < 0.0 else "£%.0f" % float(fs["cheapest_bought"])
+		var l = small_label("Found %d  •  cheapest £%s  •  best sale £%.0f  •  profit %s" % [int(fs["times_found"]), cheapest_text.replace("£", ""), float(fs["highest_sold"]), money_signed(float(fs["lifetime_profit"]))], 15, Color(0.66,0.72,0.80,1.0))
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(l)
+	return panel
+
+func show_collection_log():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_collection_log"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 24)
+	title.text = "COLLECTION LOG"
+	body.add_child(title)
+
+	var total_counts = total_families_discovered()
+	var total_panel = make_card()
+	body.add_child(total_panel)
+	var total_label = Label.new()
+	total_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	total_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	total_label.add_theme_font_size_override("font_size", 18)
+	total_label.text = "TOTAL LOG: %d/%d discovered" % [total_counts[0], total_counts[1]]
+	total_panel.add_child(total_label)
+
+	var grid = HFlowContainer.new()
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	body.add_child(grid)
+
+	for category in get_category_list():
+		var counts = category_discovery_count(category)
+		var cat_button = Button.new()
+		cat_button.text = "%s\n%d/%d" % [category, counts[0], counts[1]]
+		style_button(cat_button, "action")
+		cat_button.custom_minimum_size = Vector2(200, 64)
+		cat_button.pressed.connect(Callable(self, "show_collection_category").bind(category))
+		grid.add_child(cat_button)
+
+	var grail_counts = grails_discovery_count()
+	var grail_button = Button.new()
+	grail_button.text = "GRAILS\n%d/%d" % [grail_counts[0], grail_counts[1]]
+	style_button(grail_button, "danger")
+	grail_button.custom_minimum_size = Vector2(200, 64)
+	grail_button.pressed.connect(show_collection_grails)
+	grid.add_child(grail_button)
+
+func show_collection_category(category):
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_collection_log"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 24)
+	var counts = category_discovery_count(category)
+	title.text = "%s — %d/%d discovered" % [category, counts[0], counts[1]]
+	body.add_child(title)
+	var back_button = Button.new()
+	back_button.text = "Back to Collection Log"
+	style_button(back_button, "nav")
+	back_button.pressed.connect(show_collection_log)
+	body.add_child(back_button)
+	var grid = HFlowContainer.new()
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	body.add_child(grid)
+	for family in item_families:
+		if family["category"] == category:
+			grid.add_child(render_family_stat_card(family))
+
+func show_collection_grails():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_collection_log"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 24)
+	var grail_counts = grails_discovery_count()
+	title.text = "GRAILS — %d/%d found" % [grail_counts[0], grail_counts[1]]
+	body.add_child(title)
+	var back_button = Button.new()
+	back_button.text = "Back to Collection Log"
+	style_button(back_button, "nav")
+	back_button.pressed.connect(show_collection_log)
+	body.add_child(back_button)
+	var grid = HFlowContainer.new()
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	body.add_child(grid)
+	for family in item_families:
+		var hit_grail = family_stats.has(family["name"]) and family_stats[family["name"]]["highest_rarity"] == "Grail"
+		grid.add_child(render_family_stat_card(family, not hit_grail))
+
+func make_progress_bar_section(title_text, current_value, max_value, milestones, fill_color = Color(0.35,0.75,0.40,1.0)):
+	var container = VBoxContainer.new()
+	container.add_theme_constant_override("separation", 6)
+
+	var title_label = Label.new()
+	title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.add_theme_font_size_override("font_size", 15)
+	title_label.text = title_text
+	container.add_child(title_label)
+
+	var bar = ProgressBar.new()
+	bar.min_value = 0
+	bar.max_value = max_value
+	bar.value = clamp(current_value, 0, max_value)
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 22)
+	var fill_style = StyleBoxFlat.new()
+	fill_style.bg_color = fill_color
+	fill_style.corner_radius_top_left = 6
+	fill_style.corner_radius_top_right = 6
+	fill_style.corner_radius_bottom_left = 6
+	fill_style.corner_radius_bottom_right = 6
+	bar.add_theme_stylebox_override("fill", fill_style)
+	var bg_style = StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.10,0.12,0.15,1.0)
+	bg_style.corner_radius_top_left = 6
+	bg_style.corner_radius_top_right = 6
+	bg_style.corner_radius_bottom_left = 6
+	bg_style.corner_radius_bottom_right = 6
+	bar.add_theme_stylebox_override("background", bg_style)
+	container.add_child(bar)
+
+	var milestone_row = HFlowContainer.new()
+	milestone_row.add_theme_constant_override("h_separation", 16)
+	milestone_row.add_theme_constant_override("v_separation", 4)
+	milestone_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.add_child(milestone_row)
+	for m in milestones:
+		var reached = current_value >= m
+		var label_text = "£%d" % int(m) if m < 1000.0 else "£%dk" % int(m / 1000.0)
+		var m_label = Label.new()
+		m_label.add_theme_font_size_override("font_size", 12)
+		m_label.text = ("X " if reached else "- ") + label_text
+		m_label.add_theme_color_override("font_color", fill_color if reached else Color(0.50,0.55,0.62,1.0))
+		milestone_row.add_child(m_label)
+	return container
+
+func show_bankruptcy_screen():
+	if sim_mode:
+		return
+	current_screen_name = "show_bankruptcy_screen"
+	clear_body()
+	set_chrome_visible(false)
+	var panel = make_card()
+	body.add_child(panel)
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	panel.add_child(box)
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 34)
+	title.add_theme_color_override("font_color", Color(0.95,0.50,0.45,1.0))
+	title.text = "BANKRUPT"
+	box.add_child(title)
+	var msg = Label.new()
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	msg.add_theme_font_size_override("font_size", 18)
+	msg.text = "Four days in the red and the overdraft finally caught up with you. The bank has taken the stock, the van and the spare room.\n\nFinal cash: £%.2f on Day %d." % [cash, day]
+	box.add_child(msg)
+	var stats = Label.new()
+	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats.add_theme_font_size_override("font_size", 16)
+	stats.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+	stats.text = "Days survived: %d\nItems sold: %d\nLifetime profit: £%.2f\nBest net worth: £%.2f\nLevel reached: %d\nCollection: %d discovered\nAchievements: %d/%d" % [day, sold_history.size(), total_lifetime_profit, best_net_worth, player_level, discovered_log.size(), achievements.size(), ALL_ACHIEVEMENTS.size()]
+	box.add_child(stats)
+	var restart = Button.new()
+	restart.text = "Start a New Run"
+	style_button(restart, "buy")
+	restart.custom_minimum_size.y = 52
+	restart.add_theme_font_size_override("font_size", 20)
+	restart.pressed.connect(start_new_game)
+	box.add_child(restart)
+	var title_btn = Button.new()
+	title_btn.text = "Back to Title"
+	style_button(title_btn, "nav")
+	title_btn.pressed.connect(show_title_screen)
+	box.add_child(title_btn)
+
+func summary_line(parent, left_text, value, positive_good = true, size = 17):
+	var row = HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parent.add_child(row)
+	var l = Label.new()
+	l.text = left_text
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", Color(0.78,0.83,0.90,1.0))
+	row.add_child(l)
+	var r = Label.new()
+	r.add_theme_font_size_override("font_size", size)
+	if typeof(value) == TYPE_STRING:
+		r.text = value
+		r.add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
+	else:
+		var v = float(value)
+		r.text = ("+£%.2f" % v) if v > 0.004 else (("-£%.2f" % abs(v)) if v < -0.004 else "£0.00")
+		var good = (v >= 0.0) == positive_good
+		if abs(v) < 0.005:
+			r.add_theme_color_override("font_color", Color(0.60,0.65,0.72,1.0))
+		else:
+			r.add_theme_color_override("font_color", Color(0.55,0.88,0.58,1.0) if good else Color(0.95,0.55,0.45,1.0))
+	row.add_child(r)
+
+func show_day_summary(summary):
+	if sim_mode:
+		return
+	current_screen_name = "show_day_summary"
+	update_header()
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_day_summary"
+	clear_body()
+	last_scroll_value = 0.0
+	if page_scroll != null:
+		page_scroll.scroll_vertical = 0
+	var s = summary["stats"]
+	var closing_day = int(summary["day"])
+	var profit_today = float(summary["end_cash"]) - float(summary["start_cash"])
+
+	add_tip("summary")
+	var head = make_card()
+	body.add_child(head)
+	var head_box = VBoxContainer.new()
+	head_box.add_theme_constant_override("separation", 6)
+	head.add_child(head_box)
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 30)
+	title.text = "DAY %d COMPLETE" % closing_day
+	head_box.add_child(title)
+	var profit_line = Label.new()
+	profit_line.add_theme_font_size_override("font_size", 26)
+	var worth_delta = float(summary.get("end_worth", 0.0)) - float(summary.get("start_worth", 0.0))
+	profit_line.text = "Change in business value today: %s" % money_signed(worth_delta)
+	profit_line.add_theme_color_override("font_color", Color(0.55,0.88,0.58,1.0) if worth_delta >= 0.0 else Color(0.95,0.55,0.45,1.0))
+	head_box.add_child(profit_line)
+	var worth_change = float(summary.get("end_worth", 0.0)) - float(summary.get("start_worth", 0.0))
+	var worth_line = rich_line("Business value = cash + stock at what you paid: [b]£%.2f[/b]   •   cash on its own %s" % [float(summary.get("end_worth", 0.0)), money_signed(profit_today)], 18, Color(0.85,0.90,0.96,1.0))
+	head_box.add_child(worth_line)
+	if inventory.size() > 0:
+		var est = inventory_estimated_net()
+		var paid = inventory_book_value()
+		var diff = est - paid
+		head_box.add_child(rich_line("Your stock cost £%.0f. At your own estimates it'd bring in about [b]£%.0f[/b] after fees — [color=%s]%s[/color] if it all sells." % [paid, est, "#8cd98f" if diff >= 0.0 else "#e88c7a", money_signed(diff)], 17, Color(0.78,0.83,0.90,1.0)))
+	var cash_line = Label.new()
+	cash_line.add_theme_font_size_override("font_size", 17)
+	cash_line.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+	cash_line.text = "Cash £%.2f -> £%.2f   •   Stock on hand: %d items (paid £%.0f)   •   Seller rating %.0f%%" % [float(summary["start_cash"]), float(summary["end_cash"]), inventory.size(), inventory_book_value(), seller_rating]
+	cash_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head_box.add_child(cash_line)
+	head_box.add_child(rich_line("[color=#e8c15a]>[/color] %s" % current_goal_text(), 16, Color(0.90,0.80,0.55,1.0)))
+	if int(summary["challenges_total"]) > 0:
+		var ch = Label.new()
+		ch.add_theme_font_size_override("font_size", 16)
+		ch.add_theme_color_override("font_color", Color(0.90,0.78,0.40,1.0))
+		ch.text = "Daily challenges: %d/%d complete" % [int(summary["challenges_done"]), int(summary["challenges_total"])]
+		head_box.add_child(ch)
+	if float(summary["end_cash"]) < 0.0:
+		var warning = Label.new()
+		warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		warning.add_theme_font_size_override("font_size", 18)
+		warning.add_theme_color_override("font_color", Color(0.98,0.45,0.40,1.0))
+		warning.text = "[!] IN THE RED — day %d of 4. Overdraft interest is 6%% a day. Sell stock or the business goes under." % int(summary["streak"])
+		head_box.add_child(warning)
+
+	var columns = HFlowContainer.new()
+	columns.add_theme_constant_override("h_separation", 10)
+	columns.add_theme_constant_override("v_separation", 10)
+	body.add_child(columns)
+
+	var money_card = make_card()
+	money_card.custom_minimum_size = Vector2(cw(520), 0)
+	money_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	columns.add_child(money_card)
+	var money = VBoxContainer.new()
+	money.add_theme_constant_override("separation", 3)
+	money_card.add_child(money)
+	var mt = Label.new()
+	mt.text = "MONEY"
+	mt.add_theme_font_size_override("font_size", 19)
+	money.add_child(mt)
+	summary_line(money, "Sales revenue", float(s.get("sales_revenue", 0.0)))
+	summary_line(money, "Stock bought", -float(s.get("buy_spend", 0.0)))
+	summary_line(money, "Selling fees", -float(s.get("fees", 0.0)))
+	summary_line(money, "Postage, packaging & insurance", -float(s.get("postage", 0.0)))
+	summary_line(money, "Checks & research", -float(s.get("research", 0.0)))
+	summary_line(money, "Authentication", -float(s.get("authentication", 0.0)))
+	summary_line(money, "Repairs", -float(s.get("repairs", 0.0)))
+	if float(s.get("refunds", 0.0)) > 0.0:
+		summary_line(money, "Refunds on returns", -float(s.get("refunds", 0.0)))
+	summary_line(money, "Pitch fee & fuel", -float(s.get("rent", 0.0)))
+	summary_line(money, "Business upkeep", -float(s.get("upkeep", 0.0)))
+	if float(s.get("interest", 0.0)) > 0.0:
+		summary_line(money, "Overdraft interest", -float(s.get("interest", 0.0)))
+	if float(s.get("other_income", 0.0)) != 0.0:
+		summary_line(money, "Other (challenges, scrap, gambles)", float(s.get("other_income", 0.0)))
+
+	var act_card = make_card()
+	act_card.custom_minimum_size = Vector2(cw(420), 0)
+	act_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	columns.add_child(act_card)
+	var act = VBoxContainer.new()
+	act.add_theme_constant_override("separation", 3)
+	act_card.add_child(act)
+	var at = Label.new()
+	at.text = "ACTIVITY"
+	at.add_theme_font_size_override("font_size", 19)
+	act.add_child(at)
+	summary_line(act, "Items bought", str(int(s.get("items_bought", 0))))
+	summary_line(act, "Items sold", str(int(s.get("items_sold", 0))))
+	summary_line(act, "Returns", str(int(s.get("returns", 0))))
+	summary_line(act, "Scrapped", str(int(s.get("items_scrapped", 0))))
+	summary_line(act, "New collection entries", str(int(s.get("collection_adds", 0))))
+	summary_line(act, "Rarest find", "1/%d" % int(s.get("rarest_one_in", 1)) if int(s.get("rarest_one_in", 1)) > 1 else "—")
+	summary_line(act, "Level", "%d  (XP %d/%d)" % [player_level, player_xp, xp_needed_for_level(player_level)])
+
+	var sold_today = []
+	for sale in sold_history:
+		if int(sale["day"]) == closing_day:
+			sold_today.append(sale)
+	if sold_today.size() > 0:
+		var sold_card = make_card()
+		body.add_child(sold_card)
+		var sold_box = VBoxContainer.new()
+		sold_box.add_theme_constant_override("separation", 4)
+		sold_card.add_child(sold_box)
+		var sold_title = Label.new()
+		sold_title.add_theme_font_size_override("font_size", 19)
+		sold_title.text = "SOLD TODAY (%d)" % sold_today.size()
+		sold_box.add_child(sold_title)
+		for sale in sold_today:
+			var net = float(sale["price"]) - float(sale.get("fee", 0.0)) - float(sale.get("postage", 0.0)) - float(sale.get("insurance", 0.0)) - float(sale.get("packaging", 0.0))
+			var profit = net - float(sale["paid"]) - float(sale.get("extra_spend", 0.0))
+			var sold_line = RichTextLabel.new()
+			sold_line.bbcode_enabled = true
+			sold_line.fit_content = true
+			sold_line.scroll_active = false
+			sold_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			sold_line.add_theme_font_size_override("normal_font_size", 16)
+			sold_line.text = "%s  —  sold £%.2f (%s), paid £%.2f, net £%.2f  ->  [color=%s]%s£%.2f[/color]" % [sale["name"], float(sale["price"]), channel_name(str(sale.get("channel", "listing"))), float(sale["paid"]), net, "#8cd98f" if profit >= 0.0 else "#e88c7a", "+" if profit >= 0.0 else "-", abs(profit)]
+			sold_box.add_child(sold_line)
+
+	var rng_events = s.get("rng_events", [])
+	if rng_events.size() > 0:
+		var rng_card = make_card()
+		body.add_child(rng_card)
+		var rng_box = VBoxContainer.new()
+		rng_card.add_child(rng_box)
+		var rt = Label.new()
+		rt.add_theme_font_size_override("font_size", 17)
+		rt.text = "LAST ROLLS OF THE DAY"
+		rng_box.add_child(rt)
+		for event in rng_events:
+			var event_line = Label.new()
+			event_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			event_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			event_line.add_theme_font_size_override("font_size", 14)
+			event_line.add_theme_color_override("font_color", Color(0.88,0.62,0.85,1.0))
+			event_line.text = "• " + str(event)
+			rng_box.add_child(event_line)
+
+	var cont = Button.new()
+	cont.text = "Continue to Day %d  >" % day
+	style_button(cont, "buy")
+	cont.custom_minimum_size.y = 56
+	cont.add_theme_font_size_override("font_size", 22)
+	cont.pressed.connect(func(): show_stall())
+	body.add_child(cont)
+	if worth_delta >= 0.0:
+		play_sfx("day_good")
+	else:
+		play_sfx("day_bad")
+
+# ---------------------------------------------------------------------------
+# Feedback: toasts, big popups, activity log
+# ---------------------------------------------------------------------------
+func clear_toasts():
+	if toast_box == null:
+		return
+	for c in toast_box.get_children():
+		toast_box.remove_child(c)
+		c.queue_free()
+
+func add_toast(text, kind = "info", log_it = true):
+	if log_it:
+		log_activity(text)
+	if sim_mode or toast_box == null:
+		return
+	var now = Time.get_ticks_msec() / 1000.0
+	if text == last_toast_text and now - last_toast_time < 1.0:
+		return
+	last_toast_text = text
+	last_toast_time = now
+	var panel = PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb = StyleBoxFlat.new()
+	var bg = Color(0.07,0.09,0.13,0.96)
+	var border = Color(0.35,0.55,0.85,1.0)
+	match kind:
+		"success":
+			bg = Color(0.05,0.15,0.08,0.96)
+			border = Color(0.35,0.80,0.45,1.0)
+		"error":
+			bg = Color(0.18,0.06,0.06,0.96)
+			border = Color(0.90,0.40,0.35,1.0)
+		"rng":
+			bg = Color(0.10,0.06,0.12,0.94)
+			border = Color(0.80,0.50,0.80,0.9)
+		"warn":
+			bg = Color(0.17,0.13,0.04,0.96)
+			border = Color(0.95,0.75,0.30,1.0)
+	sb.bg_color = bg
+	sb.border_color = border
+	sb.border_width_left = 4
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.set_corner_radius_all(8)
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 7
+	sb.content_margin_bottom = 7
+	sb.shadow_color = Color(0,0,0,0.5)
+	sb.shadow_size = 6
+	panel.add_theme_stylebox_override("panel", sb)
+	var lbl = RichTextLabel.new()
+	lbl.bbcode_enabled = true
+	lbl.fit_content = true
+	lbl.scroll_active = false
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.custom_minimum_size = Vector2(cw(400) - 30.0, 0)
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.add_theme_font_size_override("normal_font_size", 17)
+	lbl.text = text
+	panel.add_child(lbl)
+	toast_box.add_child(panel)
+	while toast_box.get_child_count() > 2:
+		var oldest = toast_box.get_child(0)
+		toast_box.remove_child(oldest)
+		oldest.queue_free()
+	var hold = clamp(2.2 + float(text.length()) / 50.0, 2.6, 6.0)
+	var tw = panel.create_tween()
+	tw.tween_interval(hold)
+	tw.tween_property(panel, "modulate:a", 0.0, 0.45)
+	tw.tween_callback(panel.queue_free)
+
+func build_overlays():
+	toast_box = VBoxContainer.new()
+	toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toast_box.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	toast_box.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	toast_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	toast_box.offset_right = -18
+	toast_box.offset_bottom = -18
+	toast_box.alignment = BoxContainer.ALIGNMENT_END
+	toast_box.add_theme_constant_override("separation", 6)
+	toast_box.z_index = 90
+	add_child(toast_box)
+
+	big_popup = Control.new()
+	big_popup.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	big_popup.visible = false
+	big_popup.z_index = 120
+	big_popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(big_popup)
+	var dim = ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.62)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	big_popup.add_child(dim)
+	var center = CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	big_popup.add_child(center)
+	var panel = PanelContainer.new()
+	panel.name = "BigPanel"
+	panel.custom_minimum_size = Vector2(cw(560), 0)
+	center.add_child(panel)
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 14)
+	panel.add_child(box)
+	big_popup_title = Label.new()
+	big_popup_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	big_popup_title.add_theme_font_size_override("font_size", 36)
+	box.add_child(big_popup_title)
+	big_popup_body = Label.new()
+	big_popup_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	big_popup_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	big_popup_body.custom_minimum_size = Vector2(cw(560) - 60.0, 0)
+	big_popup_body.add_theme_font_size_override("font_size", 20)
+	box.add_child(big_popup_body)
+	var ok = Button.new()
+	ok.text = "Nice"
+	ok.name = "OkButton"
+	style_button(ok, "buy")
+	ok.custom_minimum_size = Vector2(0, 48)
+	ok.add_theme_font_size_override("font_size", 20)
+	ok.pressed.connect(_close_big_popup)
+	box.add_child(ok)
+
+func show_big_popup(title, text, kind = "info"):
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	log_activity("%s — %s" % [title, text.replace("\n", " ")])
+	if sim_mode or big_popup == null:
+		return
+	big_popup_queue.append({"title": title, "text": text, "kind": kind})
+	if not big_popup.visible:
+		_show_next_big_popup()
+
+func _show_next_big_popup():
+	if big_popup_queue.size() == 0:
+		big_popup.visible = false
+		return
+	var p = big_popup_queue.pop_front()
+	var accent = Color(0.45,0.70,1.0,1.0)
+	var sfx = "confirm"
+	var ok_text = "OK"
+	match p["kind"]:
+		"level":
+			accent = Color(0.70,0.55,1.0,1.0)
+			sfx = "levelup"
+			ok_text = "Nice"
+		"achievement":
+			accent = Color(0.95,0.78,0.35,1.0)
+			sfx = "levelup"
+			ok_text = "Nice"
+		"rare":
+			accent = Color(0.90,0.55,0.95,1.0)
+			sfx = "rare"
+			ok_text = "Keep going"
+		"grail":
+			accent = Color(1.0,0.84,0.35,1.0)
+			sfx = "grail"
+			ok_text = "Unbelievable"
+		"bad":
+			accent = Color(0.95,0.45,0.40,1.0)
+			sfx = "fail"
+			ok_text = "Ouch"
+	var panel = big_popup.get_node("CenterContainer/BigPanel") if big_popup.has_node("CenterContainer/BigPanel") else null
+	if panel == null:
+		for c in big_popup.get_children():
+			if c is CenterContainer:
+				panel = c.get_child(0)
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color(0.06,0.07,0.10,0.99)
+	sb.border_color = accent
+	sb.set_border_width_all(3)
+	sb.set_corner_radius_all(14)
+	sb.content_margin_left = 28
+	sb.content_margin_right = 28
+	sb.content_margin_top = 24
+	sb.content_margin_bottom = 22
+	sb.shadow_color = Color(accent.r, accent.g, accent.b, 0.35)
+	sb.shadow_size = 18
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.custom_minimum_size = Vector2(cw(560), 0)
+	big_popup_body.custom_minimum_size = Vector2(cw(560) - 60.0, 0)
+	big_popup_title.text = p["title"]
+	big_popup_title.add_theme_color_override("font_color", accent)
+	big_popup_body.text = p["text"]
+	var ok = panel.find_child("OkButton", true, false)
+	if ok != null:
+		ok.text = ok_text
+		call_deferred("_safe_focus", ok)
+	big_popup.visible = true
+	big_popup.move_to_front()
+	panel.pivot_offset = panel.size / 2.0
+	panel.scale = Vector2(0.85, 0.85)
+	var tw = panel.create_tween()
+	tw.tween_property(panel, "scale", Vector2(1, 1), 0.18).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	play_sfx(sfx)
+
+func _close_big_popup():
+	play_sfx("click")
+	_show_next_big_popup()
+
+func show_log_screen(kind = "activity"):
+	if sim_mode:
+		return
+	current_screen_name = "show_log_screen"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 24)
+	title.text = "ACTIVITY LOG" if kind == "activity" else "RNG LOG — every roll, newest first"
+	body.add_child(title)
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	body.add_child(row)
+	var a = Button.new()
+	a.text = "Activity"
+	style_button(a, "buy" if kind == "activity" else "nav")
+	a.pressed.connect(func(): show_log_screen("activity"))
+	row.add_child(a)
+	var r = Button.new()
+	r.text = "RNG Rolls"
+	style_button(r, "buy" if kind == "rng" else "nav")
+	r.pressed.connect(func(): show_log_screen("rng"))
+	row.add_child(r)
+	var src = activity_log if kind == "activity" else rng_log
+	if src.size() == 0:
+		var empty = Label.new()
+		empty.text = "Nothing yet."
+		body.add_child(empty)
+		return
+	var card = make_card()
+	body.add_child(card)
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	card.add_child(box)
+	for i in range(src.size() - 1, -1, -1):
+		var l = Label.new()
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.add_theme_font_size_override("font_size", 15)
+		l.add_theme_color_override("font_color", Color(0.85,0.65,0.85,1.0) if kind == "rng" else Color(0.80,0.85,0.92,1.0))
+		l.text = str(src[i])
+		box.add_child(l)
+
+# ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+func _unhandled_input(event):
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F11 or (event.keycode == KEY_ENTER and event.alt_pressed):
+			fullscreen = not fullscreen
+			save_settings()
+			apply_settings()
+			get_viewport().set_input_as_handled()
+		elif not on_title_screen and not game_over and current_screen_name != "show_tutorial" and (big_popup == null or not big_popup.visible) and not (get_viewport().gui_get_focus_owner() is LineEdit):
+			var handled = true
+			match event.keycode:
+				KEY_1:
+					show_stall()
+				KEY_2:
+					show_stall_list()
+				KEY_3:
+					show_inventory_fresh()
+				KEY_4:
+					show_sold_history()
+				KEY_5:
+					show_shop()
+				KEY_6:
+					show_more_menu()
+				KEY_N:
+					if current_screen_name == "show_stall":
+						next_stall()
+				KEY_D:
+					if current_screen_name == "show_stall":
+						browse_stall()
+				_:
+					handled = false
+			if handled:
+				clear_toasts()
+				get_viewport().set_input_as_handled()
+				return
+		if event.keycode == KEY_ESCAPE:
+			if big_popup != null and big_popup.visible:
+				_close_big_popup()
+			elif not on_title_screen and current_screen_name != "show_tutorial":
+				show_more_menu()
+			get_viewport().set_input_as_handled()
+
+func show_settings_screen():
+	if sim_mode:
+		return
+	current_screen_name = "show_settings_screen"
+	clear_body()
+	if not on_title_screen:
+		update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 26)
+	title.text = "SETTINGS"
+	body.add_child(title)
+	var card = make_card()
+	body.add_child(card)
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 14)
+	card.add_child(box)
+
+	var vol_label = Label.new()
+	vol_label.add_theme_font_size_override("font_size", 18)
+	vol_label.text = "Master volume (everything): %d%%" % int(master_volume * 100.0)
+	box.add_child(vol_label)
+	var vol = HSlider.new()
+	vol.min_value = 0.0
+	vol.max_value = 1.0
+	vol.step = 0.05
+	vol.value = master_volume
+	vol.custom_minimum_size = Vector2(cw(420), 28)
+	vol.value_changed.connect(func(v):
+		master_volume = v
+		vol_label.text = "Master volume: %d%%" % int(v * 100.0)
+		apply_settings()
+		save_settings()
+	)
+	vol.drag_ended.connect(func(_c): play_sfx("coin"))
+	box.add_child(vol)
+
+	var mus_label = Label.new()
+	mus_label.add_theme_font_size_override("font_size", 18)
+	mus_label.text = "Music: %d%%" % int(music_volume * 100.0)
+	box.add_child(mus_label)
+	var mus = HSlider.new()
+	mus.min_value = 0.0
+	mus.max_value = 1.0
+	mus.step = 0.05
+	mus.value = music_volume
+	mus.custom_minimum_size = Vector2(cw(420), 28)
+	mus.value_changed.connect(func(v):
+		music_volume = v
+		mus_label.text = "Music: %d%%" % int(v * 100.0)
+		apply_music_volume()
+		save_settings()
+	)
+	box.add_child(mus)
+
+	var scale_label = Label.new()
+	scale_label.add_theme_font_size_override("font_size", 18)
+	scale_label.text = "Interface size: %d%%" % int(ui_scale * 100.0)
+	box.add_child(scale_label)
+	var scale_row = HFlowContainer.new()
+	scale_row.add_theme_constant_override("h_separation", 8)
+	box.add_child(scale_row)
+	for s in [0.9, 1.0, 1.1, 1.25, 1.4, 1.6]:
+		var b = Button.new()
+		b.text = "%d%%" % int(s * 100.0)
+		style_button(b, "buy" if abs(s - ui_scale) < 0.01 else "nav")
+		b.custom_minimum_size = Vector2(80, 40)
+		b.pressed.connect(func():
+			ui_scale = s
+			save_settings()
+			apply_settings()
+			show_settings_screen()
+		)
+		scale_row.add_child(b)
+
+	if not OS.has_feature("web"):
+		var fs = CheckButton.new()
+		fs.text = "Fullscreen (F11)"
+		fs.button_pressed = fullscreen
+		fs.add_theme_font_size_override("font_size", 18)
+		fs.toggled.connect(func(on):
+			fullscreen = on
+			save_settings()
+			apply_settings()
+		)
+		box.add_child(fs)
+
+	var rt = CheckButton.new()
+	rt.text = "Show dice-roll (RNG) pop-ups as they happen"
+	rt.button_pressed = show_rng_toasts
+	rt.add_theme_font_size_override("font_size", 18)
+	rt.toggled.connect(func(on):
+		show_rng_toasts = on
+		save_settings()
+	)
+	box.add_child(rt)
+
+	var reset_tips = action_button("Show first-time tips again", "nav", func():
+		tips_seen = {}
+		save_settings()
+		add_toast("Tips will show again as you play.", "success")
+	)
+	box.add_child(reset_tips)
+	var keys = small_label("Keyboard: 1-6 switch tabs  •  N next stall  •  D dig deeper  •  Esc menu / close popup  •  F11 fullscreen", 16, Color(0.66,0.72,0.80,1.0))
+	keys.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(keys)
+	var back = Button.new()
+	back.text = "Back"
+	style_button(back, "nav")
+	back.custom_minimum_size.y = 44
+	back.pressed.connect(func():
+		if on_title_screen:
+			show_title_screen()
+		else:
+			show_more_menu()
+	)
+	body.add_child(back)
+
+# ---------------------------------------------------------------------------
+# Title screen
+# ---------------------------------------------------------------------------
+func set_chrome_visible(v):
+	if header_row_ref != null:
+		header_row_ref.visible = v
+	if nav_panel_ref != null:
+		nav_panel_ref.visible = v
+
+func show_title_screen():
+	if sim_mode:
+		return
+	on_title_screen = true
+	current_screen_name = "show_title_screen"
+	set_chrome_visible(false)
+	clear_body()
+	last_scroll_value = 0.0
+	if ResourceLoader.exists("res://banner.png"):
+		var banner_rect = TextureRect.new()
+		banner_rect.texture = load("res://banner.png")
+		banner_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		banner_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		banner_rect.custom_minimum_size = Vector2(0, 380)
+		banner_rect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		body.add_child(banner_rect)
+	var tag = Label.new()
+	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tag.add_theme_font_size_override("font_size", 22)
+	tag.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
+	tag.text = "Buy cheap. Work out what it's really worth. Don't go skint."
+	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(tag)
+	var center = CenterContainer.new()
+	body.add_child(center)
+	var col = VBoxContainer.new()
+	col.custom_minimum_size = Vector2(cw(440), 0)
+	col.add_theme_constant_override("separation", 10)
+	center.add_child(col)
+	if has_save and not game_over:
+		var cont = Button.new()
+		cont.text = "Continue — Day %d, £%.2f" % [day, cash]
+		style_button(cont, "buy")
+		cont.custom_minimum_size.y = 56
+		cont.add_theme_font_size_override("font_size", 22)
+		cont.pressed.connect(func():
+			play_sfx("confirm")
+			on_title_screen = false
+			set_chrome_visible(true)
+			update_header()
+			show_stall()
+		)
+		col.add_child(cont)
+		call_deferred("_safe_focus", cont)
+	var ng = Button.new()
+	ng.text = "New Game"
+	style_button(ng, "buy" if not has_save or game_over else "action")
+	ng.custom_minimum_size.y = 50
+	ng.add_theme_font_size_override("font_size", 20)
+	ng.pressed.connect(func():
+		if has_save and not game_over:
+			show_confirm_new_game()
+		else:
+			start_new_game()
+	)
+	col.add_child(ng)
+	if not has_save or game_over:
+		call_deferred("_safe_focus", ng)
+	var how = Button.new()
+	how.text = "How to Play"
+	style_button(how, "nav")
+	how.custom_minimum_size.y = 44
+	how.add_theme_font_size_override("font_size", 18)
+	how.pressed.connect(func():
+		tutorial_slide_index = 0
+		show_tutorial()
+	)
+	col.add_child(how)
+	var st = Button.new()
+	st.text = "Settings"
+	style_button(st, "nav")
+	st.custom_minimum_size.y = 44
+	st.add_theme_font_size_override("font_size", 18)
+	st.pressed.connect(show_settings_screen)
+	col.add_child(st)
+	if not OS.has_feature("web"):
+		var q = Button.new()
+		q.text = "Quit"
+		style_button(q, "danger")
+		q.custom_minimum_size.y = 44
+		q.add_theme_font_size_override("font_size", 18)
+		q.pressed.connect(func():
+			if has_save and not game_over:
+				save_game()
+			get_tree().quit()
+		)
+		col.add_child(q)
+	var ver = Label.new()
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ver.add_theme_font_size_override("font_size", 14)
+	ver.add_theme_color_override("font_color", Color(0.50,0.56,0.64,1.0))
+	ver.text = "Playtest build %s  •  Progress saves automatically" % GAME_VERSION
+	ver.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_child(ver)
+
+func show_confirm_new_game():
+	if sim_mode:
+		return
+	current_screen_name = "show_confirm_new_game"
+	clear_body()
+	var card = make_card()
+	body.add_child(card)
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	card.add_child(box)
+	var t = Label.new()
+	t.add_theme_font_size_override("font_size", 26)
+	t.text = "Start a new run?"
+	box.add_child(t)
+	var m = Label.new()
+	m.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	m.add_theme_font_size_override("font_size", 18)
+	m.text = "Your current run (Day %d, £%.2f, %d items in stock) will be wiped. This can't be undone. Settings are kept." % [day, cash, inventory.size()]
+	box.add_child(m)
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	box.add_child(row)
+	var yes = Button.new()
+	yes.text = "Yes, wipe it and start fresh"
+	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(yes, "danger")
+	yes.pressed.connect(start_new_game)
+	row.add_child(yes)
+	var no = Button.new()
+	no.text = "Keep my run"
+	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(no, "nav")
+	no.pressed.connect(func():
+		if on_title_screen:
+			show_title_screen()
+		else:
+			show_more_menu()
+	)
+	row.add_child(no)
+	call_deferred("_safe_focus", no)
+
+# ---------------------------------------------------------------------------
+# Audio: tiny procedural synth so the game needs no audio assets
+# ---------------------------------------------------------------------------
+func show_more_menu():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_more_menu"
+	clear_body()
+	update_header()
+	body.add_child(small_label("MORE", 24, Color(0.95,0.96,1.0,1.0)))
+
+	var grid = HFlowContainer.new()
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	body.add_child(grid)
+	var entries = [
+		["Skill Tree  (%d pts)" % skill_points_available(), Callable(self, "show_skill_tree"), "action"],
+		["Daily Challenges  %d/%d" % [daily_challenges_completed_count(), daily_challenges.size()], Callable(self, "show_daily_challenges"), "action"],
+		["Market Trends", Callable(self, "show_trends"), "action"],
+		["Collection Log", Callable(self, "show_collection_log"), "action"],
+		["Achievements  %d/%d" % [achievements.size(), ALL_ACHIEVEMENTS.size()], Callable(self, "show_achievements"), "action"],
+		["Level Unlocks", Callable(self, "show_level_unlocks"), "action"],
+		["Activity & RNG Log", Callable(self, "show_log_screen").bind("activity"), "nav"],
+		["How to Play", func(): tutorial_slide_index = 0; show_tutorial(), "nav"],
+		["Settings", Callable(self, "show_settings_screen"), "nav"],
+		["Playtest Notes & Feedback", Callable(self, "show_patch_notes"), "nav"],
+	]
+	for e in entries:
+		var b = action_button(e[0], e[2], e[1])
+		b.custom_minimum_size = Vector2(cw(290), 52)
+		b.add_theme_font_size_override("font_size", 18)
+		grid.add_child(b)
+
+	var save_card = make_card()
+	body.add_child(save_card)
+	var save_box = VBoxContainer.new()
+	save_box.add_theme_constant_override("separation", 8)
+	save_card.add_child(save_box)
+	save_box.add_child(small_label("SAVE", 19, Color(0.95,0.96,1.0,1.0)))
+	save_box.add_child(small_label(("Auto-saved %s. The game saves after every purchase, sale and day." % last_save_time) if last_save_time != "" else "The game saves automatically as you play.", 16, Color(0.55,0.85,0.58,1.0)))
+	var save_row = HFlowContainer.new()
+	save_row.add_theme_constant_override("h_separation", 8)
+	save_box.add_child(save_row)
+	save_row.add_child(action_button("Save now", "buy", Callable(self, "manual_save")))
+	save_row.add_child(action_button("Save & quit to title", "nav", func():
+		save_game()
+		show_title_screen()
+	))
+	save_row.add_child(action_button("Start a new run...", "danger", Callable(self, "show_confirm_new_game")))
+
+	var code_card = make_card()
+	body.add_child(code_card)
+	var code_box = VBoxContainer.new()
+	code_box.add_theme_constant_override("separation", 8)
+	code_card.add_child(code_box)
+	code_box.add_child(small_label("SAVE CODES — move a run between devices, or attach one to a bug report", 17, Color(0.85,0.90,0.96,1.0)))
+	var export_field = LineEdit.new()
+	export_field.placeholder_text = "Press Export to generate your save code"
+	var import_field = LineEdit.new()
+	import_field.placeholder_text = "Paste a save code here"
+	var code_row = HFlowContainer.new()
+	code_row.add_theme_constant_override("h_separation", 8)
+	code_box.add_child(code_row)
+	code_row.add_child(action_button("Export save code", "action", func():
+		var code = export_save_code()
+		export_field.text = code
+		DisplayServer.clipboard_set(code)
+		add_toast("Save code copied to clipboard.", "success")
+	))
+	code_row.add_child(action_button("Load save code", "danger", func():
+		if import_save_code(import_field.text):
+			add_toast("Save loaded.", "success")
+			show_stall()
+		else:
+			queue_popup("That save code didn't work.")
+	, "Replaces your CURRENT run with the pasted one."))
+	code_box.add_child(export_field)
+	code_box.add_child(import_field)
+
+func show_patch_notes():
+	if sim_mode:
+		return
+	current_screen_name = "show_patch_notes"
+	clear_body()
+	update_header()
+	body.add_child(small_label("PLAYTEST NOTES — build %s" % GAME_VERSION, 24, Color(0.95,0.96,1.0,1.0)))
+	var fb = make_card()
+	body.add_child(fb)
+	var fb_box = VBoxContainer.new()
+	fb_box.add_theme_constant_override("separation", 8)
+	fb.add_child(fb_box)
+	fb_box.add_child(small_label("Thanks for playtesting!", 20, Color(0.95,0.84,0.62,1.0)))
+	var fbt = rich_line("We'd love to hear what felt good, what felt unfair, and where you got stuck or confused. If something breaks, press [b]Copy bug report info[/b] and paste it into your report — it includes your save code so we can reproduce it exactly.", 16, Color(0.85,0.88,0.92,1.0))
+	fb_box.add_child(fbt)
+	fb_box.add_child(action_button("Copy bug report info", "buy", func():
+		DisplayServer.clipboard_set(bug_report_text())
+		add_toast("Bug report info copied — paste it into your feedback.", "success")
+	))
+	for entry in patch_notes:
+		var panel = make_card()
+		body.add_child(panel)
+		var box = VBoxContainer.new()
+		box.add_theme_constant_override("separation", 4)
+		panel.add_child(box)
+		box.add_child(small_label(entry["version"], 18, Color(0.95,0.96,1.0,1.0)))
+		for note in entry["notes"]:
+			var l = small_label("• " + note, 16, Color(0.78,0.83,0.90,1.0))
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			box.add_child(l)
+
+func show_sold_history():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_sold_history"
+	clear_body()
+	update_header()
+	body.add_child(small_label("SALES HISTORY", 24, Color(0.95,0.96,1.0,1.0)))
+	if sold_history.size() == 0:
+		body.add_child(small_label("No sales yet. List items from Inventory, then End Day — buyers turn up overnight.", 18, Color(0.78,0.83,0.90,1.0)))
+		return
+	var total_profit = 0.0
+	var wins = 0
+	for sale in sold_history:
+		var p = sale_profit_of(sale)
+		total_profit += p
+		if p > 0.0:
+			wins += 1
+	var sum_card = make_card()
+	body.add_child(sum_card)
+	sum_card.add_child(rich_line("%d sales  •  %d%% profitable  •  total profit [color=%s][b]%s[/b][/color]  •  seller rating %.0f%%" % [sold_history.size(), int(round(100.0 * wins / max(1, sold_history.size()))), "#8cd98f" if total_profit >= 0.0 else "#e88c7a", money_signed(total_profit), seller_rating], 18, Color(0.85,0.90,0.96,1.0)))
+	var card = make_card()
+	body.add_child(card)
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 3)
+	card.add_child(box)
+	var shown = 0
+	for i in range(sold_history.size() - 1, -1, -1):
+		var sale = sold_history[i]
+		var p = sale_profit_of(sale)
+		var cond = "%d/10" % int(sale["condition"]) if sale["condition_checked"] else "unknown"
+		box.add_child(rich_line("Day %d  •  %s  •  cond %s  •  paid £%.2f  ->  sold £%.2f via %s  ->  [color=%s][b]%s[/b][/color]" % [int(sale["day"]), sale["name"], cond, float(sale["paid"]), float(sale["price"]), channel_name(str(sale.get("channel", "listing"))), "#8cd98f" if p >= 0.0 else "#e88c7a", money_signed(p)], 16, Color(0.80,0.85,0.92,1.0)))
+		shown += 1
+		if shown >= 200:
+			break
+
+func show_achievements():
+	if sim_mode:
+		return
+	if game_over and not on_title_screen:
+		show_bankruptcy_screen()
+		return
+	current_screen_name = "show_achievements"
+	clear_body()
+	update_header()
+	body.add_child(small_label("ACHIEVEMENTS  %d/%d" % [achievements.size(), ALL_ACHIEVEMENTS.size()], 24, Color(0.95,0.96,1.0,1.0)))
+	body.add_child(make_progress_bar_section("Total haggled savings: £%.2f" % total_haggled_savings, total_haggled_savings, 5000, [50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0, 5000.0], Color(0.88,0.56,0.82,1.0)))
+	body.add_child(make_progress_bar_section("Lifetime profit: £%.2f" % total_lifetime_profit, max(0.0, total_lifetime_profit), 50000, [250.0, 1000.0, 2500.0, 5000.0, 10000.0, 25000.0, 50000.0], Color(0.91,0.76,0.35,1.0)))
+	var progress_text = {
+		"Level Headed": "Level %d/10" % player_level,
+		"Challenge Crusher": "%d/30" % lifetime_challenges_completed,
+		"High Roller": "%d/5 wins" % lifetime_fixer_wins,
+		"Car Boot King": "£%.0f / £50,000" % cash,
+	}
+	var grid = HFlowContainer.new()
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 10)
+	body.add_child(grid)
+	for a in ALL_ACHIEVEMENTS.keys():
+		var got = achievements.has(a)
+		var panel = make_card()
+		panel.custom_minimum_size = Vector2(cw(380), 0)
+		grid.add_child(panel)
+		var box = VBoxContainer.new()
+		panel.add_child(box)
+		box.add_child(small_label(("★ " if got else "") + a, 19, Color(0.95,0.84,0.40,1.0) if got else Color(0.60,0.65,0.72,1.0)))
+		var d = small_label(ALL_ACHIEVEMENTS[a] + ((" (%s)" % progress_text[a]) if not got and progress_text.has(a) else ""), 15, Color(0.80,0.85,0.92,1.0) if got else Color(0.52,0.57,0.64,1.0))
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(d)
+
+# ---------------------------------------------------------------------------
+# Business goals: a simple chain that gives new players direction
+# ---------------------------------------------------------------------------
+func flash_cash_if_changed():
+	if not stat_labels.has("cash"):
+		return
+	if cash_last_shown > -999998.0 and abs(cash - cash_last_shown) >= 0.01:
+		var lbl = stat_labels["cash"]
+		var up = cash > cash_last_shown
+		lbl.pivot_offset = lbl.size / 2.0
+		var tw = lbl.create_tween()
+		lbl.modulate = Color(0.55, 1.0, 0.6, 1.0) if up else Color(1.0, 0.55, 0.5, 1.0)
+		lbl.scale = Vector2(1.15, 1.15)
+		tw.set_parallel(true)
+		tw.tween_property(lbl, "modulate", Color(1, 1, 1, 1), 0.6)
+		tw.tween_property(lbl, "scale", Vector2(1, 1), 0.25)
+	cash_last_shown = cash
+
+# Debug helpers used by the screenshot tool (not reachable from the UI)
+func _debug_popup(kind):
+	show_big_popup("GRAIL FIND" if kind == "grail" else "LEVEL 3", "Vintage Wristwatch — a 1 in 5000 find.\nNew Collection Log entry.\n\nMost players never see one of these." if kind == "grail" else "You earned a Skill Point.", kind)
+
+func tip_card(key):
+	if sim_mode or tips_seen.has(key) or not TIPS.has(key):
+		return null
+	var card = make_card()
+	var sb = card.get_theme_stylebox("panel").duplicate()
+	sb.border_color = Color(0.95,0.78,0.35,0.95)
+	sb.bg_color = Color(0.12,0.10,0.05,1.0)
+	card.add_theme_stylebox_override("panel", sb)
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	card.add_child(row)
+	var t = rich_line("[color=#e8c15a][b]Tip:[/b][/color] " + TIPS[key], 17, Color(0.92,0.90,0.84,1.0))
+	row.add_child(t)
+	var ok = action_button("Got it", "gold", func():
+		tips_seen[key] = true
+		save_settings()
+		card.queue_free()
+	)
+	ok.custom_minimum_size = Vector2(110, 40)
+	row.add_child(ok)
+	return card
+
+func add_tip(key):
+	var c = tip_card(key)
+	if c != null:
+		body.add_child(c)
