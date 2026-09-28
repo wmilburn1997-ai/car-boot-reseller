@@ -1,0 +1,5034 @@
+
+extends Control
+
+var rng = RandomNumberGenerator.new()
+
+var day = 1
+var cash = 300.0
+var energy = 100
+var player_level = 1
+var player_xp = 0
+var current_time_minutes = 7 * 60
+var daily_expenses = 6.50
+var current_stall_index = 0
+var stalls = []
+var inventory = []
+var sold_history = []
+var discovered_log = {}
+var family_stats = {}
+var achievements = {}
+var day_stats = {}
+var last_rng_line = "No RNG rolls yet."
+
+var category_knowledge = {
+	"Clothing": 5,
+	"Games": 5,
+	"Pokemon": 5,
+	"Vinyl": 5,
+	"Cameras": 5,
+	"Tools": 5,
+	"Electronics": 5,
+	"Collectables": 5,
+	"Jewellery": 5,
+	"Books": 5,
+	"Home": 5,
+	"Musical Instruments": 5,
+	"Garden & Outdoor": 5
+}
+
+var seller_profiles = {
+	"Desperate Seller": {"knowledge":0.45, "haggle":0.23, "pricing":0.88, "fault":1.15, "fake":1.05, "side":0.010, "depth":18, "rarity_boost":0.80, "categories":["Clothing","Games","Pokemon","Electronics","Home","Garden & Outdoor"]},
+	"House Clearance": {"knowledge":0.35, "haggle":0.34, "pricing":0.90, "fault":1.30, "fake":0.90, "side":0.018, "depth":26, "rarity_boost":0.70, "categories":["Home","Vinyl","Cameras","Tools","Books","Collectables","Jewellery","Musical Instruments","Garden & Outdoor"]},
+	"Clueless Seller": {"knowledge":0.40, "haggle":0.38, "pricing":0.84, "fault":0.95, "fake":0.85, "side":0.002, "depth":15, "rarity_boost":0.55, "categories":["Games","Pokemon","Clothing","Books","Home","Collectables","Garden & Outdoor"]},
+	"Regular Seller": {"knowledge":0.60, "haggle":0.56, "pricing":0.98, "fault":1.00, "fake":1.00, "side":0.0015, "depth":14, "rarity_boost":1.00, "categories":["Clothing","Games","Tools","Home","Electronics","Books","Musical Instruments","Garden & Outdoor"]},
+	"Collector": {"knowledge":0.86, "haggle":0.78, "pricing":1.06, "fault":0.70, "fake":0.45, "side":0.008, "depth":10, "rarity_boost":1.60, "categories":["Vinyl","Cameras","Collectables","Jewellery","Games","Pokemon","Musical Instruments"]},
+	"Dodgy Seller": {"knowledge":0.48, "haggle":0.36, "pricing":0.82, "fault":1.55, "fake":2.40, "side":0.022, "depth":13, "rarity_boost":0.95, "categories":["Clothing","Pokemon","Electronics","Games","Jewellery"]},
+	"Dealer": {"knowledge":0.90, "haggle":0.84, "pricing":1.10, "fault":0.65, "fake":0.55, "side":0.001, "depth":8, "rarity_boost":1.85, "categories":["Clothing","Games","Cameras","Vinyl","Collectables","Jewellery","Musical Instruments"]}
+}
+
+var item_families = [
+	{"name":"Football Shirt","category":"Clothing","value":[18,120],"ask":[15,110],"fake":0.10,"size":"small","testable":false,"specials":["Autographed","Rare Sponsor Print","Match-Worn Indicators"]},
+	{"name":"Vintage Track Jacket","category":"Clothing","value":[15,95],"ask":[12,85],"fake":0.08,"size":"small","testable":false,"specials":["Rare Embroidered Variant","Deadstock Tags","Autographed"]},
+	{"name":"Designer Hoodie","category":"Clothing","value":[25,180],"ask":[20,150],"fake":0.15,"size":"small","testable":false,"specials":["Limited Colourway","Sample Piece","Autographed"]},
+	{"name":"Band T-Shirt","category":"Clothing","value":[8,110],"ask":[5,90],"fake":0.05,"size":"small","testable":false,"specials":["Tour Original","Single Stitch","Autographed"]},
+	{"name":"Workwear Jacket","category":"Clothing","value":[20,130],"ask":[15,110],"fake":0.06,"size":"small","testable":false,"specials":["Vintage Union Label","Rare Colour","Deadstock Tags"]},
+	{"name":"Pokemon Card Binder","category":"Pokemon","value":[20,220],"ask":[15,180],"fake":0.08,"size":"small","testable":false,"specials":["1st Edition Card","Misprint Card","Autographed Card"]},
+	{"name":"Pokemon Card Tin","category":"Pokemon","value":[12,160],"ask":[10,140],"fake":0.07,"size":"small","testable":false,"specials":["Sealed Promo","Error Card","Autographed Insert"]},
+	{"name":"Pokemon Deck Box","category":"Pokemon","value":[10,140],"ask":[8,120],"fake":0.08,"size":"small","testable":false,"specials":["Rare Promo","Misprint","Tournament Stamp"]},
+	{"name":"Retro Games Bundle","category":"Games","value":[15,150],"ask":[12,130],"fake":0.03,"size":"small","testable":true,"specials":["Rare Variant","Promo Disc","Sealed Game"]},
+	{"name":"PS2 Game Bundle","category":"Games","value":[6,90],"ask":[5,80],"fake":0.02,"size":"small","testable":true,"specials":["Rare Horror Title","Promo Copy","Sealed Copy"]},
+	{"name":"Game Boy Advance","category":"Games","value":[35,160],"ask":[30,145],"fake":0.04,"size":"small","testable":true,"specials":["Limited Colour","Boxed Complete","Development Cart"]},
+	{"name":"Nintendo DS Lite","category":"Games","value":[20,90],"ask":[18,80],"fake":0.03,"size":"small","testable":true,"specials":["Limited Edition","Boxed Complete","Unused Old Stock"]},
+	{"name":"GameCube Controller","category":"Games","value":[15,80],"ask":[12,70],"fake":0.03,"size":"small","testable":true,"specials":["Club Nintendo Variant","Unused Old Stock","Rare Colour"]},
+	{"name":"35mm Film Camera","category":"Cameras","value":[20,180],"ask":[18,160],"fake":0.01,"size":"small","testable":true,"specials":["Rare Lens Kit","Black Paint Variant","Original Case"]},
+	{"name":"Vintage SLR Camera","category":"Cameras","value":[25,220],"ask":[20,190],"fake":0.01,"size":"small","testable":true,"specials":["Rare Lens","Early Serial","Professional Provenance"]},
+	{"name":"Digital Compact Camera","category":"Cameras","value":[10,130],"ask":[8,110],"fake":0.01,"size":"small","testable":true,"specials":["Cult Model","Limited Colour","Original Box"]},
+	{"name":"35mm Lens","category":"Cameras","value":[15,210],"ask":[12,180],"fake":0.01,"size":"small","testable":true,"specials":["Rare Aperture","Early Production","Original Hood"]},
+	{"name":"Vinyl Record Lot","category":"Vinyl","value":[10,150],"ask":[8,130],"fake":0.01,"size":"medium","testable":false,"specials":["First Pressing","Promo Press","Autographed Sleeve"]},
+	{"name":"Classic Rock LP","category":"Vinyl","value":[8,180],"ask":[6,150],"fake":0.01,"size":"small","testable":false,"specials":["First Pressing","Mispress","Autographed Sleeve"]},
+	{"name":"Punk LP","category":"Vinyl","value":[12,220],"ask":[10,190],"fake":0.01,"size":"small","testable":false,"specials":["Original Press","White Label Promo","Autographed Sleeve"]},
+	{"name":"Vintage Wristwatch","category":"Jewellery","value":[15,250],"ask":[12,220],"fake":0.10,"size":"small","testable":true,"specials":["Rare Dial","Military Engraving","Original Papers"]},
+	{"name":"Silver Jewellery Lot","category":"Jewellery","value":[15,180],"ask":[12,160],"fake":0.05,"size":"small","testable":false,"specials":["Designer Hallmark","Antique Piece","Provenance Note"]},
+	{"name":"Cordless Drill","category":"Tools","value":[15,120],"ask":[12,105],"fake":0.01,"size":"medium","testable":true,"specials":["Pro Model","Unused Battery","Complete Kit"]},
+	{"name":"Hand Tool Box","category":"Tools","value":[10,100],"ask":[8,90],"fake":0.01,"size":"medium","testable":false,"specials":["Vintage Maker","Rare Specialist Tool","Complete Set"]},
+	{"name":"Portable CD Player","category":"Electronics","value":[8,90],"ask":[6,80],"fake":0.01,"size":"small","testable":true,"specials":["Cult Model","Limited Colour","Boxed Complete"]},
+	{"name":"Mini Hi-Fi","category":"Electronics","value":[15,140],"ask":[12,120],"fake":0.01,"size":"large","testable":true,"specials":["Rare Model","Remote Included","Original Box"]},
+	{"name":"Vintage Toy Car","category":"Collectables","value":[5,130],"ask":[4,110],"fake":0.03,"size":"small","testable":false,"specials":["Early Casting","Rare Colour","Original Box"]},
+	{"name":"Action Figure Lot","category":"Collectables","value":[10,160],"ask":[8,140],"fake":0.04,"size":"small","testable":false,"specials":["First Release","Factory Error","Sealed Figure"]},
+	{"name":"Vintage Board Game","category":"Collectables","value":[8,100],"ask":[6,90],"fake":0.01,"size":"medium","testable":false,"specials":["First Edition","Complete Insert","Promotional Version"]},
+	{"name":"Coin Lot","category":"Collectables","value":[8,180],"ask":[6,150],"fake":0.02,"size":"small","testable":false,"specials":["Error Coin","Silver Issue","Low Mintage"]},
+	{"name":"Ceramic Vase","category":"Home","value":[5,120],"ask":[4,100],"fake":0.01,"size":"medium","testable":false,"specials":["Studio Mark","Early Pattern","Signed Base"]},
+	{"name":"Glassware Set","category":"Home","value":[5,90],"ask":[4,80],"fake":0.01,"size":"medium","testable":false,"specials":["Designer Mark","Rare Colour","Complete Set"]},
+	{"name":"Old Lamp","category":"Home","value":[3,35],"ask":[2,30],"fake":0.00,"size":"large","testable":true,"specials":["Designer Maker","Original Shade","Vintage Wiring"]},
+	{"name":"Paperback Bundle","category":"Books","value":[2,35],"ask":[2,30],"fake":0.00,"size":"medium","testable":false,"specials":["Signed Copy","First Edition","Proof Copy"]},
+	{"name":"Hardback Book","category":"Books","value":[3,80],"ask":[2,65],"fake":0.00,"size":"small","testable":false,"specials":["Signed Copy","First Edition","Presentation Copy"]},
+	{"name":"DVD Bundle","category":"Home","value":[2,20],"ask":[2,16],"fake":0.00,"size":"medium","testable":false,"specials":[]},
+	{"name":"Random Mugs","category":"Home","value":[1,12],"ask":[1,10],"fake":0.00,"size":"medium","testable":false,"specials":[]},
+	{"name":"Cable Box","category":"Electronics","value":[1,18],"ask":[1,15],"fake":0.00,"size":"medium","testable":false,"specials":[]},
+	{"name":"Leather Jacket","category":"Clothing","value":[30,220],"ask":[25,190],"fake":0.12,"size":"medium","testable":false,"specials":["Vintage Biker Label","Rare Colour","Designer Collab"]},
+	{"name":"Denim Jacket","category":"Clothing","value":[10,90],"ask":[8,75],"fake":0.07,"size":"small","testable":false,"specials":["Selvedge Denim","Rare Wash","Deadstock Tags"]},
+	{"name":"Silk Scarf","category":"Clothing","value":[5,60],"ask":[4,50],"fake":0.09,"size":"small","testable":false,"specials":["Designer Print","Limited Run","Hand-Rolled Hem"]},
+	{"name":"Pokemon Plush Lot","category":"Pokemon","value":[8,90],"ask":[6,75],"fake":0.05,"size":"medium","testable":false,"specials":["Retired Line","Tag Error","Store Display"]},
+	{"name":"Pokemon Promo Poster","category":"Pokemon","value":[6,120],"ask":[5,100],"fake":0.06,"size":"medium","testable":false,"specials":["Store Exclusive","Misprint","Signed by Artist"]},
+	{"name":"N64 Cartridge Bundle","category":"Games","value":[10,110],"ask":[8,95],"fake":0.03,"size":"small","testable":true,"specials":["Rare Title","Kiosk Demo","Sealed Game"]},
+	{"name":"Handheld Console Lot","category":"Games","value":[15,130],"ask":[12,110],"fake":0.03,"size":"small","testable":true,"specials":["Rare Colour","Development Unit","Boxed Complete"]},
+	{"name":"Vintage Movie Camera","category":"Cameras","value":[20,200],"ask":[16,170],"fake":0.01,"size":"medium","testable":true,"specials":["Rare Format","Working Motor","Original Case"]},
+	{"name":"Camera Tripod","category":"Cameras","value":[5,60],"ask":[4,50],"fake":0.00,"size":"medium","testable":false,"specials":["Studio Grade","Rare Maker","Complete Head"]},
+	{"name":"Jazz LP","category":"Vinyl","value":[10,200],"ask":[8,170],"fake":0.01,"size":"small","testable":false,"specials":["Original Press","Rare Label Variant","Autographed Sleeve"]},
+	{"name":"Soundtrack LP","category":"Vinyl","value":[6,90],"ask":[5,75],"fake":0.01,"size":"small","testable":false,"specials":["Promo Only","Coloured Vinyl","Autographed Sleeve"]},
+	{"name":"Gold Ring","category":"Jewellery","value":[20,300],"ask":[15,260],"fake":0.14,"size":"small","testable":false,"specials":["Hallmarked Antique","Designer Maker","Gemstone Upgrade"]},
+	{"name":"Cufflink Set","category":"Jewellery","value":[8,110],"ask":[6,95],"fake":0.08,"size":"small","testable":false,"specials":["Designer Box Set","Engraved Initials","Rare Material"]},
+	{"name":"Vintage Hand Plane","category":"Tools","value":[10,90],"ask":[8,75],"fake":0.01,"size":"medium","testable":false,"specials":["Rare Maker","Early Pattern","Complete Set"]},
+	{"name":"Socket Set","category":"Tools","value":[10,80],"ask":[8,70],"fake":0.01,"size":"medium","testable":false,"specials":["Pro Grade","Complete Case","Rare Sizes Included"]},
+	{"name":"Vintage Turntable","category":"Electronics","value":[15,160],"ask":[12,140],"fake":0.01,"size":"large","testable":true,"specials":["Rare Model","Original Cartridge","Belt-Drive Classic"]},
+	{"name":"Retro Calculator","category":"Electronics","value":[3,60],"ask":[2,50],"fake":0.00,"size":"small","testable":true,"specials":["Cult Model","Boxed Complete","Rare Colour"]},
+	{"name":"Comic Book Lot","category":"Collectables","value":[5,220],"ask":[4,190],"fake":0.03,"size":"small","testable":false,"specials":["Key Issue","First Print","Signed by Artist"]},
+	{"name":"Sports Memorabilia","category":"Collectables","value":[10,250],"ask":[8,220],"fake":0.09,"size":"medium","testable":false,"specials":["Match-Used Item","Signed Item","Limited Edition"]},
+	{"name":"Model Train Set","category":"Collectables","value":[15,200],"ask":[12,170],"fake":0.02,"size":"medium","testable":false,"specials":["Rare Livery","Complete Boxed Set","Limited Run"]},
+	{"name":"Antique Clock","category":"Home","value":[10,180],"ask":[8,150],"fake":0.02,"size":"medium","testable":true,"specials":["Rare Maker","Working Movement","Original Key"]},
+	{"name":"Rug","category":"Home","value":[10,150],"ask":[8,130],"fake":0.02,"size":"large","testable":false,"specials":["Handwoven","Designer Pattern","Rare Size"]},
+	{"name":"Vintage Map","category":"Books","value":[5,120],"ask":[4,100],"fake":0.02,"size":"medium","testable":false,"specials":["Rare Edition","Hand-Coloured","Publisher's Proof"]},
+	{"name":"Comic Annual","category":"Books","value":[3,40],"ask":[2,35],"fake":0.00,"size":"small","testable":false,"specials":["First Print","Signed Copy","Complete Set"]},
+	{"name":"Acoustic Guitar","category":"Musical Instruments","value":[25,300],"ask":[20,260],"fake":0.03,"size":"large","testable":false,"specials":["Vintage Luthier","Rare Wood","Celebrity Owned"]},
+	{"name":"Vintage Amplifier","category":"Musical Instruments","value":[20,250],"ask":[16,220],"fake":0.02,"size":"large","testable":true,"specials":["Valve Classic","Rare Model","Original Cover"]},
+	{"name":"Trumpet","category":"Musical Instruments","value":[15,180],"ask":[12,150],"fake":0.02,"size":"medium","testable":false,"specials":["Pro Model","Rare Finish","Engraved Bell"]},
+	{"name":"Violin","category":"Musical Instruments","value":[20,220],"ask":[16,190],"fake":0.03,"size":"medium","testable":false,"specials":["Handmade","Rare Maker's Mark","Original Case"]},
+	{"name":"Harmonica Set","category":"Musical Instruments","value":[5,60],"ask":[4,50],"fake":0.01,"size":"small","testable":false,"specials":["Vintage Maker","Boxed Set","Rare Key"]},
+	{"name":"Garden Tool Set","category":"Garden & Outdoor","value":[8,80],"ask":[6,70],"fake":0.00,"size":"medium","testable":false,"specials":["Vintage Maker","Complete Set","Rare Pattern"]},
+	{"name":"Patio Furniture Set","category":"Garden & Outdoor","value":[15,150],"ask":[12,130],"fake":0.00,"size":"large","testable":false,"specials":["Designer Set","Rare Material","Complete Set"]},
+	{"name":"Vintage Wheelbarrow","category":"Garden & Outdoor","value":[5,50],"ask":[4,40],"fake":0.00,"size":"large","testable":false,"specials":["Rare Maker","Original Paint","Working Order"]},
+	{"name":"Camping Stove","category":"Garden & Outdoor","value":[5,60],"ask":[4,50],"fake":0.00,"size":"medium","testable":true,"specials":["Rare Model","Unused Old Stock","Complete Kit"]},
+	{"name":"Fishing Rod Set","category":"Garden & Outdoor","value":[8,90],"ask":[6,75],"fake":0.01,"size":"medium","testable":false,"specials":["Pro Grade","Rare Maker","Complete Tackle"]},
+	{"name":"Christmas Decorations","category":"Home","value":[15,90],"ask":[10,75],"fake":0.04,"size":"small","testable":false,"season":"Winter","specials":["Antique Bauble Set","Hand-Blown Glass Set","Vintage Fairy Lights"]},
+	{"name":"Christmas Jumper","category":"Clothing","value":[10,70],"ask":[8,55],"fake":0.05,"size":"small","testable":false,"season":"Winter","specials":["Novelty Rare Print","Designer Collab","Autographed"]},
+	{"name":"Winter Coat","category":"Clothing","value":[20,140],"ask":[15,115],"fake":0.08,"size":"medium","testable":false,"season":"Winter","specials":["Vintage Designer Label","Rare Colourway","Deadstock Tags"]},
+	{"name":"Garden Furniture Set","category":"Garden & Outdoor","value":[30,180],"ask":[25,150],"fake":0.02,"size":"large","testable":false,"season":"Summer","specials":["Antique Wrought Iron","Rare Original Finish","Limited Edition Set"]},
+	{"name":"BBQ Set","category":"Garden & Outdoor","value":[20,120],"ask":[15,100],"fake":0.02,"size":"large","testable":false,"season":"Summer","specials":["Rare Vintage Model","Cast Iron Original","Collector's Edition"]},
+	{"name":"Paddling Pool","category":"Garden & Outdoor","value":[8,45],"ask":[5,38],"fake":0.01,"size":"medium","testable":false,"season":"Summer","specials":["Vintage Design Print","Sealed New Old Stock","Rare Pattern"]},
+	{"name":"Halloween Costume","category":"Clothing","value":[8,60],"ask":[5,48],"fake":0.03,"size":"small","testable":false,"season":"Autumn","specials":["Rare Movie Replica","Screen-Worn Style","Limited Run"]},
+	{"name":"Fireworks Display Box","category":"Collectables","value":[10,55],"ask":[8,45],"fake":0.02,"size":"small","testable":false,"season":"Autumn","specials":["Collector's Tin","Vintage Packaging","Rare Brand"]},
+	{"name":"Easter Decorations","category":"Home","value":[6,40],"ask":[4,32],"fake":0.02,"size":"small","testable":false,"season":"Spring","specials":["Hand-Painted Original","Vintage Ceramic","Rare Set"]},
+	{"name":"Antique Mirror","category":"Home","value":[25,160],"ask":[20,135],"fake":0.03,"size":"large","testable":false,"specials":["Gilt Frame Original","Bevelled Glass","Rare Maker's Mark"]},
+	{"name":"Leather Satchel","category":"Clothing","value":[15,110],"ask":[12,90],"fake":0.10,"size":"small","testable":false,"specials":["Vintage Leather Original","Designer Label","Rare Hardware"]},
+	{"name":"Board Game Collection","category":"Games","value":[10,95],"ask":[8,80],"fake":0.02,"size":"medium","testable":false,"specials":["Rare Out-of-Print Title","Complete Original Set","Sealed Copy"]}
+]
+
+var rarity_table = [
+	{"tier":"Common","one_in":1,"chance":0.9400},
+	{"tier":"Uncommon","one_in":25,"chance":0.0400},
+	{"tier":"Rare","one_in":125,"chance":0.0120},
+	{"tier":"Very Rare","one_in":750,"chance":0.0060},
+	{"tier":"Grail","one_in":5000,"chance":0.0020}
+]
+
+var package_table = [
+	{"tier":"Poor","chance":0.55},
+	{"tier":"Average","chance":0.25},
+	{"tier":"Good","chance":0.14},
+	{"tier":"Excellent","chance":0.05},
+	{"tier":"Jackpot","chance":0.009},
+	{"tier":"Grail","chance":0.001}
+]
+
+var root_vbox
+var page_scroll
+var stat_labels = {}
+var body
+var footer_label
+var status_label
+var status_panel
+var tooltip_panel
+var status_hide_timer
+var deep_research_icon
+var condition_icon
+var research_icon
+var test_icon
+var authenticate_icon
+var inspect_icon
+var cash_icon
+var carry_icon
+var storage_icon
+var category_icons = {}
+var blocked_popup
+var blocked_popup_label
+var blocked_popup_timer
+var blocked_popup_style
+var tooltip_is_held = false
+
+
+var bag_level = 0
+var storage_level = 0
+var toolbox_level = 0
+var eye_level = 0
+var fee_level = 0
+var carry_used = 0
+var mystery_packages_left = 0
+var current_trends = {}
+var trend_headlines = []
+var current_week = 1
+var negative_days_streak = 0
+var last_scroll_value = 0.0
+var current_screen_name = "show_stall"
+var tooltip_saved_text = ""
+var total_haggled_savings = 0.0
+var total_lifetime_profit = 0.0
+var inventory_tab = "unlisted"
+var fixer_uses_today = 0
+var daily_challenges = []
+var daily_challenge_bonus_given = false
+var lifetime_challenges_completed = 0
+var lifetime_fixer_wins = 0
+const SAVE_PATH = "user://savegame.json"
+var last_save_time = ""
+var stat_chip_styles = {}
+var package_insight_level = 0
+var persuasion_level = 0
+const PACKAGE_INSIGHT_MAX = 20
+const PERSUASION_MAX = 20
+
+func package_insight_cost(level):
+	return round(50.0 * pow(1.28, level))
+
+func persuasion_cost(level):
+	return round(50.0 * pow(1.28, level))
+
+func get_package_chances():
+	var shift_frac = float(package_insight_level) / 100.0
+	var chances = []
+	for row in package_table:
+		var tier = row["tier"]
+		var base = float(row["chance"])
+		var adj = base
+		if tier == "Poor":
+			adj = max(0.05, base - shift_frac)
+		elif tier == "Average":
+			adj = base + shift_frac * 0.60
+		elif tier == "Good":
+			adj = base + shift_frac * 0.30
+		elif tier == "Excellent":
+			adj = base + shift_frac * 0.08
+		elif tier == "Jackpot":
+			adj = base + shift_frac * 0.015
+		elif tier == "Grail":
+			adj = base + shift_frac * 0.005
+		chances.append({"tier":tier, "chance":adj})
+	return chances
+
+var bag_upgrades = [
+	{"name":"Canvas Tote","capacity":6,"cost":0},
+	{"name":"Large Holdall","capacity":10,"cost":75},
+	{"name":"Folding Trolley","capacity":16,"cost":220},
+	{"name":"Van Crates","capacity":24,"cost":650},
+	{"name":"Small Van Load","capacity":36,"cost":1800}
+]
+
+var storage_upgrades = [
+	{"name":"Bedroom Corner","capacity":18,"cost":0},
+	{"name":"Heavy-Duty Shelving","capacity":30,"cost":120},
+	{"name":"Garage Storage","capacity":50,"cost":350},
+	{"name":"Lock-up Unit","capacity":85,"cost":950},
+	{"name":"Small Warehouse","capacity":150,"cost":2800},
+	{"name":"Distribution Unit","capacity":260,"cost":7500}
+]
+
+var toolbox_upgrades = [
+	{"name":"No Repair Kit","bonus":0.0,"cost":0},
+	{"name":"Basic Toolbox","bonus":0.08,"cost":90},
+	{"name":"Electronics Kit","bonus":0.16,"cost":260},
+	{"name":"Workbench","bonus":0.25,"cost":700},
+	{"name":"Full Workshop","bonus":0.34,"cost":1900}
+]
+
+var eye_upgrades = [
+	{"name":"Untrained Eye","accuracy":0.60,"cost":0},
+	{"name":"Boot Sale Regular","accuracy":0.68,"cost":60},
+	{"name":"Experienced Eye","accuracy":0.76,"cost":180},
+	{"name":"Sharp Eye","accuracy":0.84,"cost":450},
+	{"name":"Expert Eye","accuracy":0.90,"cost":1100}
+]
+
+var fee_upgrades = [
+	{"name":"Casual Seller","fee":0.115,"cost":0},
+	{"name":"Registered Seller","fee":0.095,"cost":400},
+	{"name":"Business Account","fee":0.075,"cost":1200},
+	{"name":"Trade Account","fee":0.055,"cost":3200},
+	{"name":"Wholesale Partner","fee":0.035,"cost":9000}
+]
+
+var special_event_profiles = {
+	"Desperate Seller": {"title":"Something in the Car","flavor":"\"Look, I need this gone today. I've got more of this in the car if you want first look.\"","price_mult":[0.55,0.80],"value_mult":[0.85,1.15],"fault_bonus":0.10},
+	"House Clearance": {"title":"More in the Van","flavor":"\"There's a lot more of this back in the van, actually. Take it or leave it.\"","price_mult":[0.75,1.00],"value_mult":[0.90,1.30],"fault_bonus":0.05},
+	"Collector": {"title":"From My Personal Collection","flavor":"\"I don't usually let this go... but from my personal collection, if you're serious.\"","price_mult":[0.95,1.30],"value_mult":[1.30,2.20],"fault_bonus":-0.05},
+	"Dodgy Seller": {"title":"Bit of a Grey Area","flavor":"\"Between you and me, this one's a bit of a grey area — no questions asked, cash only.\"","price_mult":[0.45,0.70],"value_mult":[1.00,1.80],"fault_bonus":0.08,"fake_bonus":0.35}
+}
+
+var pending_special_offer = null
+
+func _ready():
+	if ResourceLoader.exists("res://deep_research_icon.png"):
+		deep_research_icon = load("res://deep_research_icon.png")
+	if ResourceLoader.exists("res://condition_icon.png"):
+		condition_icon = load("res://condition_icon.png")
+	if ResourceLoader.exists("res://research_icon.png"):
+		research_icon = load("res://research_icon.png")
+	if ResourceLoader.exists("res://test_icon.png"):
+		test_icon = load("res://test_icon.png")
+	if ResourceLoader.exists("res://authenticate_icon.png"):
+		authenticate_icon = load("res://authenticate_icon.png")
+	if ResourceLoader.exists("res://inspect_icon.png"):
+		inspect_icon = load("res://inspect_icon.png")
+	if ResourceLoader.exists("res://cash_icon.png"):
+		cash_icon = load("res://cash_icon.png")
+	if ResourceLoader.exists("res://carry_icon.png"):
+		carry_icon = load("res://carry_icon.png")
+	if ResourceLoader.exists("res://storage_icon.png"):
+		storage_icon = load("res://storage_icon.png")
+	var category_icon_files = {
+		"Clothing": "res://cat_icons/cat_clothing.png",
+		"Games": "res://cat_icons/cat_games.png",
+		"Pokemon": "res://cat_icons/cat_pokemon.png",
+		"Electronics": "res://cat_icons/cat_electronics.png",
+		"Home": "res://cat_icons/cat_home.png",
+		"Vinyl": "res://cat_icons/cat_vinyl.png",
+		"Cameras": "res://cat_icons/cat_cameras.png",
+		"Tools": "res://cat_icons/cat_tools.png",
+		"Collectables": "res://cat_icons/cat_collectables.png",
+		"Jewellery": "res://cat_icons/cat_jewellery.png",
+		"Books": "res://cat_icons/cat_books.png",
+		"Musical Instruments": "res://cat_icons/cat_musical_instruments.png",
+		"Garden & Outdoor": "res://cat_icons/cat_garden_outdoor.png",
+	}
+	for cat in category_icon_files:
+		if ResourceLoader.exists(category_icon_files[cat]):
+			category_icons[cat] = load(category_icon_files[cat])
+	rng.randomize()
+	reset_day_stats()
+	load_game()
+	generate_weekly_trends()
+	generate_day()
+	adjust_scale_for_device()
+	build_ui()
+	show_stall()
+	get_tree().root.size_changed.connect(_on_size_changed)
+
+func _on_size_changed():
+	adjust_scale_for_device()
+	match current_screen_name:
+		"show_stall":
+			show_stall()
+		"show_stall_list":
+			show_stall_list()
+		"show_special_offer":
+			show_special_offer()
+		"show_inventory":
+			show_inventory()
+		"show_trends":
+			show_trends()
+		"show_shop":
+			show_shop()
+		"show_sold_history":
+			show_sold_history()
+		"show_collection_log":
+			show_collection_log()
+		"show_achievements":
+			show_achievements()
+		_:
+			show_stall()
+
+func adjust_scale_for_device():
+	var w = 0.0
+	var h = 0.0
+	if OS.has_feature("web") and Engine.has_singleton("JavaScriptBridge"):
+		var js = Engine.get_singleton("JavaScriptBridge")
+		w = float(js.call("eval", "window.innerWidth"))
+		h = float(js.call("eval", "window.innerHeight"))
+	if w <= 0.0 or h <= 0.0:
+		var vp_size = get_window().size
+		w = float(vp_size.x)
+		h = float(vp_size.y)
+	var auto_shrink = min(w / 1600.0, h / 900.0)
+	auto_shrink = max(auto_shrink, 0.05)
+	get_window().content_scale_factor = clamp(1.0 / auto_shrink, 1.0, 4.5)
+
+func build_ui():
+	# Global UI font: Jersey 10.
+	# Keep Jersey10-Regular.ttf in res://fonts/
+	var global_theme = Theme.new()
+	var jersey_font = load("res://fonts/Jersey10-Regular.ttf")
+	if jersey_font != null:
+		global_theme.default_font = jersey_font
+		# Use Godot's imported font resource so the same font is packaged correctly for Web exports.
+		for control_type in ["Label", "Button", "CheckButton", "CheckBox", "LineEdit", "TextEdit", "RichTextLabel", "SpinBox", "OptionButton", "MenuButton", "TooltipLabel"]:
+			global_theme.set_font("font", control_type, jersey_font)
+		theme = global_theme
+	else:
+		push_error("Could not load UI font: res://fonts/Jersey10-Regular.ttf")
+
+	var bg = ColorRect.new()
+	bg.color = Color(0.035, 0.045, 0.06, 1.0)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(bg)
+
+	var pattern_size = 22
+	var pattern_img = Image.create(pattern_size, pattern_size, false, Image.FORMAT_RGBA8)
+	pattern_img.fill(Color(0, 0, 0, 0))
+	var dot_color = Color(0.55, 0.70, 0.95, 0.10)
+	for dx in range(3):
+		for dy in range(3):
+			pattern_img.set_pixel(3 + dx, 3 + dy, dot_color)
+	var pattern_tex = ImageTexture.create_from_image(pattern_img)
+	var pattern_rect = TextureRect.new()
+	pattern_rect.texture = pattern_tex
+	pattern_rect.stretch_mode = TextureRect.STRETCH_TILE
+	pattern_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pattern_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(pattern_rect)
+
+	var pattern2_size = 64
+	var pattern2_img = Image.create(pattern2_size, pattern2_size, false, Image.FORMAT_RGBA8)
+	pattern2_img.fill(Color(0, 0, 0, 0))
+	var dot2_color = Color(0.55, 0.70, 0.95, 0.045)
+	for dx in range(5):
+		for dy in range(5):
+			pattern2_img.set_pixel(8 + dx, 8 + dy, dot2_color)
+	var pattern2_tex = ImageTexture.create_from_image(pattern2_img)
+	var pattern2_rect = TextureRect.new()
+	pattern2_rect.texture = pattern2_tex
+	pattern2_rect.stretch_mode = TextureRect.STRETCH_TILE
+	pattern2_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pattern2_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(pattern2_rect)
+
+	root_vbox = VBoxContainer.new()
+	root_vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root_vbox.add_theme_constant_override("separation", 8)
+	root_vbox.offset_left = 16
+	root_vbox.offset_top = 12
+	root_vbox.offset_right = -16
+	root_vbox.offset_bottom = -12
+	add_child(root_vbox)
+
+	var header_row = PanelContainer.new()
+	var header_style = StyleBoxFlat.new()
+	header_style.bg_color = Color(0.055,0.07,0.095,1.0)
+	header_style.corner_radius_top_left = 8
+	header_style.corner_radius_top_right = 8
+	header_style.corner_radius_bottom_left = 8
+	header_style.corner_radius_bottom_right = 8
+	header_style.content_margin_left = 10
+	header_style.content_margin_right = 10
+	header_style.content_margin_top = 6
+	header_style.content_margin_bottom = 6
+	header_row.add_theme_stylebox_override("panel", header_style)
+	root_vbox.add_child(header_row)
+
+	var header_vbox = VBoxContainer.new()
+	header_vbox.add_theme_constant_override("separation", 6)
+	header_row.add_child(header_vbox)
+
+	var primary_row = HBoxContainer.new()
+	primary_row.add_theme_constant_override("separation", 8)
+	header_vbox.add_child(primary_row)
+	add_stat_chip(primary_row, "cash", "Cash on hand. Staying negative accrues daily overdraft interest, and 4 consecutive days in the red ends the run.")
+	add_stat_chip(primary_row, "carry", "Space used in your car-boot bag today vs its capacity. Upgrade capacity in the Shop.")
+	add_stat_chip(primary_row, "storage", "Space used in home storage vs its capacity. Upgrade capacity in the Shop.")
+
+	var secondary_row = HBoxContainer.new()
+	secondary_row.add_theme_constant_override("separation", 5)
+	header_vbox.add_child(secondary_row)
+	add_stat_chip(secondary_row, "energy", "Energy left today. Most actions cost some; it refills to 100 at the start of each day.", true)
+	add_stat_chip(secondary_row, "level", "Player Level and XP. Earned from buying, selling, profitable sales, repairs, authentication, and rare finds.", true)
+	add_stat_chip(secondary_row, "listed", "Number of items you currently have listed for sale.", true)
+	add_stat_chip(secondary_row, "day", "In-game day and current time. The car boot closes at 12:00.", true)
+	var end_day_button = Button.new()
+	end_day_button.text = "End Day"
+	end_day_button.tooltip_text = "End the day, resolve pending sales, and start fresh tomorrow."
+	style_button(end_day_button, "danger")
+	end_day_button.custom_minimum_size = Vector2(0, 28)
+	end_day_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	end_day_button.size_flags_stretch_ratio = 1.0
+	end_day_button.add_theme_font_size_override("font_size", 14)
+	end_day_button.pressed.connect(end_day)
+	secondary_row.add_child(end_day_button)
+
+	var nav_panel = PanelContainer.new()
+	var nav_style = StyleBoxFlat.new()
+	nav_style.bg_color = Color(0.07,0.09,0.12,1.0)
+	nav_style.corner_radius_top_left = 8
+	nav_style.corner_radius_top_right = 8
+	nav_style.corner_radius_bottom_left = 8
+	nav_style.corner_radius_bottom_right = 8
+	nav_style.content_margin_left = 8
+	nav_style.content_margin_right = 8
+	nav_style.content_margin_top = 7
+	nav_style.content_margin_bottom = 7
+	nav_panel.add_theme_stylebox_override("panel", nav_style)
+	root_vbox.add_child(nav_panel)
+
+	var nav = HBoxContainer.new()
+	nav.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_theme_constant_override("separation", 5)
+	nav_panel.add_child(nav)
+	add_nav_button(nav, "Stall", Callable(self, "show_stall"))
+	add_nav_button(nav, "Stalls", Callable(self, "show_stall_list"))
+	add_nav_button(nav, "Inventory", Callable(self, "show_inventory_fresh"))
+	add_nav_button(nav, "£ Sold", Callable(self, "show_sold_history"))
+	add_nav_button(nav, "Shop", Callable(self, "show_shop"))
+	add_nav_button(nav, "More", Callable(self, "show_more_menu"))
+
+	page_scroll = ScrollContainer.new()
+	page_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	root_vbox.add_child(page_scroll)
+	remember_scroll(page_scroll)
+
+	var page_content = VBoxContainer.new()
+	page_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page_content.add_theme_constant_override("separation", 7)
+	page_scroll.add_child(page_content)
+
+	if ResourceLoader.exists("res://banner.png"):
+		var banner_tex = load("res://banner.png")
+		var banner_rect = TextureRect.new()
+		banner_rect.texture = banner_tex
+		banner_rect.expand_mode = TextureRect.EXPAND_FIT_WIDTH_PROPORTIONAL
+		banner_rect.stretch_mode = TextureRect.STRETCH_SCALE
+		banner_rect.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		page_content.add_child(banner_rect)
+
+	body = VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", 7)
+	page_content.add_child(body)
+
+	status_label = Label.new()
+	status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status_label.add_theme_font_size_override("font_size", 14)
+	status_label.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
+
+	tooltip_panel = PanelContainer.new()
+	tooltip_panel.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	tooltip_panel.offset_left = 16
+	tooltip_panel.offset_right = -16
+	tooltip_panel.offset_top = -64
+	tooltip_panel.offset_bottom = -14
+	tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tooltip_panel.visible = false
+	var tooltip_style = StyleBoxFlat.new()
+	tooltip_style.bg_color = Color(0.06,0.07,0.09,0.96)
+	tooltip_style.border_width_left = 1
+	tooltip_style.border_width_top = 1
+	tooltip_style.border_width_right = 1
+	tooltip_style.border_width_bottom = 1
+	tooltip_style.border_color = Color(0.30,0.28,0.22,1.0)
+	tooltip_style.corner_radius_top_left = 8
+	tooltip_style.corner_radius_top_right = 8
+	tooltip_style.corner_radius_bottom_left = 8
+	tooltip_style.corner_radius_bottom_right = 8
+	tooltip_style.content_margin_left = 10
+	tooltip_style.content_margin_right = 10
+	tooltip_style.content_margin_top = 8
+	tooltip_style.content_margin_bottom = 8
+	tooltip_panel.add_theme_stylebox_override("panel", tooltip_style)
+	add_child(tooltip_panel)
+	tooltip_panel.add_child(status_label)
+
+	footer_label = Label.new()
+	footer_label.visible = false
+
+	blocked_popup = PanelContainer.new()
+	blocked_popup.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	blocked_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	blocked_popup.visible = false
+	blocked_popup.z_index = 100
+	var blocked_style = StyleBoxFlat.new()
+	blocked_popup_style = blocked_style
+	blocked_style.bg_color = Color(0.16,0.05,0.05,0.97)
+	blocked_style.border_width_left = 2
+	blocked_style.border_width_top = 2
+	blocked_style.border_width_right = 2
+	blocked_style.border_width_bottom = 2
+	blocked_style.border_color = Color(0.75,0.35,0.32,1.0)
+	blocked_style.corner_radius_top_left = 10
+	blocked_style.corner_radius_top_right = 10
+	blocked_style.corner_radius_bottom_left = 10
+	blocked_style.corner_radius_bottom_right = 10
+	blocked_style.content_margin_left = 22
+	blocked_style.content_margin_right = 22
+	blocked_style.content_margin_top = 16
+	blocked_style.content_margin_bottom = 16
+	blocked_popup.add_theme_stylebox_override("panel", blocked_style)
+	add_child(blocked_popup)
+
+	blocked_popup_label = Label.new()
+	blocked_popup_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	blocked_popup_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	blocked_popup_label.custom_minimum_size = Vector2(220, 0)
+	blocked_popup_label.add_theme_font_size_override("font_size", 16)
+	blocked_popup_label.add_theme_color_override("font_color", Color(0.95,0.88,0.86,1.0))
+	blocked_popup.add_child(blocked_popup_label)
+
+	blocked_popup_timer = Timer.new()
+	blocked_popup_timer.one_shot = true
+	blocked_popup_timer.wait_time = 2.6
+	blocked_popup_timer.timeout.connect(Callable(self, "_hide_blocked_popup"))
+	add_child(blocked_popup_timer)
+
+	update_header()
+
+func show_daily_challenges():
+	current_screen_name = "show_daily_challenges"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "DAILY CHALLENGES"
+	body.add_child(title)
+
+	var completed = daily_challenges_completed_count()
+	var bonus_panel = make_card()
+	body.add_child(bonus_panel)
+	var bonus_label = RichTextLabel.new()
+	bonus_label.bbcode_enabled = true
+	bonus_label.fit_content = true
+	bonus_label.scroll_active = false
+	bonus_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bonus_label.add_theme_font_size_override("normal_font_size", 14)
+	if daily_challenge_bonus_given:
+		bonus_label.text = "[color=#8cd98f][b]Bonus claimed today: +£40 and +30 XP![/b][/color]"
+	else:
+		bonus_label.text = "[color=#e8c15a][b]Complete ALL %d challenges today for an extra bonus on top: +£40 and +30 XP![/b][/color]" % daily_challenges.size()
+	bonus_panel.add_child(bonus_label)
+
+	for c in daily_challenges:
+		var done = check_daily_challenge(c)
+		var card = make_card()
+		body.add_child(card)
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		card.add_child(row)
+		var check_label = Label.new()
+		check_label.text = "[DONE]" if done else "[ ]"
+		check_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0) if done else Color(0.50,0.55,0.62,1.0))
+		row.add_child(check_label)
+		var desc_label = Label.new()
+		desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var progress_val = float(day_stats.get(c["type"], 0))
+		var target_val = float(c["target"])
+		desc_label.text = "%s (%d/%d) — Reward: +£%d, +%d XP" % [c["desc"], int(min(progress_val, target_val)), int(target_val), int(c["reward_cash"]), int(c["reward_xp"])]
+		if done:
+			desc_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+		row.add_child(desc_label)
+
+var level_unlock_tiers = [
+	{"level": 3, "desc": "+1 Mystery Package available each day"},
+	{"level": 5, "desc": "The Fixer's Gamble unlocks a bigger £350 stake"},
+	{"level": 8, "desc": "Dig Deeper reveals 1 extra item each time"},
+	{"level": 12, "desc": "Daily upkeep reduced by 10%"},
+	{"level": 15, "desc": "The Fixer's Gamble can be used twice a day"},
+]
+
+func show_level_unlocks():
+	current_screen_name = "show_level_unlocks"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "LEVEL UNLOCKS"
+	body.add_child(title)
+
+	var progress_panel = make_card()
+	body.add_child(progress_panel)
+	var progress_box = VBoxContainer.new()
+	progress_box.add_theme_constant_override("separation", 4)
+	progress_panel.add_child(progress_box)
+	var level_label = Label.new()
+	level_label.add_theme_font_size_override("font_size", 16)
+	level_label.text = "Level %d" % player_level
+	progress_box.add_child(level_label)
+	var xp_needed = xp_needed_for_level(player_level)
+	var xp_bar = ProgressBar.new()
+	xp_bar.min_value = 0
+	xp_bar.max_value = xp_needed
+	xp_bar.value = clamp(player_xp, 0, xp_needed)
+	xp_bar.show_percentage = false
+	xp_bar.custom_minimum_size = Vector2(0, 20)
+	var fill_style = StyleBoxFlat.new()
+	fill_style.bg_color = Color(0.55,0.45,0.85,1.0)
+	fill_style.corner_radius_top_left = 6
+	fill_style.corner_radius_top_right = 6
+	fill_style.corner_radius_bottom_left = 6
+	fill_style.corner_radius_bottom_right = 6
+	xp_bar.add_theme_stylebox_override("fill", fill_style)
+	progress_box.add_child(xp_bar)
+	var xp_label = Label.new()
+	xp_label.add_theme_font_size_override("font_size", 13)
+	xp_label.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+	xp_label.text = "XP %d/%d — %d XP to Level %d" % [player_xp, xp_needed, xp_needed - player_xp, player_level + 1]
+	progress_box.add_child(xp_label)
+
+	for tier in level_unlock_tiers:
+		var unlocked = player_level >= tier["level"]
+		var card = make_card()
+		body.add_child(card)
+		var row = HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		card.add_child(row)
+		var status_label = Label.new()
+		status_label.text = "[UNLOCKED]" if unlocked else "[LEVEL %d]" % tier["level"]
+		status_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0) if unlocked else Color(0.50,0.55,0.62,1.0))
+		row.add_child(status_label)
+		var desc_label = Label.new()
+		desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		desc_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		desc_label.text = tier["desc"]
+		if unlocked:
+			desc_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+		row.add_child(desc_label)
+
+func make_skill_node(s):
+	var col = VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+
+	var unlocked = has_skill(s["name"])
+	var prereq_ok = s["requires"] == "" or has_skill(s["requires"])
+	var can_afford = skill_points_available() >= int(s["cost"])
+
+	var node_color = Color(0.16,0.17,0.20,1.0)
+	var border_color = Color(0.32,0.35,0.40,0.5)
+	if unlocked:
+		node_color = Color(0.11,0.30,0.19,1.0)
+		border_color = Color(0.45,0.85,0.55,0.95)
+	elif prereq_ok and can_afford:
+		node_color = Color(0.32,0.25,0.09,1.0)
+		border_color = Color(0.90,0.76,0.35,0.95)
+
+	var node_button = Button.new()
+	var initials = ""
+	for word in s["name"].split(" "):
+		initials += word[0]
+	node_button.text = initials
+	node_button.custom_minimum_size = Vector2(64, 64)
+	var sb_normal = StyleBoxFlat.new()
+	sb_normal.bg_color = node_color
+	sb_normal.border_color = border_color
+	sb_normal.border_width_left = 3
+	sb_normal.border_width_right = 3
+	sb_normal.border_width_top = 3
+	sb_normal.border_width_bottom = 3
+	sb_normal.corner_radius_top_left = 32
+	sb_normal.corner_radius_top_right = 32
+	sb_normal.corner_radius_bottom_left = 32
+	sb_normal.corner_radius_bottom_right = 32
+	sb_normal.shadow_color = Color(0,0,0,0.4)
+	sb_normal.shadow_size = 5
+	var sb_hover = sb_normal.duplicate()
+	sb_hover.bg_color = node_color.lightened(0.15)
+	var sb_pressed = sb_normal.duplicate()
+	sb_pressed.bg_color = node_color.darkened(0.15)
+	node_button.add_theme_stylebox_override("normal", sb_normal)
+	node_button.add_theme_stylebox_override("hover", sb_hover)
+	node_button.add_theme_stylebox_override("pressed", sb_pressed)
+	node_button.add_theme_font_size_override("font_size", 18)
+	node_button.tooltip_text = s["desc"]
+	node_button.pressed.connect(Callable(self, "queue_popup").bind("%s: %s" % [s["name"], s["desc"]], "info"))
+	col.add_child(node_button)
+
+	var name_label = Label.new()
+	name_label.text = s["name"]
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.custom_minimum_size = Vector2(78, 0)
+	name_label.add_theme_font_size_override("font_size", 11)
+	if unlocked:
+		name_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+	col.add_child(name_label)
+
+	if unlocked:
+		var done_label = Label.new()
+		done_label.text = "UNLOCKED"
+		done_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		done_label.add_theme_font_size_override("font_size", 9)
+		done_label.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+		col.add_child(done_label)
+	else:
+		var buy_button = Button.new()
+		var point_word = "pt" if int(s["cost"]) == 1 else "pts"
+		buy_button.text = "%d %s" % [int(s["cost"]), point_word]
+		buy_button.custom_minimum_size = Vector2(64, 26)
+		style_button(buy_button, "buy")
+		buy_button.add_theme_font_size_override("font_size", 11)
+		buy_button.disabled = not can_afford or not prereq_ok
+		buy_button.pressed.connect(Callable(self, "buy_skill").bind(s["name"]))
+		col.add_child(buy_button)
+
+	return col
+
+func make_skill_connector(from_unlocked):
+	var connector = ColorRect.new()
+	connector.custom_minimum_size = Vector2(4, 22)
+	connector.color = Color(0.45,0.85,0.55,0.9) if from_unlocked else Color(0.32,0.35,0.40,0.5)
+	var wrap = CenterContainer.new()
+	wrap.add_child(connector)
+	return wrap
+
+func show_skill_tree():
+	current_screen_name = "show_skill_tree"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "SKILL TREE"
+	body.add_child(title)
+
+	var points_label = Label.new()
+	points_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	points_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	points_label.add_theme_font_size_override("font_size", 15)
+	points_label.add_theme_color_override("font_color", Color(0.75,0.55,0.95,1.0))
+	points_label.text = "Skill Points available: %d (1 earned per level, %d spent so far)" % [skill_points_available(), skill_points_spent()]
+	body.add_child(points_label)
+
+	var categories = ["Trading", "Appraisal", "Fortune"]
+	for cat_index in range(categories.size()):
+		var cat = categories[cat_index]
+		if cat_index > 0:
+			var divider = ColorRect.new()
+			divider.custom_minimum_size = Vector2(0, 2)
+			divider.color = Color(0.25,0.28,0.33,0.5)
+			body.add_child(divider)
+		var col = VBoxContainer.new()
+		col.add_theme_constant_override("separation", 6)
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		body.add_child(col)
+
+		var cat_header = Label.new()
+		cat_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cat_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cat_header.add_theme_font_size_override("font_size", 16)
+		cat_header.text = cat
+		col.add_child(cat_header)
+
+		var cat_skills = []
+		for s in skill_tree:
+			if s["category"] == cat:
+				cat_skills.append(s)
+		var base_skills = []
+		var dependent_skills = []
+		for s in cat_skills:
+			if s["requires"] == "":
+				base_skills.append(s)
+			else:
+				dependent_skills.append(s)
+
+		var base_row = HBoxContainer.new()
+		base_row.add_theme_constant_override("separation", 4)
+		base_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		for s in base_skills:
+			base_row.add_child(make_skill_node(s))
+		col.add_child(base_row)
+
+		for s in dependent_skills:
+			var prereq_unlocked = has_skill(s["requires"])
+			col.add_child(make_skill_connector(prereq_unlocked))
+			var dep_row = HBoxContainer.new()
+			dep_row.alignment = BoxContainer.ALIGNMENT_CENTER
+			dep_row.add_child(make_skill_node(s))
+			col.add_child(dep_row)
+
+	var legend = Label.new()
+	legend.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	legend.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	legend.add_theme_font_size_override("font_size", 12)
+	legend.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
+	legend.text = "Green = unlocked  •  Gold = ready to unlock  •  Grey = locked or needs its prerequisite first. Tap a node to see what it does."
+	body.add_child(legend)
+
+func show_more_menu():
+	current_screen_name = "show_more_menu"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "MORE"
+	body.add_child(title)
+
+	var save_line = Label.new()
+	save_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	save_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	save_line.add_theme_font_size_override("font_size", 13)
+	save_line.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+	save_line.text = ("Last saved: %s" % last_save_time) if last_save_time != "" else "Not saved yet — plays automatically as you play."
+	body.add_child(save_line)
+
+	var manual_save_button = Button.new()
+	manual_save_button.text = "Save Now"
+	manual_save_button.tooltip_text = "Manually save your progress right now, on top of the automatic saves."
+	style_button(manual_save_button, "buy")
+	manual_save_button.pressed.connect(Callable(self, "manual_save"))
+	body.add_child(manual_save_button)
+
+	var export_button = Button.new()
+	export_button.text = "Export Save Code"
+	export_button.tooltip_text = "Generates a text code with your full save, so you can copy it and load it on another device or browser."
+	style_button(export_button, "action")
+	body.add_child(export_button)
+
+	var export_field = LineEdit.new()
+	export_field.editable = true
+	export_field.placeholder_text = "Press Export to generate your save code"
+	body.add_child(export_field)
+
+	export_button.pressed.connect(func():
+		var code = export_save_code()
+		export_field.text = code
+		DisplayServer.clipboard_set(code)
+		queue_popup("Save code copied to clipboard! (also shown below in case copying didn't work)", "success")
+	)
+
+	var import_field = LineEdit.new()
+	import_field.placeholder_text = "Paste your save code here"
+	body.add_child(import_field)
+
+	var import_button = Button.new()
+	import_button.text = "Load Save Code"
+	import_button.tooltip_text = "Replaces your CURRENT progress with whatever is in the pasted code. This cannot be undone."
+	style_button(import_button, "danger")
+	body.add_child(import_button)
+
+	import_button.pressed.connect(func():
+		if import_save_code(import_field.text):
+			queue_popup("Save loaded!", "success")
+			show_more_menu()
+		else:
+			queue_popup("Invalid save code.")
+	)
+
+	var save_panel = make_card()
+	body.add_child(save_panel)
+	var save_box = VBoxContainer.new()
+	save_box.add_theme_constant_override("separation", 3)
+	save_panel.add_child(save_box)
+	var save_header = Label.new()
+	save_header.add_theme_font_size_override("font_size", 15)
+	save_header.text = "Saved Progress"
+	save_box.add_child(save_header)
+	var save_summary = Label.new()
+	save_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	save_summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	save_summary.add_theme_font_size_override("font_size", 13)
+	save_summary.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+	save_summary.text = "Cash: £%.2f\nDay: %d\nLevel %d — XP %d/%d\nInventory: %d items\nUpgrades: Bag %d, Storage %d, Toolbox %d, Inspect %d, Fees %d, Package Insight %d, Persuasion %d" % [cash, day, player_level, player_xp, xp_needed_for_level(player_level), inventory.size(), bag_level, storage_level, toolbox_level, eye_level, fee_level, package_insight_level, persuasion_level]
+	save_box.add_child(save_summary)
+
+	var more_row = HFlowContainer.new()
+	more_row.add_theme_constant_override("separation", 8)
+	body.add_child(more_row)
+	add_nav_button(more_row, "Skill Tree (%d pts)" % skill_points_available(), Callable(self, "show_skill_tree"))
+	add_nav_button(more_row, "Daily Challenges %d/%d" % [daily_challenges_completed_count(), daily_challenges.size()], Callable(self, "show_daily_challenges"))
+	add_nav_button(more_row, "Level Unlocks", Callable(self, "show_level_unlocks"))
+	add_nav_button(more_row, "Trends", Callable(self, "show_trends"))
+	add_nav_button(more_row, "Collection", Callable(self, "show_collection_log"))
+	add_nav_button(more_row, "Achievements", Callable(self, "show_achievements"))
+	add_nav_button(more_row, "Patch Notes", Callable(self, "show_patch_notes"))
+	footer_label.text = ""
+
+func make_icon(kind, color):
+	var icon = Control.new()
+	icon.custom_minimum_size = Vector2(18, 18)
+	icon.draw.connect(Callable(self, "_draw_icon").bind(icon, kind, color))
+	icon.queue_redraw()
+	return icon
+
+func _draw_icon(icon, kind, color):
+	var shade = Color(0, 0, 0, 0.35)
+	match kind:
+		"cash":
+			icon.draw_circle(Vector2(9, 9), 8, color)
+			icon.draw_arc(Vector2(9, 9), 5, 0, TAU, 20, shade, 1.5, true)
+		"carry":
+			var pts = PackedVector2Array([Vector2(4, 7), Vector2(14, 7), Vector2(15, 17), Vector2(3, 17)])
+			icon.draw_colored_polygon(pts, color)
+			icon.draw_rect(Rect2(6, 2, 6, 5), color)
+			icon.draw_line(Vector2(6, 2), Vector2(6, 7), shade, 1.0)
+			icon.draw_line(Vector2(12, 2), Vector2(12, 7), shade, 1.0)
+		"storage":
+			icon.draw_rect(Rect2(3, 6, 10, 10), color, false, 2.0)
+			icon.draw_rect(Rect2(6, 3, 10, 10), color, false, 2.0)
+			icon.draw_line(Vector2(3, 6), Vector2(6, 3), color, 2.0)
+			icon.draw_line(Vector2(13, 6), Vector2(16, 3), color, 2.0)
+			icon.draw_line(Vector2(3, 16), Vector2(6, 13), color, 2.0)
+			icon.draw_line(Vector2(13, 16), Vector2(16, 13), color, 2.0)
+
+func add_stat_chip(parent, key, tooltip, compact = false):
+	var pill = PanelContainer.new()
+	var sb = StyleBoxFlat.new()
+	var bg = Color(0.10,0.13,0.18,1.0)
+	var border = Color(0.18,0.22,0.28,1.0)
+	if key == "cash":
+		bg = Color(0.07,0.16,0.11,1.0)
+		border = Color(0.20,0.55,0.32,1.0)
+	elif key == "carry":
+		bg = Color(0.06,0.12,0.20,1.0)
+		border = Color(0.20,0.45,0.72,1.0)
+	elif key == "storage":
+		bg = Color(0.20,0.13,0.05,1.0)
+		border = Color(0.72,0.50,0.18,1.0)
+	elif key == "energy":
+		bg = Color(0.06,0.16,0.16,1.0)
+		border = Color(0.25,0.62,0.62,0.75)
+	elif key == "level":
+		bg = Color(0.13,0.09,0.19,1.0)
+		border = Color(0.55,0.40,0.78,0.75)
+	sb.bg_color = bg
+	sb.border_color = border
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.corner_radius_top_left = 10
+	sb.corner_radius_top_right = 10
+	sb.corner_radius_bottom_left = 10
+	sb.corner_radius_bottom_right = 10
+	sb.content_margin_left = 6 if compact else 12
+	sb.content_margin_right = 6 if compact else 12
+	sb.content_margin_top = 2 if compact else 5
+	sb.content_margin_bottom = 2 if compact else 5
+	sb.shadow_color = Color(0.0,0.0,0.0,0.35)
+	sb.shadow_size = 5
+	sb.shadow_offset = Vector2(0, 2)
+	pill.add_theme_stylebox_override("panel", sb)
+	stat_chip_styles[key] = sb
+	pill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pill.size_flags_stretch_ratio = 1.0
+	parent.add_child(pill)
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	if compact:
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+	pill.add_child(row)
+	var stat_icon_tex = null
+	if key == "cash":
+		stat_icon_tex = cash_icon
+	elif key == "carry":
+		stat_icon_tex = carry_icon
+	elif key == "storage":
+		stat_icon_tex = storage_icon
+	if stat_icon_tex != null:
+		var stat_icon_rect = TextureRect.new()
+		stat_icon_rect.texture = stat_icon_tex
+		stat_icon_rect.custom_minimum_size = Vector2(28, 28)
+		stat_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		stat_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		stat_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		row.add_child(stat_icon_rect)
+	elif key == "cash" or key == "carry" or key == "storage":
+		var icon_color = border
+		row.add_child(make_icon(key, icon_color))
+	var lbl
+	if key == "energy":
+		lbl = RichTextLabel.new()
+		lbl.bbcode_enabled = true
+		lbl.fit_content = true
+		lbl.scroll_active = false
+		lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+	else:
+		lbl = Label.new()
+	lbl.tooltip_text = tooltip
+	if key == "energy":
+		lbl.add_theme_font_size_override("normal_font_size", 14 if compact else 15)
+	else:
+		lbl.add_theme_font_size_override("font_size", 14 if compact else 15)
+	if compact:
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if key != "energy":
+			lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	if key == "energy":
+		lbl.add_theme_color_override("default_color", Color(0.92,0.95,1.0,1.0))
+	else:
+		lbl.add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
+	row.add_child(lbl)
+	stat_labels[key] = lbl
+
+func add_nav_button(parent, text, callback):
+	var b = Button.new()
+	b.text = text
+	b.pressed.connect(func(): last_scroll_value = 0.0; page_scroll.scroll_vertical = 0)
+	b.pressed.connect(callback)
+	style_button(b, "nav")
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Give the longer primary destinations a little more room while keeping all six on one line.
+	if text == "Inventory":
+		b.size_flags_stretch_ratio = 1.35
+	elif text == "Stall" or text == "Stalls":
+		b.size_flags_stretch_ratio = 1.08
+	elif text == "£ Sold":
+		b.size_flags_stretch_ratio = 1.02
+	else:
+		b.size_flags_stretch_ratio = 0.92
+	b.add_theme_font_size_override("font_size", 15)
+	parent.add_child(b)
+
+func style_button(button, kind):
+	var normal = StyleBoxFlat.new()
+	var hover = StyleBoxFlat.new()
+	var pressed = StyleBoxFlat.new()
+	var accent_border = Color(0.35,0.62,0.68,0.65)
+	if kind == "buy":
+		normal.bg_color = Color(0.09,0.30,0.22,1.0)
+		hover.bg_color = Color(0.11,0.40,0.28,1.0)
+		pressed.bg_color = Color(0.07,0.24,0.18,1.0)
+		accent_border = Color(0.35,0.80,0.55,0.85)
+	elif kind == "danger":
+		normal.bg_color = Color(0.34,0.10,0.12,1.0)
+		hover.bg_color = Color(0.46,0.13,0.16,1.0)
+		pressed.bg_color = Color(0.26,0.07,0.09,1.0)
+		accent_border = Color(0.85,0.40,0.38,0.85)
+	elif kind == "action":
+		normal.bg_color = Color(0.10,0.20,0.35,1.0)
+		hover.bg_color = Color(0.13,0.27,0.46,1.0)
+		pressed.bg_color = Color(0.08,0.16,0.29,1.0)
+		accent_border = Color(0.40,0.65,0.95,0.85)
+	else:
+		normal.bg_color = Color(0.12,0.15,0.19,1.0)
+		hover.bg_color = Color(0.19,0.23,0.29,1.0)
+		pressed.bg_color = Color(0.08,0.10,0.14,1.0)
+	for sb in [normal, hover, pressed]:
+		sb.corner_radius_top_left = 6
+		sb.corner_radius_top_right = 6
+		sb.corner_radius_bottom_left = 6
+		sb.corner_radius_bottom_right = 6
+		sb.content_margin_left = 6
+		sb.content_margin_right = 6
+		sb.content_margin_top = 6
+		sb.content_margin_bottom = 6
+		sb.border_width_top = 2
+		sb.border_color = accent_border
+	normal.shadow_color = Color(0.0,0.0,0.0,0.40)
+	normal.shadow_size = 5
+	normal.shadow_offset = Vector2(0, 3)
+	hover.shadow_color = Color(0.0,0.0,0.0,0.45)
+	hover.shadow_size = 6
+	hover.shadow_offset = Vector2(0, 3)
+	button.custom_minimum_size.y = 36
+	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	var disabled_sb = normal.duplicate()
+	disabled_sb.bg_color = Color(0.10,0.10,0.11,0.55)
+	disabled_sb.border_color = Color(0.25,0.25,0.27,0.30)
+	disabled_sb.shadow_color = Color(0,0,0,0)
+	button.add_theme_stylebox_override("disabled", disabled_sb)
+	button.add_theme_color_override("font_disabled_color", Color(0.45,0.45,0.48,0.75))
+	button.button_down.connect(Callable(self, "_on_tooltip_button_down").bind(button))
+	button.button_up.connect(Callable(self, "_on_tooltip_button_up"))
+
+func _on_tooltip_button_down(button):
+	if button.tooltip_text == "":
+		return
+	tooltip_is_held = true
+	status_label.text = button.tooltip_text
+	if tooltip_panel != null:
+		tooltip_panel.visible = true
+		tooltip_panel.move_to_front()
+
+func _on_tooltip_button_up():
+	tooltip_is_held = false
+	if tooltip_panel != null:
+		tooltip_panel.visible = false
+
+func apply_price_highlight(item, action_key, before_max, after_max):
+	item["highlight_action"] = action_key
+	item["highlight_color"] = "gold" if after_max < before_max else "yellow"
+
+func flatten_button_corner(button, side):
+	for state in ["normal", "hover", "pressed"]:
+		var sb = button.get_theme_stylebox(state)
+		if sb != null and sb is StyleBoxFlat:
+			if side == "right":
+				sb.corner_radius_top_right = 0
+				sb.corner_radius_bottom_right = 0
+			elif side == "left":
+				sb.corner_radius_top_left = 0
+				sb.corner_radius_bottom_left = 0
+
+func wrap_button_with_help(button, help_text):
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 0)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flatten_button_corner(button, "right")
+	row.add_child(button)
+	if help_text != "":
+		var help_btn = Button.new()
+		help_btn.text = "?"
+		help_btn.custom_minimum_size = Vector2(36, 0)
+		help_btn.size_flags_vertical = Control.SIZE_FILL
+		help_btn.add_theme_font_size_override("font_size", 13)
+		for state in ["normal", "hover", "pressed"]:
+			var src = button.get_theme_stylebox(state)
+			if src != null and src is StyleBoxFlat:
+				var copy = src.duplicate()
+				copy.corner_radius_top_left = 0
+				copy.corner_radius_bottom_left = 0
+				copy.corner_radius_top_right = 6
+				copy.corner_radius_bottom_right = 6
+				help_btn.add_theme_stylebox_override(state, copy)
+		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
+		row.add_child(help_btn)
+	return row
+
+func apply_button_icon(button, icon_tex):
+	if icon_tex != null:
+		button.icon = icon_tex
+		button.add_theme_constant_override("icon_max_width", 32)
+		button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+
+func get_highlight_color(item, action_key):
+	if item["highlight_action"] != action_key:
+		return "#b8dcff"
+	if item["highlight_color"] == "gold":
+		return "#d4af37"
+	return "#f0d060"
+
+func make_completed_action_box(header_text, note_bbcode_text, note_color = "#b8dcff", header_icon = null, help_text = ""):
+	var panel = PanelContainer.new()
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color(0.095,0.11,0.135,1.0)
+	sb.border_width_left = 5
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.border_color = Color(0.45,0.65,0.90,0.80)
+	sb.corner_radius_top_left = 8
+	sb.corner_radius_top_right = 8
+	sb.corner_radius_bottom_left = 8
+	sb.corner_radius_bottom_right = 8
+	sb.content_margin_left = 10
+	sb.content_margin_right = 10
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	sb.shadow_color = Color(0.0,0.0,0.0,0.35)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(0, 2)
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	panel.add_child(box)
+	var header_row = HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 6)
+	box.add_child(header_row)
+	if header_icon != null:
+		var header_icon_rect = TextureRect.new()
+		header_icon_rect.texture = header_icon
+		header_icon_rect.custom_minimum_size = Vector2(32, 32)
+		header_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		header_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		header_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		header_row.add_child(header_icon_rect)
+	var header = Label.new()
+	header.text = header_text
+	header.add_theme_font_size_override("font_size", 15)
+	header.add_theme_color_override("font_color", Color(0.58,0.63,0.70,1.0))
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header_row.add_child(header)
+	if help_text != "":
+		var help_btn = Button.new()
+		help_btn.text = "?"
+		style_button(help_btn, "nav")
+		help_btn.custom_minimum_size = Vector2(28, 28)
+		help_btn.add_theme_font_size_override("font_size", 13)
+		help_btn.pressed.connect(Callable(self, "queue_popup").bind(help_text, "info"))
+		header_row.add_child(help_btn)
+	if note_bbcode_text != "":
+		var note = RichTextLabel.new()
+		note.bbcode_enabled = true
+		note.fit_content = true
+		note.scroll_active = false
+		note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		note.add_theme_font_size_override("normal_font_size", 14)
+		note.add_theme_color_override("default_color", Color(note_color))
+		note.text = note_bbcode_text
+		box.add_child(note)
+	return panel
+
+func apply_grail_glow(panel):
+	var grail_sb = StyleBoxFlat.new()
+	grail_sb.bg_color = Color(0.15,0.12,0.04,1.0)
+	grail_sb.border_width_left = 5
+	grail_sb.border_width_top = 3
+	grail_sb.border_width_right = 3
+	grail_sb.border_width_bottom = 3
+	grail_sb.border_color = Color(1.0,0.84,0.35,1.0)
+	grail_sb.corner_radius_top_left = 10
+	grail_sb.corner_radius_top_right = 10
+	grail_sb.corner_radius_bottom_left = 10
+	grail_sb.corner_radius_bottom_right = 10
+	grail_sb.content_margin_left = 12
+	grail_sb.content_margin_right = 10
+	grail_sb.content_margin_top = 8
+	grail_sb.content_margin_bottom = 8
+	grail_sb.shadow_color = Color(1.0,0.84,0.35,0.45)
+	grail_sb.shadow_size = 10
+	grail_sb.shadow_offset = Vector2(0, 0)
+	panel.add_theme_stylebox_override("panel", grail_sb)
+
+func make_grail_badge():
+	var badge = Label.new()
+	badge.text = "GRAIL FIND"
+	badge.add_theme_font_size_override("font_size", 13)
+	badge.add_theme_color_override("font_color", Color(1.0,0.84,0.35,1.0))
+	return badge
+
+func make_category_icon_rect(category):
+	if not category_icons.has(category):
+		return null
+	var icon_rect = TextureRect.new()
+	icon_rect.texture = category_icons[category]
+	icon_rect.custom_minimum_size = Vector2(22, 22)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	return icon_rect
+
+func make_card():
+	var panel = PanelContainer.new()
+	var sb = StyleBoxFlat.new()
+	sb.bg_color = Color(0.075,0.090,0.118,1.0)
+	sb.border_width_left = 5
+	sb.border_width_top = 1
+	sb.border_width_right = 1
+	sb.border_width_bottom = 1
+	sb.border_color = Color(0.35,0.55,0.85,0.85)
+	sb.corner_radius_top_left = 10
+	sb.corner_radius_top_right = 10
+	sb.corner_radius_bottom_left = 10
+	sb.corner_radius_bottom_right = 10
+	sb.content_margin_left = 12
+	sb.content_margin_right = 10
+	sb.content_margin_top = 8
+	sb.content_margin_bottom = 8
+	sb.shadow_color = Color(0.0,0.0,0.0,0.40)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 3)
+	panel.add_theme_stylebox_override("panel", sb)
+	return panel
+
+func clear_body():
+	for c in body.get_children():
+		c.queue_free()
+
+var active_scroll_container = null
+
+func remember_scroll(scroll):
+	active_scroll_container = scroll
+	scroll.get_v_scroll_bar().value_changed.connect(Callable(self, "_on_scroll_changed"))
+	call_deferred("_restore_scroll", scroll)
+
+func _input(event):
+	if active_scroll_container == null or not is_instance_valid(active_scroll_container):
+		return
+	if event is InputEventScreenDrag:
+		active_scroll_container.scroll_vertical += int(-event.relative.y)
+	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		active_scroll_container.scroll_vertical += int(-event.relative.y)
+
+func fixer_max_uses():
+	return 2 if player_level >= 15 else 1
+
+func fixer_gamble(amount):
+	if fixer_uses_today >= fixer_max_uses():
+		queue_popup("The Fixer is done dealing for today. Come back tomorrow.")
+		return
+	if cash < amount:
+		queue_popup("Not enough cash.")
+		return
+	fixer_uses_today += 1
+	cash -= amount
+	var roll = rng.randf()
+	var win_chance = 0.51 if has_skill("Lucky Streak") else 0.47
+	var won = roll < win_chance
+	record_rng("Fixer's Gamble: Wager £%.0f | Chance %.0f%% | Rolled: %.2f%% | Result: %s" % [amount, win_chance * 100.0, roll * 100.0, "WON" if won else "LOST"])
+	if won:
+		cash += amount * 2.0
+		lifetime_fixer_wins += 1
+		queue_popup("The Fixer's Gamble — WON! £%.0f -> £%.0f" % [amount, amount * 2.0], "success")
+	else:
+		queue_popup("The Fixer's Gamble — LOST £%.0f. Better luck tomorrow." % amount)
+	show_stall()
+
+func get_save_data():
+	return {
+		"cash": cash,
+		"day": day,
+		"player_level": player_level,
+		"player_xp": player_xp,
+		"inventory": inventory,
+		"bag_level": bag_level,
+		"storage_level": storage_level,
+		"toolbox_level": toolbox_level,
+		"eye_level": eye_level,
+		"fee_level": fee_level,
+		"package_insight_level": package_insight_level,
+		"persuasion_level": persuasion_level,
+		"achievements": achievements,
+		"discovered_log": discovered_log,
+		"family_stats": family_stats,
+		"sold_history": sold_history,
+		"total_haggled_savings": total_haggled_savings,
+		"total_lifetime_profit": total_lifetime_profit,
+		"lifetime_challenges_completed": lifetime_challenges_completed,
+		"lifetime_fixer_wins": lifetime_fixer_wins,
+		"skills_unlocked": skills_unlocked,
+		"negative_days_streak": negative_days_streak,
+		"save_time": Time.get_datetime_string_from_system(false, true),
+	}
+
+func manual_save():
+	save_game()
+	queue_popup("Game Saved!", "success")
+	show_more_menu()
+
+func save_game():
+	var data = get_save_data()
+	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(JSON.stringify(data))
+	file.close()
+	last_save_time = str(data["save_time"])
+
+func apply_save_data(parsed):
+	if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
+		return false
+	cash = float(parsed.get("cash", cash))
+	day = int(parsed.get("day", day))
+	player_level = int(parsed.get("player_level", player_level))
+	player_xp = int(parsed.get("player_xp", player_xp))
+	inventory = parsed.get("inventory", inventory)
+	bag_level = int(parsed.get("bag_level", bag_level))
+	storage_level = int(parsed.get("storage_level", storage_level))
+	toolbox_level = int(parsed.get("toolbox_level", toolbox_level))
+	eye_level = int(parsed.get("eye_level", eye_level))
+	fee_level = int(parsed.get("fee_level", fee_level))
+	package_insight_level = int(parsed.get("package_insight_level", package_insight_level))
+	persuasion_level = int(parsed.get("persuasion_level", persuasion_level))
+	achievements = parsed.get("achievements", achievements)
+	discovered_log = parsed.get("discovered_log", discovered_log)
+	family_stats = parsed.get("family_stats", family_stats)
+	sold_history = parsed.get("sold_history", sold_history)
+	total_haggled_savings = float(parsed.get("total_haggled_savings", total_haggled_savings))
+	total_lifetime_profit = float(parsed.get("total_lifetime_profit", total_lifetime_profit))
+	lifetime_challenges_completed = int(parsed.get("lifetime_challenges_completed", lifetime_challenges_completed))
+	lifetime_fixer_wins = int(parsed.get("lifetime_fixer_wins", lifetime_fixer_wins))
+	skills_unlocked = parsed.get("skills_unlocked", skills_unlocked)
+	negative_days_streak = int(parsed.get("negative_days_streak", negative_days_streak))
+	last_save_time = str(parsed.get("save_time", ""))
+	return true
+
+func load_game():
+	if not FileAccess.file_exists(SAVE_PATH):
+		return false
+	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return false
+	var text = file.get_as_text()
+	file.close()
+	var parsed = JSON.parse_string(text)
+	return apply_save_data(parsed)
+
+func export_save_code():
+	var data = get_save_data()
+	var json_text = JSON.stringify(data)
+	var raw_bytes = json_text.to_utf8_buffer()
+	var compressed_bytes = raw_bytes.compress(FileAccess.COMPRESSION_GZIP)
+	return Marshalls.raw_to_base64(compressed_bytes)
+
+func import_save_code(code):
+	var cleaned = code.strip_edges()
+	if cleaned == "":
+		return false
+	var compressed_bytes = Marshalls.base64_to_raw(cleaned)
+	if compressed_bytes.size() == 0:
+		return false
+	var raw_bytes = compressed_bytes.decompress_dynamic(5000000, FileAccess.COMPRESSION_GZIP)
+	if raw_bytes.size() == 0:
+		return false
+	var json_text = raw_bytes.get_string_from_utf8()
+	if json_text == "":
+		return false
+	var parsed = JSON.parse_string(json_text)
+	var applied = apply_save_data(parsed)
+	if applied:
+		save_game()
+	return applied
+
+func generate_daily_challenges():
+	var templates = [
+		{"desc_fmt": "Buy %d items today", "type": "items_bought", "min": 2, "max": 5},
+		{"desc_fmt": "Sell %d items today", "type": "items_sold", "min": 2, "max": 4},
+		{"desc_fmt": "Earn £%d in sales revenue today", "type": "sales_revenue", "min": 50, "max": 200},
+		{"desc_fmt": "Check Condition on %d items today", "type": "condition_checks", "min": 2, "max": 4},
+		{"desc_fmt": "Research %d items today", "type": "researches_done", "min": 2, "max": 4},
+		{"desc_fmt": "Deep Research %d items today", "type": "deep_researches_done", "min": 1, "max": 2},
+		{"desc_fmt": "Authenticate %d items today", "type": "authentications_done", "min": 1, "max": 2},
+		{"desc_fmt": "Repair %d items today", "type": "repairs_done", "min": 1, "max": 2},
+		{"desc_fmt": "Make %d profitable sales today", "type": "profitable_sales", "min": 1, "max": 3},
+		{"desc_fmt": "Successfully haggle %d times today", "type": "successful_haggles", "min": 1, "max": 3},
+		{"desc_fmt": "Find something at least 1-in-%d rare today", "type": "rarest_one_in", "min": 20, "max": 80},
+	]
+	templates.shuffle()
+	var count = rng.randi_range(3, 5)
+	daily_challenges.clear()
+	var added = 0
+	for t in templates:
+		if added >= count:
+			break
+		if t["type"] == "repairs_done" and toolbox_level <= 0:
+			continue
+		var target = rng.randi_range(t["min"], t["max"])
+		daily_challenges.append({"desc": t["desc_fmt"] % target, "type": t["type"], "target": target, "reward_cash": 8, "reward_xp": 8, "reward_given": false})
+		added += 1
+	daily_challenge_bonus_given = false
+
+func check_daily_challenge(challenge):
+	return float(day_stats.get(challenge["type"], 0)) >= float(challenge["target"])
+
+func daily_challenges_completed_count():
+	var count = 0
+	for c in daily_challenges:
+		if check_daily_challenge(c):
+			count += 1
+	return count
+
+func check_daily_challenge_rewards():
+	for c in daily_challenges:
+		if not c["reward_given"] and check_daily_challenge(c):
+			c["reward_given"] = true
+			cash += float(c["reward_cash"])
+			add_xp(int(c["reward_xp"]))
+			lifetime_challenges_completed += 1
+			queue_popup("Challenge complete: %s — +£%d, +%d XP" % [c["desc"], c["reward_cash"], c["reward_xp"]], "success")
+
+func check_milestone_achievements():
+	if player_level >= 10:
+		unlock_achievement("Level Headed")
+	if lifetime_challenges_completed >= 30:
+		unlock_achievement("Challenge Crusher")
+	if lifetime_fixer_wins >= 5:
+		unlock_achievement("High Roller")
+
+func check_daily_challenge_bonus():
+	if daily_challenge_bonus_given or daily_challenges.size() == 0:
+		return
+	if daily_challenges_completed_count() >= daily_challenges.size():
+		daily_challenge_bonus_given = true
+		cash += 40.0
+		add_xp(30)
+		queue_popup("ALL DAILY CHALLENGES COMPLETE! +£40 and +30 XP!", "success")
+
+var skills_unlocked = {}
+var skill_tree = [
+	{"category": "Trading", "name": "Sharp Tongue", "cost": 1, "desc": "+8% haggle success chance", "requires": ""},
+	{"category": "Trading", "name": "Bulk Buyer", "cost": 1, "desc": "+1 Carry slot", "requires": ""},
+	{"category": "Trading", "name": "Silver Tongue", "cost": 2, "desc": "An additional +10% haggle success chance (stacks with Sharp Tongue)", "requires": "Sharp Tongue"},
+	{"category": "Appraisal", "name": "Keen Eye", "cost": 1, "desc": "+10% Inspect accuracy", "requires": ""},
+	{"category": "Appraisal", "name": "Efficient Research", "cost": 1, "desc": "Condition and Research cost 20% less", "requires": ""},
+	{"category": "Appraisal", "name": "Deep Pockets", "cost": 2, "desc": "+25% Deep Research rare-variant odds", "requires": "Efficient Research"},
+	{"category": "Fortune", "name": "Lucky Streak", "cost": 1, "desc": "Fixer's Gamble win chance 47% -> 51%", "requires": ""},
+	{"category": "Fortune", "name": "Frugal Living", "cost": 1, "desc": "-15% daily upkeep", "requires": ""},
+	{"category": "Fortune", "name": "Golden Touch", "cost": 2, "desc": "+8% XP from all sources", "requires": "Frugal Living"},
+]
+
+func effective_bag_capacity():
+	return int(bag_upgrades[bag_level]["capacity"]) + (1 if has_skill("Bulk Buyer") else 0)
+
+func effective_look_accuracy():
+	var acc = float(eye_upgrades[eye_level]["accuracy"])
+	if has_skill("Keen Eye"):
+		acc = min(0.97, acc + 0.10)
+	return acc
+
+func condition_cost():
+	return 4.0 if has_skill("Efficient Research") else 5.0
+
+func research_cost():
+	return 0.8 if has_skill("Efficient Research") else 1.0
+
+func has_skill(name):
+	return skills_unlocked.has(name)
+
+func skill_points_spent():
+	var total = 0
+	for s in skill_tree:
+		if has_skill(s["name"]):
+			total += int(s["cost"])
+	return total
+
+func skill_points_available():
+	return max(0, (player_level - 1) - skill_points_spent())
+
+func buy_skill(name):
+	for s in skill_tree:
+		if s["name"] != name:
+			continue
+		if has_skill(name):
+			queue_popup("Already unlocked.")
+			return
+		if s["requires"] != "" and not has_skill(s["requires"]):
+			queue_popup("Requires %s first." % s["requires"])
+			return
+		if skill_points_available() < int(s["cost"]):
+			queue_popup("Not enough skill points.")
+			return
+		skills_unlocked[name] = true
+		queue_popup("Skill unlocked: %s!" % name, "success")
+		save_game()
+		show_skill_tree()
+		return
+
+func xp_needed_for_level(level):
+	return int(100 + (level - 1) * 50)
+
+func add_xp(amount):
+	var boosted_amount = amount
+	if has_skill("Golden Touch"):
+		boosted_amount = int(round(float(amount) * 1.08))
+	player_xp += boosted_amount
+	while player_xp >= xp_needed_for_level(player_level):
+		player_xp -= xp_needed_for_level(player_level)
+		player_level += 1
+		set_status("LEVEL UP! Level %d" % player_level, Color(0.95,0.84,0.62,1.0))
+
+func set_status(text, color = null):
+	status_label.text = text
+
+var popup_queue = []
+
+func queue_popup(text, kind = "error"):
+	popup_queue.append({"text": text, "kind": kind})
+	if popup_queue.size() == 1 and (blocked_popup == null or not blocked_popup.visible):
+		_advance_popup_queue()
+
+func _advance_popup_queue():
+	if popup_queue.size() == 0:
+		return
+	var next_popup = popup_queue.pop_front()
+	show_blocked_popup(next_popup["text"], next_popup["kind"])
+
+func show_blocked_popup(text, kind = "error"):
+	if blocked_popup == null:
+		return
+	if blocked_popup_style != null:
+		if kind == "success":
+			blocked_popup_style.bg_color = Color(0.05,0.14,0.07,0.97)
+			blocked_popup_style.border_color = Color(0.35,0.72,0.40,1.0)
+		elif kind == "info":
+			blocked_popup_style.bg_color = Color(0.06,0.09,0.15,0.97)
+			blocked_popup_style.border_color = Color(0.35,0.55,0.80,1.0)
+		else:
+			blocked_popup_style.bg_color = Color(0.16,0.05,0.05,0.97)
+			blocked_popup_style.border_color = Color(0.75,0.35,0.32,1.0)
+	blocked_popup_label.text = text
+	blocked_popup.visible = true
+	blocked_popup.move_to_front()
+	call_deferred("_center_blocked_popup")
+	blocked_popup_timer.start()
+
+func _center_blocked_popup():
+	if blocked_popup == null or not blocked_popup.visible:
+		return
+	var viewport_size = get_viewport_rect().size
+	blocked_popup.position = (viewport_size - blocked_popup.size) / 2.0
+
+func _hide_blocked_popup():
+	if blocked_popup != null:
+		blocked_popup.visible = false
+	if popup_queue.size() > 0:
+		_advance_popup_queue()
+
+func _show_status_overlay(auto_hide = true):
+	if status_panel == null:
+		return
+	status_panel.visible = true
+	status_panel.move_to_front()
+	if auto_hide and not tooltip_is_held and status_hide_timer != null:
+		status_hide_timer.start()
+
+func _hide_status_overlay():
+	if tooltip_is_held:
+		return
+	if status_panel != null:
+		status_panel.visible = false
+
+func _on_scroll_changed(value):
+	last_scroll_value = value
+
+func _restore_scroll(scroll):
+	if is_instance_valid(scroll):
+		scroll.scroll_vertical = int(last_scroll_value)
+
+func update_header():
+	check_daily_challenge_rewards()
+	check_daily_challenge_bonus()
+	check_milestone_achievements()
+	var listed_count = 0
+	for item in inventory:
+		if item["listed"]:
+			listed_count += 1
+	var bag = bag_upgrades[bag_level]
+	var storage = storage_upgrades[storage_level]
+	stat_labels["day"].text = "Day %d %s" % [day, format_time()]
+	stat_labels["cash"].text = "£%.2f" % cash
+	if cash < 0.0:
+		stat_labels["cash"].add_theme_color_override("font_color", Color(0.95,0.55,0.45,1.0))
+		if stat_chip_styles.has("cash"):
+			stat_chip_styles["cash"].bg_color = Color(0.20,0.07,0.08,1.0)
+			stat_chip_styles["cash"].border_color = Color(0.75,0.32,0.30,1.0)
+	else:
+		stat_labels["cash"].add_theme_color_override("font_color", Color(0.92,0.95,1.0,1.0))
+		if stat_chip_styles.has("cash"):
+			stat_chip_styles["cash"].bg_color = Color(0.07,0.16,0.11,1.0)
+			stat_chip_styles["cash"].border_color = Color(0.20,0.55,0.32,1.0)
+	stat_labels["energy"].text = "[b][color=#7ec8ff]E[/color][/b]nergy %d/100" % energy
+	if energy <= 15:
+		stat_labels["energy"].add_theme_color_override("default_color", Color(0.95,0.55,0.45,1.0))
+	elif energy <= 35:
+		stat_labels["energy"].add_theme_color_override("default_color", Color(0.90,0.78,0.45,1.0))
+	else:
+		stat_labels["energy"].add_theme_color_override("default_color", Color(0.92,0.95,1.0,1.0))
+	stat_labels["level"].text = "LVL %d | XP %d/%d" % [player_level, player_xp, xp_needed_for_level(player_level)]
+	stat_labels["carry"].text = "Carry %d/%d" % [carry_used, bag["capacity"]]
+	stat_labels["storage"].text = "Storage %d/%d" % [inventory_space_used(), storage["capacity"]]
+	stat_labels["listed"].text = "Listed %d" % listed_count
+	footer_label.text = "Last RNG: " + last_rng_line
+
+func format_time():
+	var h = int(current_time_minutes / 60)
+	var m = current_time_minutes % 60
+	return "%02d:%02d" % [h, m]
+
+func minute_to_clock(minute):
+	var h = int(minute / 60)
+	var m = minute % 60
+	return "%02d:%02d" % [h, m]
+
+func reset_day_stats():
+	day_stats = {
+		"start_cash": cash,
+		"buy_spend": 0.0,
+		"sales_revenue": 0.0,
+		"fees": 0.0,
+		"postage": 0.0,
+		"research": 0.0,
+		"authentication": 0.0,
+		"repairs": 0.0,
+		"expenses": 0.0,
+		"rent": 0.0,
+		"upkeep": 0.0,
+		"interest": 0.0,
+		"items_bought": 0,
+		"items_sold": 0,
+		"items_scrapped": 0,
+		"returns": 0,
+		"collection_adds": 0,
+		"rarest_one_in": 1,
+		"condition_checks": 0,
+		"researches_done": 0,
+		"deep_researches_done": 0,
+		"authentications_done": 0,
+		"repairs_done": 0,
+		"profitable_sales": 0,
+		"successful_haggles": 0,
+		"rng_events": []
+	}
+
+func compute_upkeep():
+	var tier_sum = bag_level + storage_level + toolbox_level + eye_level + fee_level
+	var upkeep = float(tier_sum) * 1.75
+	if player_level >= 12:
+		upkeep *= 0.9
+	if has_skill("Frugal Living"):
+		upkeep *= 0.85
+	return upkeep
+
+func generate_weekly_trends():
+	current_week = int((day - 1) / 7) + 1
+	current_trends.clear()
+	trend_headlines.clear()
+	var categories = category_knowledge.keys()
+	var season = get_season_name()
+	for category in categories:
+		var mult = rng.randf_range(0.92, 1.08)
+		if season == "Winter" and category == "Clothing":
+			mult *= 1.12
+		if season == "Winter" and (category == "Games" or category == "Pokemon"):
+			mult *= 1.07
+		if season == "Summer" and (category == "Tools" or category == "Cameras"):
+			mult *= 1.07
+		current_trends[category] = clamp(mult, 0.82, 1.22)
+	var hot = categories[rng.randi_range(0, categories.size() - 1)]
+	current_trends[hot] = clamp(float(current_trends[hot]) * rng.randf_range(1.10, 1.20), 0.82, 1.30)
+	var cold = categories[rng.randi_range(0, categories.size() - 1)]
+	if cold == hot and categories.size() > 1:
+		var next_index = (categories.find(hot) + 1) % categories.size()
+		cold = categories[next_index]
+	current_trends[cold] = clamp(float(current_trends[cold]) * rng.randf_range(0.82, 0.92), 0.72, 1.30)
+	trend_headlines.append("%s is attracting more buyers this week." % hot)
+	trend_headlines.append("%s demand looks softer than normal." % cold)
+
+func get_season_name():
+	var week_of_year = ((current_week - 1) % 52) + 1
+	if week_of_year <= 8 or week_of_year >= 48:
+		return "Winter"
+	if week_of_year <= 21:
+		return "Spring"
+	if week_of_year <= 34:
+		return "Summer"
+	return "Autumn"
+
+func generate_day():
+	stalls.clear()
+	carry_used = 0
+	fixer_uses_today = 0
+	generate_daily_challenges()
+	mystery_packages_left = rng.randi_range(0, 2) + (1 if player_level >= 3 else 0)
+	daily_expenses = min(25.0, 6.50 + float(day - 1) * 0.25)
+	var seller_names = seller_profiles.keys()
+	var count = rng.randi_range(6, 8)
+	var used_names_today = {}
+	for i in range(count):
+		var seller = seller_names[rng.randi_range(0, seller_names.size() - 1)]
+		var profile = seller_profiles[seller]
+		var stall = {
+			"seller": seller,
+			"seller_display_name": pick_unique_seller_name(seller, used_names_today),
+			"stock": [],
+			"revealed": 0,
+			"packing_minute": rng.randi_range(10 * 60 + 45, 12 * 60),
+			"crowd": rng.randf_range(0.10, 0.45),
+			"banned_today": false
+		}
+		var stock_count = rng.randi_range(max(6, int(profile["depth"] * 0.65)), profile["depth"])
+		for j in range(stock_count):
+			stall["stock"].append(generate_item(seller))
+		stall["revealed"] = min(rng.randi_range(4, 6), stock_count)
+		stalls.append(stall)
+	current_stall_index = 0
+
+func generate_item(seller):
+	var profile = seller_profiles[seller]
+	var current_season = get_season_name()
+	var candidates = []
+	for family in item_families:
+		if family["category"] in profile["categories"]:
+			if family.has("season") and family["season"] != current_season:
+				continue
+			candidates.append(family)
+	if candidates.size() == 0:
+		candidates = []
+		for family in item_families:
+			if not family.has("season") or family["season"] == current_season:
+				candidates.append(family)
+	if candidates.size() == 0:
+		candidates = item_families
+	var base = candidates[rng.randi_range(0, candidates.size() - 1)].duplicate(true)
+
+	var rarity_boost = float(profile.get("rarity_boost", 1.0))
+	var rarity_weights = []
+	for i in range(rarity_table.size()):
+		var w = float(rarity_table[i]["chance"])
+		if i > 0:
+			w *= rarity_boost
+		rarity_weights.append(w)
+	var total_weight = 0.0
+	for w in rarity_weights:
+		total_weight += w
+	var rarity_roll = rng.randf() * total_weight
+	var rarity = rarity_table[0]
+	var cumulative = 0.0
+	for i in range(rarity_table.size()):
+		cumulative += rarity_weights[i]
+		if rarity_roll <= cumulative:
+			rarity = rarity_table[i]
+			break
+
+	var rarity_mult = 1.0
+	if rarity["tier"] == "Uncommon":
+		rarity_mult = rng.randf_range(1.15, 1.45)
+	elif rarity["tier"] == "Rare":
+		rarity_mult = rng.randf_range(1.5, 2.2)
+	elif rarity["tier"] == "Very Rare":
+		rarity_mult = rng.randf_range(2.4, 4.0)
+	elif rarity["tier"] == "Grail":
+		rarity_mult = rng.randf_range(5.0, 12.0)
+
+	var condition = rng.randi_range(3, 10)
+	var true_value = rng.randf_range(base["value"][0], base["value"][1]) * rarity_mult
+	var fake_chance = clamp(float(base["fake"]) * float(profile["fake"]), 0.0, 0.60)
+	var authentic = rng.randf() > fake_chance
+	var fault_chance = get_fault_chance(base["name"], base["category"], condition, float(profile["fault"]))
+	var fault_roll = rng.randf()
+	var fault = fault_roll < fault_chance
+	var fault_severity = "None"
+	if fault:
+		var severity_roll = rng.randf()
+		if severity_roll < 0.45:
+			fault_severity = "Minor"
+		elif severity_roll < 0.75:
+			fault_severity = "Moderate"
+		elif severity_roll < 0.93:
+			fault_severity = "Major"
+		else:
+			fault_severity = "Dead"
+
+	var hidden_special = ""
+	var special_genuine = true
+	if base["specials"].size() > 0:
+		var special_chance = 0.035
+		if rarity["tier"] == "Uncommon":
+			special_chance = 0.07
+		elif rarity["tier"] == "Rare":
+			special_chance = 0.14
+		elif rarity["tier"] == "Very Rare":
+			special_chance = 0.22
+		elif rarity["tier"] == "Grail":
+			special_chance = 0.40
+		if rng.randf() < special_chance:
+			hidden_special = base["specials"][rng.randi_range(0, base["specials"].size() - 1)]
+			special_genuine = rng.randf() > 0.18
+			if special_genuine:
+				true_value *= rng.randf_range(1.5, 4.5)
+
+	var random_ask = rng.randf_range(base["ask"][0], base["ask"][1])
+	var marketish = true_value * float(profile["pricing"]) * rng.randf_range(0.55, 1.35)
+	var asking = lerp(random_ask, marketish, float(profile["knowledge"]))
+	asking = max(1.0, round(asking))
+
+	return {
+		"name": base["name"],
+		"category": base["category"],
+		"condition": condition,
+		"condition_checked": false,
+		"quick_look_done": false,
+		"quick_look_note": "",
+		"quick_look_accuracy": 0.0,
+		"quick_look_roll": 0.0,
+		"size": base["size"],
+		"testable": base["testable"],
+		"seller": seller,
+		"true_value": true_value,
+		"asking": asking,
+		"paid": 0.0,
+		"authentic": authentic,
+		"auth_status": "Unauthenticated",
+		"auth_attempted": false,
+		"fake_chance": fake_chance,
+		"fault": fault,
+		"fault_chance": fault_chance,
+		"fault_roll": fault_roll,
+		"fault_severity": fault_severity,
+		"tested": false,
+		"basic_researched": false,
+		"basic_comps": "",
+		"deep_researched": false,
+		"research_note": "",
+		"rare_variant_hit": false,
+		"rare_variant_roll_pct": 0.0,
+		"rare_variant_tier": "",
+		"rare_variant_mult": 1.0,
+		"hidden_special": hidden_special,
+		"special_discovered": false,
+		"special_genuine": special_genuine,
+		"rarity": rarity["tier"],
+		"one_in": rarity["one_in"],
+		"identified_mult": 1.0,
+		"listing": 0.0,
+		"listed": false,
+		"repair_attempted": false,
+		"haggle_attempted": false,
+		"seller_refuses": false,
+		"haggle_result": "",
+		"haggle_savings": 0.0,
+		"extra_spend": 0.0,
+		"condition_price_note": "",
+		"auth_note": "",
+		"haggle_note": "",
+		"repair_note": "",
+		"buy_block_note": "",
+		"listing_block_note": "",
+		"action_order": [],
+		"highlight_action": "",
+		"highlight_color": "yellow",
+		"basic_comps_max": 0.0,
+		"locked_gamble_hint": 0.10,
+		"dismissed": false
+	}
+
+func get_fault_chance(name, category, condition, seller_mult):
+	var base = 0.15
+	if name == "Nintendo DS Lite":
+		base = 0.24
+	elif name == "Game Boy Advance":
+		base = 0.18
+	elif name == "Digital Compact Camera":
+		base = 0.28
+	elif name == "35mm Film Camera":
+		base = 0.21
+	elif name == "Vintage SLR Camera":
+		base = 0.20
+	elif name == "35mm Lens":
+		base = 0.16
+	elif name == "Mini Hi-Fi":
+		base = 0.33
+	elif name == "Portable CD Player":
+		base = 0.30
+	elif name == "Cordless Drill":
+		base = 0.22
+	elif name == "Vintage Wristwatch":
+		base = 0.20
+	elif category == "Games":
+		base = 0.17
+	elif category == "Electronics":
+		base = 0.28
+	var condition_mod = float(7 - condition) * 0.018
+	return clamp((base + condition_mod) * seller_mult, 0.02, 0.70)
+
+func size_units(item):
+	if item["size"] == "large":
+		return 4
+	if item["size"] == "medium":
+		return 2
+	return 1
+
+func inventory_space_used():
+	var used = 0
+	for item in inventory:
+		used += size_units(item)
+	return used
+
+func show_stall():
+	current_screen_name = "show_stall"
+	if page_scroll != null:
+		last_scroll_value = page_scroll.scroll_vertical
+		call_deferred("_restore_scroll", page_scroll)
+	clear_body()
+	update_header()
+	if pending_special_offer != null:
+		show_special_offer()
+		return
+	if current_time_minutes >= 12 * 60:
+		var closing = Label.new()
+		closing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		closing.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		closing.text = "The car boot is closing. End the day or manage your inventory."
+		body.add_child(closing)
+		return
+
+	var stall = stalls[current_stall_index]
+	var seller = stall["seller"]
+	var seller_display = stall["seller_display_name"]
+	if current_time_minutes >= stall["packing_minute"] or bool(stall.get("banned_today", false)):
+		var packed_title = Label.new()
+		packed_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		packed_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		packed_title.add_theme_font_size_override("font_size", 20)
+		packed_title.text = "STALL %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display]
+		body.add_child(packed_title)
+		var packed = Label.new()
+		packed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		packed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if bool(stall.get("banned_today", false)):
+			packed.text = "You've been kicked off %s's stall for the rest of the day." % seller_display
+		else:
+			packed.text = "%s has already packed up and left for the day." % seller_display
+		body.add_child(packed)
+		var back_note = Label.new()
+		back_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		back_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		back_note.text = "Check the Stalls list for who's still open."
+		body.add_child(back_note)
+		return
+	var title_row = HFlowContainer.new()
+	title_row.add_theme_constant_override("h_separation", 8)
+	title_row.add_theme_constant_override("v_separation", 4)
+	title_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.add_child(title_row)
+
+	var title = Label.new()
+	title.add_theme_font_size_override("font_size", 18)
+	title.text = "Stall %d/%d — %s" % [current_stall_index + 1, stalls.size(), seller_display]
+	title_row.add_child(title)
+
+	var browse = Button.new()
+	browse.text = "Dig Deeper E4"
+	browse.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+	style_button(browse, "action")
+	browse.custom_minimum_size.y = 32
+	browse.pressed.connect(browse_stall)
+	title_row.add_child(browse)
+
+	if mystery_packages_left > 0:
+		var package_button = Button.new()
+		package_button.text = "? Mystery £30"
+		var odds_lines = []
+		var budget_ranges = {"Poor":"£5-20", "Average":"£18-35", "Good":"£35-60", "Excellent":"£60-120", "Jackpot":"£150-400", "Grail":"£500-900"}
+		for row in get_package_chances():
+			odds_lines.append("%s %.1f%% (%s)" % [row["tier"], row["chance"] * 100.0, budget_ranges.get(row["tier"], "")])
+		package_button.tooltip_text = "£30 for 1-2 items (30% chance of 2). Tier odds:\n" + "\n".join(odds_lines)
+		style_button(package_button, "action")
+		package_button.custom_minimum_size.y = 32
+		package_button.pressed.connect(buy_mystery_package)
+		title_row.add_child(package_button)
+
+	var fixer_row = HFlowContainer.new()
+	fixer_row.add_theme_constant_override("h_separation", 6)
+	fixer_row.add_theme_constant_override("v_separation", 6)
+	body.add_child(fixer_row)
+	var fixer_label = Label.new()
+	fixer_label.add_theme_font_size_override("font_size", 13)
+	fixer_label.add_theme_color_override("font_color", Color(0.75,0.55,0.95,1.0))
+	var fixer_done_today = fixer_uses_today >= fixer_max_uses()
+	var fixer_win_pct = 51 if has_skill("Lucky Streak") else 47
+	if fixer_done_today:
+		fixer_label.text = "The Fixer's Gamble (done for today — back tomorrow):"
+	else:
+		fixer_label.text = "The Fixer's Gamble — %d%% chance to double your cash (%d/%d used today):" % [fixer_win_pct, fixer_uses_today, fixer_max_uses()]
+	fixer_row.add_child(fixer_label)
+	var fixer_wagers = [25, 75, 200]
+	if player_level >= 5:
+		fixer_wagers.append(350)
+	for wager in fixer_wagers:
+		var fixer_button = Button.new()
+		fixer_button.text = "Gamble £%d" % wager
+		fixer_button.tooltip_text = "Wager £%d for a %d%% chance to walk away with £%d. Lose, and it's gone." % [wager, fixer_win_pct, wager * 2]
+		fixer_button.disabled = fixer_done_today or cash < wager
+		style_button(fixer_button, "danger")
+		fixer_button.pressed.connect(Callable(self, "fixer_gamble").bind(wager))
+		fixer_row.add_child(fixer_button)
+
+	var info = Label.new()
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_font_size_override("font_size", 14)
+	info.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
+	info.text = "Revealed %d/%d  •  Crowd %d%%  •  Packs up %s  •  Carry %d/%d  •  Mystery packages %d" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"]), carry_used, effective_bag_capacity(), mystery_packages_left]
+	body.add_child(info)
+
+	if special_event_profiles.has(seller):
+		var stall_side_line = Label.new()
+		stall_side_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		stall_side_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stall_side_line.add_theme_font_size_override("font_size", 13)
+		stall_side_line.add_theme_color_override("font_color", Color(0.95,0.78,0.35,1.0))
+		var stall_side_chance = float(seller_profiles[seller]["side"]) * 100.0
+		stall_side_line.text = "~%.1f%% chance per purchase of a side deal: \"%s\"" % [stall_side_chance, special_event_profiles[seller]["title"]]
+		body.add_child(stall_side_line)
+
+
+	for i in range(stall["revealed"]):
+		var item = stall["stock"][i]
+		if item["dismissed"]:
+			continue
+		var panel = make_card()
+		body.add_child(panel)
+		var card = VBoxContainer.new()
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.add_theme_constant_override("separation", 3)
+		panel.add_child(card)
+
+		if item["rarity"] == "Grail":
+			apply_grail_glow(panel)
+			card.add_child(make_grail_badge())
+
+		var rarity_text = ""
+		if item["one_in"] >= 20:
+			rarity_text = " %s 1/%d  •  " % [item["rarity"], item["one_in"]]
+		var condition_text = "Unknown"
+		if item["condition_checked"]:
+			condition_text = "%d/10" % item["condition"]
+		var function_text_value = "N/A"
+		if item["testable"]:
+			function_text_value = "Untested"
+
+		var name_row = HBoxContainer.new()
+		name_row.add_theme_constant_override("separation", 6)
+		card.add_child(name_row)
+		var name_line = Label.new()
+		name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_line.add_theme_font_size_override("font_size", 18)
+		name_line.text = "%s%s  •  £%.0f  •  Carry Space - %d Slots" % [rarity_text, item["name"], item["asking"], size_units(item)]
+		name_row.add_child(name_line)
+		var dismiss_button = Button.new()
+		dismiss_button.text = "×"
+		dismiss_button.tooltip_text = "Not interested — hide this item for the rest of this stall visit. Free, no time cost. It's still there for anyone else, and dismissing doesn't affect the real item pool."
+		style_button(dismiss_button, "nav")
+		dismiss_button.custom_minimum_size = Vector2(52, 52)
+		dismiss_button.add_theme_font_size_override("font_size", 26)
+		dismiss_button.pressed.connect(Callable(self, "dismiss_stall_item").bind(i))
+		name_row.add_child(dismiss_button)
+
+		var state_line = RichTextLabel.new()
+		state_line.bbcode_enabled = true
+		state_line.fit_content = true
+		state_line.scroll_active = false
+		state_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		state_line.add_theme_font_size_override("normal_font_size", 14)
+		state_line.add_theme_color_override("default_color", Color(0.62,0.68,0.76,1.0))
+		var stall_trend_mult = float(current_trends.get(item["category"], 1.0))
+		var stall_trend_suffix = ""
+		if stall_trend_mult >= 1.10:
+			stall_trend_suffix = "  •  [color=#b088e8][b]TRENDING[/b][/color]"
+		state_line.text = "%s  •  Condition: %s  •  Function: %s%s" % [item["category"], condition_text, function_text_value, stall_trend_suffix]
+		var state_row = HBoxContainer.new()
+		state_row.add_theme_constant_override("separation", 6)
+		var cat_icon_rect = make_category_icon_rect(item["category"])
+		if cat_icon_rect != null:
+			state_row.add_child(cat_icon_rect)
+		state_row.add_child(state_line)
+		card.add_child(state_row)
+
+		if item["quick_look_done"] and item["quick_look_note"] != "":
+			var look_result = RichTextLabel.new()
+			look_result.bbcode_enabled = true
+			look_result.fit_content = true
+			look_result.scroll_active = false
+			look_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			look_result.add_theme_font_size_override("normal_font_size", 14)
+			look_result.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
+			look_result.text = item["quick_look_note"]
+			card.add_child(look_result)
+
+		if item["condition_checked"]:
+			var stall_condition_note = item["condition_price_note"]
+			if not item["testable"]:
+				if item["fault"]:
+					stall_condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
+				else:
+					stall_condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
+			card.add_child(make_completed_action_box("Condition Checked", stall_condition_note, get_highlight_color(item, "condition"), condition_icon, "Reveals the exact Condition score for certain. This is the only reliable way to know it before buying — and, for non-electronic items, the only way to know about hidden defects at all."))
+
+		if item["basic_researched"]:
+			var displayed_gamble_chance = float(item["locked_gamble_hint"])
+			if has_skill("Deep Pockets"):
+				displayed_gamble_chance = min(0.45, displayed_gamble_chance * 1.25)
+			var stall_research_note = "Researched Prices: %s  •  [color=#e08fd0]Rare-variant gamble: ~%.0f%%[/color]" % [item["basic_comps"], displayed_gamble_chance * 100.0]
+			card.add_child(make_completed_action_box("Researched", stall_research_note, get_highlight_color(item, "research"), research_icon, "Shows real sold-price comparables for this exact item. Evidence to weigh, not a guaranteed value — one-time only."))
+
+		var top_row = HFlowContainer.new()
+		top_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		top_row.add_theme_constant_override("h_separation", 6)
+		top_row.add_theme_constant_override("v_separation", 6)
+		card.add_child(top_row)
+
+		var buy_button = Button.new()
+		buy_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if item["haggle_attempted"]:
+			match item["haggle_result"]:
+				"accepted":
+					buy_button.text = "Haggled — Buy £%.0f" % item["asking"]
+					style_button(buy_button, "buy")
+					buy_button.pressed.connect(Callable(self, "buy_item").bind(i))
+				"refused":
+					buy_button.text = "They won't sell this to you after that offer"
+					buy_button.disabled = true
+					style_button(buy_button, "danger")
+				_:
+					buy_button.text = "Rejected — Buy £%.0f" % item["asking"]
+					style_button(buy_button, "buy")
+					buy_button.pressed.connect(Callable(self, "buy_item").bind(i))
+		else:
+			buy_button.text = "BUY £%.0f" % item["asking"]
+			buy_button.tooltip_text = "Buy at the current asking price. Anything you haven't checked stays a gamble."
+			style_button(buy_button, "buy")
+			buy_button.pressed.connect(Callable(self, "buy_item").bind(i))
+		top_row.add_child(buy_button)
+
+		if not item["haggle_attempted"]:
+			var haggle_cluster = HBoxContainer.new()
+			haggle_cluster.add_theme_constant_override("separation", 4)
+			var haggle_asking = max(1.0, float(item["asking"]))
+			var haggle_initial = round(haggle_asking * 0.85)
+
+			var haggle_minus = Button.new()
+			haggle_minus.text = "-"
+			style_button(haggle_minus, "nav")
+			haggle_minus.custom_minimum_size = Vector2(34, 36)
+			haggle_cluster.add_child(haggle_minus)
+
+			var haggle_value_edit = LineEdit.new()
+			haggle_value_edit.text = str(int(haggle_initial))
+			haggle_value_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+			haggle_value_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+			haggle_value_edit.custom_minimum_size = Vector2(60, 36)
+			haggle_cluster.add_child(haggle_value_edit)
+
+			var haggle_plus = Button.new()
+			haggle_plus.text = "+"
+			style_button(haggle_plus, "nav")
+			haggle_plus.custom_minimum_size = Vector2(34, 36)
+			haggle_cluster.add_child(haggle_plus)
+
+			var haggle_chance_label = Label.new()
+			haggle_chance_label.add_theme_font_size_override("font_size", 12)
+			haggle_chance_label.text = "%.0f%%" % (compute_haggle_chance(item, seller, haggle_initial) * 100.0)
+			haggle_cluster.add_child(haggle_chance_label)
+			top_row.add_child(haggle_cluster)
+
+			haggle_minus.pressed.connect(Callable(self, "_adjust_haggle_value").bind(haggle_value_edit, -1.0, haggle_asking, haggle_chance_label, item, seller))
+			haggle_plus.pressed.connect(Callable(self, "_adjust_haggle_value").bind(haggle_value_edit, 1.0, haggle_asking, haggle_chance_label, item, seller))
+			haggle_value_edit.text_submitted.connect(Callable(self, "_on_haggle_value_submitted").bind(haggle_value_edit, haggle_asking, haggle_chance_label, item, seller))
+			haggle_value_edit.focus_exited.connect(Callable(self, "_adjust_haggle_value").bind(haggle_value_edit, 0.0, haggle_asking, haggle_chance_label, item, seller))
+
+			var haggle_offer_button = Button.new()
+			haggle_offer_button.text = "Offer | E2"
+			haggle_offer_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+			haggle_offer_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			haggle_offer_button.tooltip_text = "One attempt at this price. Lowballing risks annoying the seller — they might refuse to sell you this item, or even kick you off their whole stall for the rest of the day."
+			style_button(haggle_offer_button, "nav")
+			haggle_offer_button.pressed.connect(Callable(self, "haggle_item").bind(i, haggle_value_edit))
+			top_row.add_child(haggle_offer_button)
+
+		if item["buy_block_note"] != "":
+			var buy_block_line = Label.new()
+			buy_block_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			buy_block_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			buy_block_line.add_theme_font_size_override("font_size", 13)
+			buy_block_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+			buy_block_line.text = item["buy_block_note"]
+			card.add_child(buy_block_line)
+
+		if item["haggle_note"] != "":
+			var haggle_note_line = RichTextLabel.new()
+			haggle_note_line.bbcode_enabled = true
+			haggle_note_line.fit_content = true
+			haggle_note_line.scroll_active = false
+			haggle_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			haggle_note_line.add_theme_font_size_override("normal_font_size", 13)
+			haggle_note_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
+			haggle_note_line.text = item["haggle_note"]
+			card.add_child(haggle_note_line)
+
+		var actions = HFlowContainer.new()
+		actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_theme_constant_override("h_separation", 6)
+		actions.add_theme_constant_override("v_separation", 6)
+		card.add_child(actions)
+
+		var look = Button.new()
+		var look_accuracy = int(effective_look_accuracy() * 100.0)
+		look.text = "Inspect %d%% | E1" % look_accuracy if not item["quick_look_done"] else "Inspected"
+		if not item["quick_look_done"]:
+			look.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+		look.disabled = item["quick_look_done"]
+		look.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		look.tooltip_text = "Cheap first impression of Condition. Can genuinely be wrong at this accuracy — never reveals the exact score."
+		style_button(look, "nav")
+		look.pressed.connect(Callable(self, "quick_look").bind(i))
+		apply_button_icon(look, inspect_icon)
+		actions.add_child(look)
+
+		if not item["condition_checked"]:
+			var condition_button = Button.new()
+			condition_button.text = "Condition £%d | E4" % int(condition_cost())
+			condition_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+			condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			condition_button.tooltip_text = "Reveals the exact Condition score for certain. This is the only reliable way to know it before buying — and, for non-electronic items, the only way to know about hidden defects at all."
+			style_button(condition_button, "action")
+			condition_button.add_theme_font_size_override("font_size", 14)
+			condition_button.pressed.connect(Callable(self, "check_condition").bind(i))
+			apply_button_icon(condition_button, condition_icon)
+			actions.add_child(wrap_button_with_help(condition_button, condition_button.tooltip_text))
+
+		if not item["basic_researched"]:
+			var research_button = Button.new()
+			research_button.text = "Research £%.2f | E2" % research_cost()
+			research_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+			research_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			research_button.tooltip_text = "Shows real sold-price comparables for this exact item. Evidence to weigh, not a guaranteed value — one-time only."
+			style_button(research_button, "action")
+			research_button.add_theme_font_size_override("font_size", 14)
+			research_button.pressed.connect(Callable(self, "prebuy_research").bind(i))
+			apply_button_icon(research_button, research_icon)
+			actions.add_child(wrap_button_with_help(research_button, research_button.tooltip_text))
+
+	footer_label.text = ""
+
+func quick_look(index):
+	var item = stalls[current_stall_index]["stock"][index]
+	if item["quick_look_done"]:
+		set_status("You've already taken a quick look at this item.")
+		return
+	if energy < 1:
+		set_status("Not enough E energy.")
+		return
+	energy -= 1
+	current_time_minutes += 1
+	item["quick_look_done"] = true
+
+	var accuracy = effective_look_accuracy()
+	var roll = rng.randf()
+	var accurate = roll < accuracy
+	var perceived_condition = int(item["condition"])
+	if not accurate:
+		var error = rng.randi_range(2, 4)
+		if rng.randf() < 0.5:
+			error = -error
+		perceived_condition = clamp(perceived_condition + error, 1, 10)
+
+	var clue = "Looks average at a glance."
+	if perceived_condition <= 3:
+		clue = "Looks rough — wear/damage likely."
+	elif perceived_condition <= 5:
+		clue = "Fairly worn, hard to judge for sure."
+	elif perceived_condition <= 7:
+		clue = "Looks reasonably tidy."
+	else:
+		clue = "Looks very clean and well-kept."
+
+	item["quick_look_accuracy"] = accuracy
+	item["quick_look_roll"] = roll
+	item["quick_look_note"] = "[color=#e08fd0]Inspect %d%%[/color]: %s" % [int(accuracy * 100.0), clue]
+	record_rng("Inspect accuracy: %.1f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "ACCURATE" if accurate else "INACCURATE"])
+	set_status(item["quick_look_note"])
+	show_stall()
+
+func check_condition(index):
+	var item = stalls[current_stall_index]["stock"][index]
+	if item["condition_checked"]:
+		set_status("Condition has already been checked.")
+		return
+	var cc_cost = condition_cost()
+	if cash < cc_cost or energy < 4:
+		set_status("Need £%d and E4." % int(cc_cost))
+		return
+	cash -= cc_cost
+	item["extra_spend"] += cc_cost
+	energy -= 4
+	current_time_minutes += 5
+	day_stats["research"] += cc_cost
+	var before_check = estimate_identified_potential(item)
+	item["condition_checked"] = true
+	item["action_order"].append("condition")
+	update_family_condition(item)
+	day_stats["condition_checks"] += 1
+	var after_check = estimate_identified_potential(item)
+	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
+	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
+	var change_word = "increased" if after_center >= before_center else "decreased"
+	var reveal_roll = rng.randf()
+	item["condition_price_note"] = "[color=#e08fd0]Chance 100%% | Rolled %.2f%%[/color] | Result: Revealed — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [reveal_roll * 100.0, item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
+	apply_price_highlight(item, "condition", float(before_check[1]), float(after_check[1]))
+	var message = "CONDITION CHECK COMPLETE — Condition %d/10." % item["condition"]
+	if item["testable"]:
+		message += " Function remains unknown until testing."
+	elif item["fault"]:
+		message += " It also reveals a hidden flaw: %s." % item["fault_severity"]
+	else:
+		message += " No hidden defects found."
+	set_status(message)
+	rival_pressure(0.05)
+	show_stall()
+
+func prebuy_research(index):
+	var item = stalls[current_stall_index]["stock"][index]
+	if item["basic_researched"]:
+		set_status("Basic Research is already complete. Cached comps: " + item["basic_comps"])
+		return
+	var rc_cost = research_cost()
+	if cash < rc_cost or energy < 2:
+		set_status("Need £%.2f and E2." % rc_cost)
+		return
+	cash -= rc_cost
+	item["extra_spend"] += rc_cost
+	energy -= 2
+	current_time_minutes += 4
+	day_stats["research"] += rc_cost
+	day_stats["researches_done"] += 1
+	var research_before = estimate_identified_potential(item)
+	item["basic_researched"] = true
+	item["basic_comps"] = make_comps(item, false)
+	apply_price_highlight(item, "research", float(research_before[1]), float(item["basic_comps_max"]))
+	item["locked_gamble_hint"] = gamble_hint_chance(item)
+	rival_pressure(0.07)
+	show_stall()
+
+func make_comps(item, deep):
+	var values = []
+	var count = 5
+	if deep:
+		count = 6
+	for i in range(count):
+		var spread = rng.randf_range(0.45, 1.60)
+		if deep:
+			spread = rng.randf_range(0.70, 1.30)
+		values.append(max(1, int(item["true_value"] * spread)))
+	values.sort()
+	item["basic_comps_max"] = float(values[-1])
+	var text = ""
+	for i in range(values.size()):
+		if i > 0:
+			text += ", "
+		text += "£" + str(values[i])
+	return text
+
+func compute_haggle_chance(item, seller, target_price):
+	var asking = max(1.0, float(item["asking"]))
+	var discount_pct = clamp((asking - float(target_price)) / asking, 0.0, 0.95)
+	var seller_haggle = float(seller_profiles[seller]["haggle"])
+	var leniency = 1.0 - seller_haggle
+	var base_chance = 0.75 + leniency * 0.20 + float(persuasion_level) * 0.01
+	if has_skill("Sharp Tongue"):
+		base_chance += 0.08
+	if has_skill("Silver Tongue"):
+		base_chance += 0.10
+	var penalty = pow(discount_pct, 1.3) * 3.0
+	var trend_mult = float(current_trends.get(item["category"], 1.0))
+	var trend_adjustment = (1.0 - trend_mult) * 0.3
+	return clamp(base_chance - penalty + trend_adjustment, 0.03, 0.96)
+
+func _adjust_haggle_value(value_edit, delta, asking, chance_label, item, seller):
+	var v = clamp(_parse_price(value_edit.text) + delta, 1.0, max(1.0, asking - 1.0))
+	value_edit.text = str(int(v))
+	chance_label.text = "%.0f%%" % (compute_haggle_chance(item, seller, v) * 100.0)
+
+func _on_haggle_value_submitted(submitted_text, value_edit, asking, chance_label, item, seller):
+	_adjust_haggle_value(value_edit, 0.0, asking, chance_label, item, seller)
+
+func dismiss_stall_item(index):
+	var stall = stalls[current_stall_index]
+	if index >= stall["stock"].size():
+		return
+	stall["stock"][index]["dismissed"] = true
+	show_stall()
+
+func haggle_item(index, value_edit):
+	var stall = stalls[current_stall_index]
+	var item = stall["stock"][index]
+	var seller = stall["seller"]
+	var seller_display = stall["seller_display_name"]
+	if item["haggle_attempted"]:
+		set_status("You already made your one haggle attempt on this item.")
+		return
+	if bool(stall.get("banned_today", false)):
+		set_status("%s won't deal with you again today." % seller_display)
+		return
+	if energy < 2:
+		set_status("Need E2 to haggle.")
+		return
+	var asking = float(item["asking"])
+	var target_price = clamp(round(_parse_price(value_edit.text)), 1.0, max(1.0, asking - 1.0))
+	var discount_pct = clamp((asking - target_price) / asking, 0.0, 0.95)
+	var chance = compute_haggle_chance(item, seller, target_price)
+	energy -= 2
+	current_time_minutes += 2
+	item["haggle_attempted"] = true
+	var roll = rng.randf()
+	var success = roll < chance
+	record_rng("Haggle chance: %.0f%% | Rolled: %.2f%% | Offer £%.0f (of £%.0f) | Result: %s" % [chance * 100.0, roll * 100.0, target_price, asking, "ACCEPTED" if success else "REJECTED"])
+	if success:
+		item["asking"] = target_price
+		item["haggle_result"] = "accepted"
+		item["haggle_savings"] = asking - target_price
+		day_stats["successful_haggles"] += 1
+		item["haggle_note"] = "Offer £%.0f — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — Accepted." % [target_price, chance * 100.0, roll * 100.0]
+		show_stall()
+		return
+
+	var escalation_roll = rng.randf()
+	var kicked_out = discount_pct >= 0.35 and escalation_roll < 0.35
+	var item_banned = (not kicked_out) and discount_pct >= 0.20 and escalation_roll < 0.55
+	record_rng("Haggle escalation chance: %.0f%% (kickout) / %.0f%% (item ban), needs %.0f%% discount | Rolled: %.2f%% | Result: %s" % [35.0 if discount_pct >= 0.35 else 0.0, 55.0 if discount_pct >= 0.20 else 0.0, discount_pct * 100.0, escalation_roll * 100.0, "STALL BAN" if kicked_out else ("ITEM REFUSED" if item_banned else "plain rejection")])
+	if kicked_out:
+		stall["banned_today"] = true
+		item["haggle_result"] = "refused"
+		item["haggle_note"] = "Offer £%.0f — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — Refused. Kicked off the stall for today." % [target_price, chance * 100.0, roll * 100.0]
+	elif item_banned:
+		item["seller_refuses"] = true
+		item["haggle_result"] = "refused"
+		item["haggle_note"] = "Offer £%.0f — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — Refused." % [target_price, chance * 100.0, roll * 100.0]
+	else:
+		item["haggle_result"] = "rejected"
+		item["haggle_note"] = "Offer £%.0f — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — Rejected." % [target_price, chance * 100.0, roll * 100.0]
+	show_stall()
+
+func browse_stall():
+	var stall = stalls[current_stall_index]
+	if stall["revealed"] >= stall["stock"].size():
+		set_status("You've already dug through everything at this stall.")
+		return
+	if energy < 4:
+		set_status("Not enough E energy.")
+		return
+	energy -= 4
+	current_time_minutes += 8
+	stall["revealed"] = min(stall["stock"].size(), stall["revealed"] + rng.randi_range(2, 4) + (1 if player_level >= 8 else 0))
+	rival_pressure(float(stall["crowd"]) * 0.35)
+	show_stall()
+	call_deferred("_scroll_to_bottom")
+
+func _scroll_to_bottom():
+	if page_scroll != null:
+		page_scroll.scroll_vertical = int(page_scroll.get_v_scroll_bar().max_value)
+
+func next_stall():
+	current_time_minutes += 5
+	current_stall_index += 1
+	if current_stall_index >= stalls.size():
+		current_stall_index = 0
+	show_stall()
+
+func show_stall_list():
+	current_screen_name = "show_stall_list"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "CAR BOOT — %d STALLS TODAY" % stalls.size()
+	body.add_child(title)
+
+	if pending_special_offer != null:
+		var note = Label.new()
+		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		note.text = "You have a special offer waiting — resolve it before moving on."
+		body.add_child(note)
+		var go_button = Button.new()
+		go_button.text = "View Offer"
+		go_button.pressed.connect(show_special_offer)
+		style_button(go_button, "action")
+		body.add_child(go_button)
+		return
+
+	if current_time_minutes >= 12 * 60:
+		var closing = Label.new()
+		closing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		closing.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		closing.text = "The car boot is closing. End the day or manage your inventory."
+		body.add_child(closing)
+		return
+
+
+	for i in range(stalls.size()):
+		var stall = stalls[i]
+		var panel = make_card()
+		body.add_child(panel)
+		var row = HFlowContainer.new()
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_theme_constant_override("separation", 10)
+		panel.add_child(row)
+
+		var info_box = VBoxContainer.new()
+		info_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(info_box)
+
+		var banned = bool(stall.get("banned_today", false))
+		var packed = current_time_minutes >= stall["packing_minute"] or banned
+		var here_tag = " (here now)" if i == current_stall_index else ""
+		var name_line = Label.new()
+		name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_line.add_theme_font_size_override("font_size", 17)
+		name_line.text = "Stall %d — %s%s" % [i + 1, stall["seller_display_name"], here_tag]
+		if packed:
+			name_line.add_theme_color_override("font_color", Color(0.5,0.5,0.55,1.0))
+		info_box.add_child(name_line)
+
+		var status_line = Label.new()
+		status_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		status_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if banned:
+			status_line.text = "You've been kicked off this stall for the day."
+		elif packed:
+			status_line.text = "Packed up and gone for the day."
+		else:
+			status_line.text = "Revealed %d/%d in stock  •  Crowd %d%%  •  Packs up %s" % [stall["revealed"], stall["stock"].size(), int(float(stall["crowd"]) * 100.0), minute_to_clock(stall["packing_minute"])]
+		info_box.add_child(status_line)
+
+		if special_event_profiles.has(stall["seller"]) and not packed and not banned:
+			var side_line = Label.new()
+			side_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			side_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			side_line.add_theme_font_size_override("font_size", 13)
+			side_line.add_theme_color_override("font_color", Color(0.95,0.78,0.35,1.0))
+			var side_chance = float(seller_profiles[stall["seller"]]["side"]) * 100.0
+			side_line.text = "~%.1f%% chance per purchase of a side deal: \"%s\"" % [side_chance, special_event_profiles[stall["seller"]]["title"]]
+			info_box.add_child(side_line)
+
+		var go_button = Button.new()
+		if i == current_stall_index:
+			go_button.text = "You're Here"
+			go_button.disabled = true
+			style_button(go_button, "nav")
+		elif packed:
+			go_button.text = "Closed"
+			go_button.disabled = true
+			style_button(go_button, "nav")
+		else:
+			go_button.text = "Go | 5 min"
+			go_button.tooltip_text = "Travel to this stall. Costs 5 minutes either way."
+			go_button.pressed.connect(Callable(self, "go_to_stall").bind(i))
+			style_button(go_button, "action")
+		row.add_child(go_button)
+
+	footer_label.text = "Pick any stall to visit next — moving always costs 5 minutes, whichever direction."
+
+func go_to_stall(index):
+	if index < 0 or index >= stalls.size():
+		return
+	if index == current_stall_index:
+		show_stall()
+		return
+	current_time_minutes += 5
+	current_stall_index = index
+	show_stall()
+
+func can_carry(item):
+	return carry_used + size_units(item) <= int(effective_bag_capacity())
+
+func can_store(item):
+	return inventory_space_used() + size_units(item) <= int(storage_upgrades[storage_level]["capacity"])
+
+func buy_item(index):
+	var stall = stalls[current_stall_index]
+	if index >= stall["revealed"]:
+		return
+	if bool(stall.get("banned_today", false)):
+		set_status("%s won't deal with you again today." % stall["seller_display_name"])
+		return
+	var item = stall["stock"][index]
+	if bool(item.get("seller_refuses", false)):
+		set_status("They won't sell you this item today.")
+		return
+	if cash < item["asking"]:
+		queue_popup("Not enough cash.")
+		return
+	if not can_carry(item):
+		queue_popup("Not enough space in your bag.")
+		return
+	if not can_store(item):
+		set_status("HOME STORAGE FULL — Upgrade storage in the Shop before buying more stock.")
+		return
+	cash -= item["asking"]
+	day_stats["buy_spend"] += item["asking"]
+	day_stats["items_bought"] += 1
+	item["paid"] = item["asking"]
+	if item["haggle_result"] == "accepted":
+		total_haggled_savings += float(item["haggle_savings"])
+	carry_used += size_units(item)
+	inventory.append(item)
+	stall["stock"].remove_at(index)
+	stall["revealed"] = min(stall["revealed"], stall["stock"].size())
+	register_collection(item)
+	check_side_deal(stall["seller"], stall["seller_display_name"])
+	add_xp(2)
+	queue_popup("Item Purchased! %s — £%.2f" % [item["name"], item["paid"]], "success")
+	save_game()
+	set_status("Bought %s for £%.2f. Carry used %d/%d." % [item["name"], item["paid"], carry_used, effective_bag_capacity()])
+	show_stall()
+
+func update_family_condition(item):
+	if family_stats.has(item["name"]):
+		var fs = family_stats[item["name"]]
+		if int(item["condition"]) > int(fs["best_condition"]):
+			fs["best_condition"] = item["condition"]
+
+func register_collection(item):
+	var key = item["category"] + "|" + item["name"] + "|" + item["rarity"]
+	if not discovered_log.has(key):
+		discovered_log[key] = {"name":item["name"], "category":item["category"], "rarity":item["rarity"], "one_in":item["one_in"]}
+		day_stats["collection_adds"] += 1
+		day_stats["rarest_one_in"] = max(day_stats["rarest_one_in"], item["one_in"])
+		if item["one_in"] >= 100:
+			unlock_achievement("Against the Odds")
+	if not family_stats.has(item["name"]):
+		family_stats[item["name"]] = {"category":item["category"], "times_found":0, "best_condition":0, "cheapest_bought":-1.0, "highest_sold":0.0, "lifetime_profit":0.0, "specials_found":{}, "highest_rarity":"Common", "highest_one_in":1}
+	var fs = family_stats[item["name"]]
+	fs["times_found"] += 1
+	if fs["cheapest_bought"] < 0.0 or float(item["asking"]) < fs["cheapest_bought"]:
+		fs["cheapest_bought"] = float(item["asking"])
+	if item["one_in"] > int(fs["highest_one_in"]):
+		fs["highest_one_in"] = item["one_in"]
+		fs["highest_rarity"] = item["rarity"]
+
+func check_side_deal(seller, display_name):
+	if not special_event_profiles.has(seller):
+		return
+	if pending_special_offer != null:
+		return
+	var chance = float(seller_profiles[seller]["side"])
+	var roll = rng.randf()
+	var result = roll < chance
+	record_rng("Side deal chance: %s | Rolled: %.2f%% | Result: %s" % [chance_text(chance), roll * 100.0, "TRIGGERED" if result else "MISS"])
+	if result:
+		pending_special_offer = generate_special_offer(seller, display_name)
+		status_label.text += " \"%s\" — %s has a special offer for you." % [special_event_profiles[seller]["title"], display_name]
+		unlock_achievement("Actually Mate...")
+
+func generate_special_offer(seller, display_name):
+	var profile = special_event_profiles[seller]
+	var item = generate_item(seller)
+	var value_mult = rng.randf_range(float(profile["value_mult"][0]), float(profile["value_mult"][1]))
+	item["true_value"] = max(1.0, float(item["true_value"]) * value_mult)
+	var price_mult = rng.randf_range(float(profile["price_mult"][0]), float(profile["price_mult"][1]))
+	item["asking"] = max(1.0, round(float(item["true_value"]) * price_mult))
+	item["fault_chance"] = clamp(float(item["fault_chance"]) + float(profile["fault_bonus"]), 0.02, 0.85)
+	item["fault_roll"] = rng.randf()
+	item["fault"] = item["fault_roll"] < item["fault_chance"]
+	if item["fault"]:
+		var severity_roll = rng.randf()
+		if severity_roll < 0.45:
+			item["fault_severity"] = "Minor"
+		elif severity_roll < 0.75:
+			item["fault_severity"] = "Moderate"
+		elif severity_roll < 0.93:
+			item["fault_severity"] = "Major"
+		else:
+			item["fault_severity"] = "Dead"
+	else:
+		item["fault_severity"] = "None"
+	if profile.has("fake_bonus"):
+		item["fake_chance"] = clamp(float(item["fake_chance"]) + float(profile["fake_bonus"]), 0.0, 0.85)
+		item["authentic"] = rng.randf() > item["fake_chance"]
+	return {"seller":seller, "seller_display_name":display_name, "title":profile["title"], "flavor":profile["flavor"], "item":item}
+
+func show_special_offer():
+	current_screen_name = "show_special_offer"
+	clear_body()
+	update_header()
+	if pending_special_offer == null:
+		show_stall()
+		return
+	var offer = pending_special_offer
+	var item = offer["item"]
+
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "SPECIAL OFFER — %s (%s)" % [offer["title"], offer["seller_display_name"]]
+	body.add_child(title)
+
+	var flavor = Label.new()
+	flavor.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	flavor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flavor.text = offer["flavor"]
+	flavor.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	flavor.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	flavor.add_theme_color_override("font_color", Color(0.95,0.84,0.62,1.0))
+	body.add_child(flavor)
+
+	var panel = make_card()
+	body.add_child(panel)
+	var card = VBoxContainer.new()
+	card.add_theme_constant_override("separation", 5)
+	panel.add_child(card)
+
+	if item["rarity"] == "Grail":
+		apply_grail_glow(panel)
+		card.add_child(make_grail_badge())
+
+	var rarity_text = ""
+	if item["one_in"] >= 20:
+		rarity_text = " %s 1/%d  •  " % [item["rarity"], item["one_in"]]
+	var name_line = Label.new()
+	name_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_line.add_theme_font_size_override("font_size", 18)
+	name_line.text = "%s%s  •  %s  •  £%.0f  •  Carry Space - %d Slots" % [rarity_text, item["name"], item["category"], item["asking"], size_units(item)]
+	card.add_child(name_line)
+
+	var function_text_value = "N/A"
+	if item["testable"]:
+		function_text_value = "Untested"
+	var state_line = Label.new()
+	state_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	state_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	state_line.text = "Condition: Unknown  •  Function: %s" % function_text_value
+	card.add_child(state_line)
+
+	var note = Label.new()
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	note.text = "One-off offer — no Inspect, Research or haggling available. Decide now, before it's gone."
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_child(note)
+
+	var actions = HFlowContainer.new()
+	actions.add_theme_constant_override("separation", 8)
+	card.add_child(actions)
+
+	var buy_button = Button.new()
+	buy_button.text = "Take It — £%.0f" % item["asking"]
+	style_button(buy_button, "buy")
+	buy_button.pressed.connect(accept_special_offer)
+	actions.add_child(buy_button)
+
+	var decline_button = Button.new()
+	decline_button.text = "Walk Away"
+	style_button(decline_button, "danger")
+	decline_button.pressed.connect(decline_special_offer)
+	actions.add_child(decline_button)
+
+	footer_label.text = "Special offers are one-off — no inspection tools apply here. Weigh the risk quickly."
+
+func accept_special_offer():
+	if pending_special_offer == null:
+		return
+	var item = pending_special_offer["item"]
+	if cash < item["asking"]:
+		set_status("You don't have enough cash for this offer.")
+		return
+	if not can_carry(item):
+		set_status("BAG FULL — you can't carry this offer right now.")
+		return
+	if not can_store(item):
+		set_status("HOME STORAGE FULL — you can't take this offer right now.")
+		return
+	cash -= item["asking"]
+	day_stats["buy_spend"] += item["asking"]
+	day_stats["items_bought"] += 1
+	item["paid"] = item["asking"]
+	carry_used += size_units(item)
+	inventory.append(item)
+	register_collection(item)
+	add_xp(2)
+	queue_popup("Item Purchased! %s — £%.2f" % [item["name"], item["paid"]], "success")
+	save_game()
+	set_status("Took the special offer: %s for £%.2f." % [item["name"], item["paid"]])
+	pending_special_offer = null
+	show_stall()
+
+func decline_special_offer():
+	set_status("You walked away from the offer.")
+	pending_special_offer = null
+	show_stall()
+
+func rival_pressure(chance):
+	if rng.randf() < chance:
+		var stall = stalls[current_stall_index]
+		if stall["stock"].size() > stall["revealed"] and stall["stock"].size() > 0:
+			var idx = rng.randi_range(stall["revealed"], stall["stock"].size() - 1)
+			var gone = stall["stock"][idx]["name"]
+			stall["stock"].remove_at(idx)
+			status_label.text += " A rival grabbed %s while you were occupied." % gone
+
+func show_inventory_fresh():
+	inventory_tab = "unlisted"
+	show_inventory()
+
+func show_inventory():
+	current_screen_name = "show_inventory"
+	if page_scroll != null:
+		last_scroll_value = page_scroll.scroll_vertical
+		call_deferred("_restore_scroll", page_scroll)
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "INVENTORY — Storage %d/%d" % [inventory_space_used(), storage_upgrades[storage_level]["capacity"]]
+	body.add_child(title)
+
+	var unlisted_count = 0
+	var listed_count = 0
+	for it in inventory:
+		if it["listed"]:
+			listed_count += 1
+		else:
+			unlisted_count += 1
+
+	var tab_row = HBoxContainer.new()
+	tab_row.add_theme_constant_override("separation", 8)
+	body.add_child(tab_row)
+	var unlisted_tab = Button.new()
+	unlisted_tab.text = "UNLISTED (%d)" % unlisted_count
+	unlisted_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(unlisted_tab, "buy" if inventory_tab == "unlisted" else "nav")
+	unlisted_tab.pressed.connect(Callable(self, "_switch_inventory_tab").bind("unlisted"))
+	tab_row.add_child(unlisted_tab)
+	var listed_tab = Button.new()
+	listed_tab.text = "LISTED (%d)" % listed_count
+	listed_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(listed_tab, "buy" if inventory_tab == "listed" else "nav")
+	listed_tab.pressed.connect(Callable(self, "_switch_inventory_tab").bind("listed"))
+	tab_row.add_child(listed_tab)
+
+	if inventory.size() == 0:
+		var empty = Label.new()
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		empty.text = "No stock."
+		body.add_child(empty)
+		return
+	var showing_any = false
+
+
+	for i in range(inventory.size()):
+		var item = inventory[i]
+		if item["listed"] != (inventory_tab == "listed"):
+			continue
+		showing_any = true
+		var panel = make_card()
+		body.add_child(panel)
+		var card = VBoxContainer.new()
+		card.add_theme_constant_override("separation", 5)
+		panel.add_child(card)
+
+		var inv_condition_text = "Unknown"
+		if item["condition_checked"]:
+			inv_condition_text = "%d/10" % item["condition"]
+		var head = Label.new()
+		head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_theme_font_size_override("font_size", 16)
+		head.text = "%d. %s  •  Paid £%.2f" % [i + 1, item["name"], item["paid"]]
+		card.add_child(head)
+
+		var badge_line = RichTextLabel.new()
+		badge_line.bbcode_enabled = true
+		badge_line.fit_content = true
+		badge_line.scroll_active = false
+		badge_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		badge_line.add_theme_font_size_override("normal_font_size", 14)
+		badge_line.add_theme_color_override("default_color", Color(0.62,0.68,0.76,1.0))
+		var trend_mult = float(current_trends.get(item["category"], 1.0))
+		var trend_suffix = ""
+		if trend_mult >= 1.10:
+			trend_suffix = "  •  [color=#b088e8][b]TRENDING[/b][/color]"
+		badge_line.text = "%s  •  Carry Space - %d Slots  •  Trend %+.0f%%%s" % [item["category"], size_units(item), (trend_mult - 1.0) * 100.0, trend_suffix]
+		var badge_row = HBoxContainer.new()
+		badge_row.add_theme_constant_override("separation", 6)
+		var inv_cat_icon_rect = make_category_icon_rect(item["category"])
+		if inv_cat_icon_rect != null:
+			badge_row.add_child(inv_cat_icon_rect)
+		badge_row.add_child(badge_line)
+		card.add_child(badge_row)
+
+		var potential = estimate_identified_potential(item)
+		var preview_price = (float(potential[0]) + float(potential[1])) / 2.0
+		if item["listed"]:
+			preview_price = float(item["listing"])
+
+		var status_line = Label.new()
+		status_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		status_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		status_line.add_theme_font_size_override("font_size", 15)
+		status_line.text = "Condition: %s  •  Function: %s  •  %s" % [inv_condition_text, function_status(item), item["auth_status"]]
+		card.add_child(status_line)
+
+		var details = Label.new()
+		details.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		details.add_theme_font_size_override("font_size", 15)
+		details.text = "Est. value £%d–£%d" % [potential[0], potential[1]]
+		card.add_child(details)
+
+		if item["quick_look_done"] and item["quick_look_note"] != "":
+			var inv_look_result = RichTextLabel.new()
+			inv_look_result.bbcode_enabled = true
+			inv_look_result.fit_content = true
+			inv_look_result.scroll_active = false
+			inv_look_result.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			inv_look_result.add_theme_font_size_override("normal_font_size", 14)
+			inv_look_result.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
+			inv_look_result.text = item["quick_look_note"]
+			card.add_child(inv_look_result)
+
+		var actions = HFlowContainer.new()
+		actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_theme_constant_override("h_separation", 6)
+		actions.add_theme_constant_override("v_separation", 6)
+		card.add_child(actions)
+
+
+		if item["condition_checked"]:
+			var condition_note = item["condition_price_note"]
+			if not item["testable"]:
+				if item["fault"]:
+					condition_note += "\n[color=#e88c7a][!] Hidden flaw found: %s[/color]" % item["fault_severity"]
+				else:
+					condition_note += "\n[color=#8cd98f]No hidden defects found.[/color]"
+			card.add_child(make_completed_action_box("Condition Checked", condition_note, get_highlight_color(item, "condition"), condition_icon, "Reveals the exact Condition score, and — for non-electronic items — any hidden defect. Only reliable way to know for sure if you skipped it before buying."))
+			var placeholder = Control.new()
+			placeholder.custom_minimum_size = Vector2(0, 48)
+			actions.add_child(placeholder)
+		else:
+			var inv_condition_button = Button.new()
+			inv_condition_button.text = "Condition £%d | E4" % int(condition_cost())
+			inv_condition_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+			inv_condition_button.pressed.connect(Callable(self, "inventory_check_condition").bind(i))
+			apply_button_icon(inv_condition_button, condition_icon)
+			inv_condition_button.tooltip_text = "Reveals the exact Condition score, and — for non-electronic items — any hidden defect. Only reliable way to know for sure if you skipped it before buying."
+			inv_condition_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			style_button(inv_condition_button, "action")
+			inv_condition_button.add_theme_font_size_override("font_size", 14)
+			actions.add_child(wrap_button_with_help(inv_condition_button, inv_condition_button.tooltip_text))
+
+		if item["basic_researched"]:
+			card.add_child(make_completed_action_box("Researched", "Researched Prices: %s" % item["basic_comps"], get_highlight_color(item, "research"), research_icon, "Sold-price comparables for this item. Evidence only, one-time."))
+			var placeholder = Control.new()
+			placeholder.custom_minimum_size = Vector2(0, 48)
+			actions.add_child(placeholder)
+		else:
+			var basic_button = Button.new()
+			basic_button.text = "Research £%.2f | E2" % research_cost()
+			basic_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+			basic_button.pressed.connect(Callable(self, "inventory_basic_research").bind(i))
+			apply_button_icon(basic_button, research_icon)
+			basic_button.tooltip_text = "Sold-price comparables for this item. Evidence only, one-time."
+			basic_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			style_button(basic_button, "action")
+			basic_button.add_theme_font_size_override("font_size", 14)
+			actions.add_child(wrap_button_with_help(basic_button, basic_button.tooltip_text))
+
+		if item["deep_researched"]:
+			var deep_note = item["research_note"]
+			if item["rare_variant_hit"]:
+				deep_note += "\nRARE VARIANT — [color=#e08fd0]rolled %.2f%%[/color] (%s) — value x%.1f!" % [item["rare_variant_roll_pct"], item["rare_variant_tier"], item["rare_variant_mult"]]
+			card.add_child(make_completed_action_box("Deep Researched", deep_note, get_highlight_color(item, "deep_research"), deep_research_icon, "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."))
+			var placeholder = Control.new()
+			placeholder.custom_minimum_size = Vector2(0, 48)
+			actions.add_child(placeholder)
+		else:
+			var deep_knowledge = float(category_knowledge.get(item["category"], 5))
+			var deep_chance = clamp(0.28 + deep_knowledge / 180.0, 0.28, 0.78)
+			var real_rare_chance = 0.20
+			if item["basic_researched"]:
+				real_rare_chance = clamp(float(item["locked_gamble_hint"]), 0.04, 0.32)
+			if has_skill("Deep Pockets"):
+				real_rare_chance = min(0.45, real_rare_chance * 1.25)
+			var dr_preview_cost = max(4.0, round(float(item["asking"]) * 0.35))
+			var deep_button = Button.new()
+			deep_button.text = "Deep Research £%d | E12\nDiscovery %.0f%% | Rare %.0f%%" % [int(dr_preview_cost), deep_chance * 100.0, real_rare_chance * 100.0]
+			deep_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+			deep_button.pressed.connect(Callable(self, "deep_research").bind(i))
+			deep_button.tooltip_text = "Digs into exact model/variant details. If you Basic Researched this item first, your rare-variant odds are set by how good or bad that research looked — a bad-looking deal gets better odds here. Can raise or lower your Selling Potential range with an explanation — one-time only, may find nothing new."
+			deep_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			style_button(deep_button, "action")
+			deep_button.custom_minimum_size.y = 48
+			deep_button.add_theme_font_size_override("font_size", 14)
+			if deep_research_icon != null:
+				deep_button.icon = deep_research_icon
+				deep_button.add_theme_constant_override("icon_max_width", 32)
+				deep_button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			actions.add_child(wrap_button_with_help(deep_button, deep_button.tooltip_text))
+
+		if item["testable"]:
+			if item["tested"]:
+				card.add_child(make_completed_action_box("Tested", item["test_note"], "#b8dcff", test_icon, "Reveals whether this electronic item actually works. Required before it can be listed."))
+				var placeholder = Control.new()
+				placeholder.custom_minimum_size = Vector2(0, 48)
+				actions.add_child(placeholder)
+			else:
+				var test_button = Button.new()
+				test_button.text = "Test £2 | E5\nFault chance: %.0f%%" % (float(item["fault_chance"]) * 100.0)
+				test_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+				test_button.pressed.connect(Callable(self, "test_item").bind(i))
+				apply_button_icon(test_button, test_icon)
+				test_button.tooltip_text = "Reveals whether this electronic item actually works. Required before it can be listed."
+				test_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				style_button(test_button, "action")
+				test_button.custom_minimum_size.y = 48
+				test_button.add_theme_font_size_override("font_size", 14)
+				actions.add_child(wrap_button_with_help(test_button, test_button.tooltip_text))
+
+		if item["auth_attempted"]:
+			card.add_child(make_completed_action_box("Authenticated — %s" % item["auth_status"], item["auth_note"], "#b8dcff", authenticate_icon, "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."))
+			var placeholder = Control.new()
+			placeholder.custom_minimum_size = Vector2(0, 48)
+			actions.add_child(placeholder)
+		else:
+			var auth_button = Button.new()
+			auth_button.text = "Authenticate £%d | E6\nAccuracy: %.0f%%" % [int(authentication_cost(item)), authentication_accuracy(item) * 100.0]
+			auth_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+			auth_button.pressed.connect(Callable(self, "authenticate_item").bind(i))
+			apply_button_icon(auth_button, authenticate_icon)
+			auth_button.tooltip_text = "Checks for counterfeits. Not perfectly accurate, and confirmed fakes can't be sold normally — but selling unauthenticated carries its own return risk."
+			auth_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			style_button(auth_button, "action")
+			auth_button.custom_minimum_size.y = 48
+			auth_button.add_theme_font_size_override("font_size", 14)
+			actions.add_child(wrap_button_with_help(auth_button, auth_button.tooltip_text))
+
+
+		if toolbox_level > 0 and item["tested"] and item["fault"]:
+			var repair_button = Button.new()
+			if item["repair_attempted"]:
+				repair_button.text = "Repair Attempt Used"
+				repair_button.disabled = true
+			else:
+				repair_button.text = "Repair £%d | E10" % int(repair_cost(item))
+				repair_button.add_theme_color_override("font_color", Color(0.49,0.78,1.0,1.0))
+				repair_button.pressed.connect(Callable(self, "repair_item").bind(i))
+			repair_button.tooltip_text = "One attempt to fix the fault. Better tools improve the odds; a failed attempt still costs the fee."
+			repair_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			style_button(repair_button, "buy")
+			actions.add_child(repair_button)
+			if item["repair_note"] != "":
+				var repair_note_line = RichTextLabel.new()
+				repair_note_line.bbcode_enabled = true
+				repair_note_line.fit_content = true
+				repair_note_line.scroll_active = false
+				repair_note_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				repair_note_line.add_theme_font_size_override("normal_font_size", 13)
+				repair_note_line.add_theme_color_override("default_color", Color(0.72,0.88,1.0,1.0))
+				repair_note_line.text = item["repair_note"]
+				card.add_child(repair_note_line)
+
+		if item["listing_block_note"] != "":
+			var listing_block_line = Label.new()
+			listing_block_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			listing_block_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			listing_block_line.add_theme_font_size_override("font_size", 13)
+			listing_block_line.add_theme_color_override("font_color", Color(0.72,0.88,1.0,1.0))
+			listing_block_line.text = item["listing_block_note"]
+			card.add_child(listing_block_line)
+
+		if item["auth_status"] == "Confirmed Counterfeit":
+			var scrap_button = Button.new()
+			scrap_button.text = "Scrap / Recover"
+			scrap_button.tooltip_text = "Confirmed counterfeits can't be sold normally. Recover a small fraction of what you paid instead."
+			scrap_button.pressed.connect(Callable(self, "scrap_item").bind(i))
+			style_button(scrap_button, "danger")
+			actions.add_child(scrap_button)
+		else:
+			add_listing_controls(card, i, item, potential)
+
+	if not showing_any:
+		var empty_tab = Label.new()
+		empty_tab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if inventory_tab == "listed":
+			empty_tab.text = "Nothing listed yet. Create a listing from the Unlisted tab."
+		else:
+			empty_tab.text = "Nothing unlisted — everything you own is currently listed."
+		body.add_child(empty_tab)
+	else:
+		set_status("Choose your own asking price. Buyer Interest is tied directly to the daily buyer roll.")
+
+func _switch_inventory_tab(tab):
+	inventory_tab = tab
+	show_inventory()
+
+func function_status(item):
+	if not item["testable"]:
+		return "N/A"
+	if not item["tested"]:
+		return "TEST REQUIRED"
+	if item["fault"]:
+		return item["fault_severity"] + " fault"
+	return "Working"
+
+func add_listing_controls(card, index, item, potential):
+	var box = HFlowContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	card.add_child(box)
+	if item["listed"]:
+		var live = RichTextLabel.new()
+		live.bbcode_enabled = true
+		live.fit_content = true
+		live.scroll_active = false
+		live.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		live.text = "LIVE LISTING £%.2f" % item["listing"]
+		box.add_child(live)
+		var unlist = Button.new()
+		unlist.text = "Unlist"
+		unlist.pressed.connect(Callable(self, "unlist_item").bind(index))
+		style_button(unlist, "danger")
+		box.add_child(unlist)
+		var breakdown_live = RichTextLabel.new()
+		breakdown_live.bbcode_enabled = true
+		breakdown_live.fit_content = true
+		breakdown_live.scroll_active = false
+		breakdown_live.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		breakdown_live.add_theme_font_size_override("normal_font_size", 15)
+		breakdown_live.add_theme_color_override("default_color", Color(0.72,0.78,0.85,1.0))
+		breakdown_live.text = format_sale_breakdown(item, float(item["listing"])) + "\n" + format_sale_estimate(item, float(item["listing"]))
+		card.add_child(breakdown_live)
+		return
+
+	var label = Label.new()
+	label.text = "Choose asking price:"
+	box.add_child(label)
+
+	var initial_value = round((float(potential[0]) + float(potential[1])) / 2.0)
+
+	var interest = RichTextLabel.new()
+	interest.bbcode_enabled = true
+	interest.fit_content = true
+	interest.scroll_active = false
+	interest.custom_minimum_size = Vector2(170, 0)
+	interest.text = "Buyer Interest: [color=%s]%s[/color]" % [buyer_interest_color(buyer_interest_label(item, initial_value)), buyer_interest_label(item, initial_value)]
+
+	var breakdown = RichTextLabel.new()
+	breakdown.bbcode_enabled = true
+	breakdown.fit_content = true
+	breakdown.scroll_active = false
+	breakdown.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	breakdown.add_theme_font_size_override("normal_font_size", 15)
+	breakdown.add_theme_color_override("default_color", Color(0.72,0.78,0.85,1.0))
+	breakdown.text = format_sale_breakdown(item, initial_value) + "\n" + format_sale_estimate(item, initial_value)
+
+	var minus_btn = Button.new()
+	minus_btn.text = "-"
+	style_button(minus_btn, "nav")
+	minus_btn.custom_minimum_size = Vector2(40, 36)
+	box.add_child(minus_btn)
+
+	var value_edit = LineEdit.new()
+	value_edit.text = str(int(initial_value))
+	value_edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+	value_edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	value_edit.custom_minimum_size = Vector2(75, 36)
+	box.add_child(value_edit)
+
+	var plus_btn = Button.new()
+	plus_btn.text = "+"
+	style_button(plus_btn, "nav")
+	plus_btn.custom_minimum_size = Vector2(40, 36)
+	box.add_child(plus_btn)
+
+	minus_btn.pressed.connect(Callable(self, "_adjust_listing_price").bind(value_edit, -1.0, float(potential[0]), float(potential[1]), index, interest, breakdown))
+	plus_btn.pressed.connect(Callable(self, "_adjust_listing_price").bind(value_edit, 1.0, float(potential[0]), float(potential[1]), index, interest, breakdown))
+	value_edit.text_submitted.connect(Callable(self, "_on_listing_price_submitted").bind(value_edit, float(potential[0]), float(potential[1]), index, interest, breakdown))
+	value_edit.focus_exited.connect(Callable(self, "_refresh_listing_price").bind(value_edit, float(potential[0]), float(potential[1]), index, interest, breakdown))
+
+	box.add_child(interest)
+
+	var guide = Label.new()
+	if item["deep_researched"]:
+		guide.text = "Researched range"
+	else:
+		guide.text = "Rough range — Deep Research improves confidence"
+	box.add_child(guide)
+
+	card.add_child(breakdown)
+
+	var list_button = Button.new()
+	list_button.text = "Create Listing"
+	list_button.pressed.connect(Callable(self, "create_listing").bind(index, value_edit))
+	list_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	style_button(list_button, "buy")
+	list_button.custom_minimum_size.y = 44
+	card.add_child(list_button)
+
+	var quick_sell_row = HBoxContainer.new()
+	quick_sell_row.add_theme_constant_override("separation", 8)
+	card.add_child(quick_sell_row)
+	var quick_sell_button = Button.new()
+	var quick_sell_low = max(1.0, round(float(potential[0]) * 0.45))
+	var quick_sell_high = max(1.0, round(float(potential[0]) * 0.75))
+	quick_sell_button.text = "Quick Sell £%d-%d" % [quick_sell_low, quick_sell_high]
+	quick_sell_button.tooltip_text = "Instant cash, no listing wait — but well below market value. Rarely, a great buy can still turn a small profit."
+	style_button(quick_sell_button, "danger")
+	quick_sell_button.pressed.connect(Callable(self, "quick_sell_item").bind(index))
+	quick_sell_row.add_child(quick_sell_button)
+
+func _parse_price(text):
+	var cleaned = text.strip_edges()
+	if cleaned == "" or not cleaned.is_valid_float():
+		return 0.0
+	return float(cleaned)
+
+func _refresh_listing_price(value_edit, min_val, max_val, index, interest_label, breakdown_label):
+	var v = clamp(_parse_price(value_edit.text), min_val, max_val)
+	value_edit.text = str(int(v))
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	interest_label.text = "Buyer Interest: [color=%s]%s[/color]" % [buyer_interest_color(buyer_interest_label(item, v)), buyer_interest_label(item, v)]
+	breakdown_label.text = format_sale_breakdown(item, v) + "\n" + format_sale_estimate(item, v)
+
+func _on_listing_price_submitted(submitted_text, value_edit, min_val, max_val, index, interest_label, breakdown_label):
+	_refresh_listing_price(value_edit, min_val, max_val, index, interest_label, breakdown_label)
+
+func _adjust_listing_price(value_edit, delta, min_val, max_val, index, interest_label, breakdown_label):
+	var v = clamp(_parse_price(value_edit.text) + delta, min_val, max_val)
+	value_edit.text = str(int(v))
+	_refresh_listing_price(value_edit, min_val, max_val, index, interest_label, breakdown_label)
+
+func quick_sell_item(index):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	if item["auth_status"] == "Confirmed Counterfeit":
+		set_status("Confirmed counterfeits can't be quick sold — use Scrap instead.")
+		return
+	var potential = estimate_identified_potential(item)
+	var quick_price = max(1.0, round(float(potential[0]) * rng.randf_range(0.45, 0.75)))
+	var profit = quick_price - float(item["paid"])
+	cash += quick_price
+	current_time_minutes += 2
+	carry_used = max(0, carry_used - size_units(item))
+	sold_history.append({"name":item["name"], "price":quick_price, "day":day, "condition":item["condition"], "condition_checked":item["condition_checked"], "paid":item["paid"], "fee":0.0, "postage":0.0, "insurance":0.0, "packaging":0.0, "extra_spend":float(item.get("extra_spend", 0.0))})
+	if family_stats.has(item["name"]):
+		var fs_quick = family_stats[item["name"]]
+		fs_quick["highest_sold"] = max(float(fs_quick["highest_sold"]), quick_price)
+		fs_quick["lifetime_profit"] = float(fs_quick["lifetime_profit"]) + profit
+	total_lifetime_profit += profit
+	if profit > 0.0:
+		day_stats["profitable_sales"] += 1
+	inventory.remove_at(index)
+	var color = Color(0.55,0.85,0.58,1.0) if profit >= 0.0 else Color(0.92,0.55,0.45,1.0)
+	set_status("Quick Sold — £%.2f — Profit %+.2f" % [quick_price, profit], color)
+	queue_popup("Item Quick Sold: %s — £%.2f" % [item["name"], quick_price], "success")
+	save_game()
+	show_inventory()
+
+func format_sale_breakdown(item, price):
+	var costs = selling_costs(item, price)
+	var insurance_pack = float(costs["insurance"]) + float(costs["packaging"])
+	var total_costs = float(costs["fee"]) + float(costs["postage"]) + insurance_pack
+	var net = price - total_costs
+	var extra_spend = float(item.get("extra_spend", 0.0))
+	var profit = net - float(item["paid"]) - extra_spend
+	var profit_color = "#8cd98f" if profit >= 0.0 else "#e88c7a"
+	var extra_line = ""
+	if extra_spend > 0.0:
+		extra_line = "  ->  Research/Test/Auth spend -£%.2f" % extra_spend
+	return "Asking £%.2f  ->  Fee £%.2f, Postage £%.2f, Ins./Packaging £%.2f  ->  Net after sale £%.2f%s  ->  Profit [color=%s]£%+.2f[/color]" % [price, costs["fee"], costs["postage"], insurance_pack, net, extra_line, profit_color, profit]
+
+func buyer_interest_color(label_text):
+	if label_text == "VERY HIGH" or label_text == "HIGH":
+		return "#8cd98f"
+	elif label_text == "AVERAGE":
+		return "#e0c96e"
+	else:
+		return "#e88c7a"
+
+func format_sale_estimate(item, price):
+	var interest = buyer_interest_score(item, price)
+	var chance = clamp(0.05 + interest * 0.47, 0.04, 0.55)
+	var expected_days = max(1, int(round(1.0 / chance)))
+	return "Est. time to sell ~%d day%s at %d%% daily chance." % [expected_days, "" if expected_days == 1 else "s", int(round(chance * 100.0))]
+
+func fault_is_known(item):
+	if item["testable"]:
+		return item["tested"]
+	return item["condition_checked"]
+
+func gamble_hint_chance(item):
+	var potential = estimate_identified_potential(item)
+	var center = (float(potential[0]) + float(potential[1])) / 2.0
+	var value_ratio = clamp(float(item["asking"]) / max(1.0, center), 0.3, 2.5)
+	return clamp(0.06 + (value_ratio - 0.8) * 0.20, 0.04, 0.32)
+
+func estimate_identified_potential(item):
+	var center = float(item["true_value"]) * float(item["identified_mult"]) * float(current_trends.get(item["category"], 1.0))
+	if item["condition_checked"]:
+		center *= lerp(0.62, 1.38, float(item["condition"] - 3) / 7.0)
+	if item["auth_status"] == "Unauthenticated" and float(item["true_value"]) > 80.0:
+		center *= 0.88
+	if item["fault"] and fault_is_known(item):
+		center *= fault_multiplier(item["fault_severity"])
+	if item["testable"] and item["tested"] and not item["fault"]:
+		center *= 1.12
+	var spread_low = 0.68
+	var spread_high = 1.28
+	if item["basic_researched"]:
+		spread_low = 0.74
+		spread_high = 1.22
+	if item["deep_researched"]:
+		spread_low = 0.82
+		spread_high = 1.16
+	var low = int(max(1.0, center * spread_low))
+	var high = int(max(float(low) + 1.0, center * spread_high))
+	return [low, high]
+
+func inventory_check_condition(index):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	if item["condition_checked"]:
+		set_status("Condition has already been checked.")
+		return
+	var cc_cost = condition_cost()
+	if cash < cc_cost or energy < 4:
+		set_status("Need £%d and E4." % int(cc_cost))
+		return
+	cash -= cc_cost
+	item["extra_spend"] += cc_cost
+	energy -= 4
+	current_time_minutes += 5
+	day_stats["research"] += cc_cost
+	var before_check = estimate_identified_potential(item)
+	item["condition_checked"] = true
+	item["action_order"].append("condition")
+	update_family_condition(item)
+	day_stats["condition_checks"] += 1
+	var after_check = estimate_identified_potential(item)
+	var before_center = (float(before_check[0]) + float(before_check[1])) / 2.0
+	var after_center = (float(after_check[0]) + float(after_check[1])) / 2.0
+	var change_word = "increased" if after_center >= before_center else "decreased"
+	var reveal_roll = rng.randf()
+	item["condition_price_note"] = "[color=#e08fd0]Chance 100%% | Rolled %.2f%%[/color] | Result: Revealed — %d/10. Selling price %s: £%d–£%d -> £%d–£%d." % [reveal_roll * 100.0, item["condition"], change_word, before_check[0], before_check[1], after_check[0], after_check[1]]
+	apply_price_highlight(item, "condition", float(before_check[1]), float(after_check[1]))
+	var message = "CONDITION CHECK COMPLETE — Condition %d/10." % item["condition"]
+	if item["testable"]:
+		message += " Function remains unknown until testing."
+	elif item["fault"]:
+		message += " It also reveals a hidden flaw: %s." % item["fault_severity"]
+	else:
+		message += " No hidden defects found."
+	set_status(message)
+	show_inventory()
+
+func inventory_basic_research(index):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	if item["basic_researched"]:
+		set_status("Research already completed once for this item.")
+		return
+	var rc_cost = research_cost()
+	if cash < rc_cost or energy < 2:
+		set_status("Need £%.2f and E2." % rc_cost)
+		return
+	cash -= rc_cost
+	item["extra_spend"] += rc_cost
+	energy -= 2
+	current_time_minutes += 4
+	day_stats["research"] += rc_cost
+	day_stats["researches_done"] += 1
+	var research_before = estimate_identified_potential(item)
+	item["basic_researched"] = true
+	item["action_order"].append("research")
+	item["basic_comps"] = make_comps(item, false)
+	apply_price_highlight(item, "research", float(research_before[1]), float(item["basic_comps_max"]))
+	show_inventory()
+
+func deep_research(index):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	if item["deep_researched"]:
+		set_status("Deep Research has already been completed once.")
+		return
+	var dr_cost = max(4.0, round(float(item["asking"]) * 0.35))
+	if cash < dr_cost or energy < 12:
+		set_status("Need £%d and E12." % int(dr_cost))
+		return
+	var before = estimate_identified_potential(item)
+	cash -= dr_cost
+	item["extra_spend"] += dr_cost
+	energy -= 12
+	current_time_minutes += 20
+	day_stats["research"] += dr_cost
+	day_stats["deep_researches_done"] += 1
+	item["deep_researched"] = true
+	item["action_order"].append("deep_research")
+
+	var knowledge = float(category_knowledge.get(item["category"], 5))
+	var chance = clamp(0.28 + knowledge / 180.0, 0.28, 0.78)
+	var roll = rng.randf()
+	var success = roll < chance
+	record_rng("Deep research discovery chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [chance * 100.0, roll * 100.0, "DISCOVERY" if success else "NO MAJOR DISCOVERY"])
+
+	var reason = "No new info."
+	if success:
+		if item["hidden_special"] != "" and not item["special_discovered"]:
+			item["special_discovered"] = true
+			if item["special_genuine"]:
+				item["identified_mult"] *= 1.55
+				if family_stats.has(item["name"]):
+					family_stats[item["name"]]["specials_found"][item["hidden_special"]] = true
+			else:
+				item["identified_mult"] *= 0.92
+			reason = "Possible hidden special: %s." % item["hidden_special"]
+		else:
+			var up = rng.randf() > 0.42
+			if up:
+				item["identified_mult"] *= rng.randf_range(1.12, 1.45)
+				reason = "More desirable variant identified."
+			else:
+				item["identified_mult"] *= rng.randf_range(0.55, 0.85)
+				reason = "Common/reissue version identified."
+
+	var after = estimate_identified_potential(item)
+	var rare_text = ""
+	var rare_roll = rng.randf()
+	var rare_mult = 1.0
+	var rare_tier = ""
+	var total_chance = 0.20
+	if item["basic_researched"]:
+		total_chance = clamp(float(item["locked_gamble_hint"]), 0.04, 0.32)
+	if has_skill("Deep Pockets"):
+		total_chance = min(0.45, total_chance * 1.25)
+	var exceptional_cut = total_chance * 0.05
+	var significant_cut = total_chance * 0.20
+	if rare_roll < exceptional_cut:
+		rare_mult = rng.randf_range(3.5, 6.0)
+		rare_tier = "EXCEPTIONAL rare variant"
+	elif rare_roll < exceptional_cut + significant_cut:
+		rare_mult = rng.randf_range(2.3, 3.2)
+		rare_tier = "significant rare variant"
+	elif rare_roll < total_chance:
+		rare_mult = rng.randf_range(1.6, 2.2)
+		rare_tier = "rare variant"
+	record_rng("Deep research rare-variant chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [total_chance * 100.0, rare_roll * 100.0, ("%s x%.1f" % [rare_tier, rare_mult]) if rare_mult > 1.0 else "no rare variant"])
+	if rare_mult > 1.0:
+		item["true_value"] = float(item["true_value"]) * rare_mult
+		after = estimate_identified_potential(item)
+		rare_text = " Rare variant found (x%.1f)!" % rare_mult
+		item["rare_variant_hit"] = true
+		item["rare_variant_roll_pct"] = rare_roll * 100.0
+		item["rare_variant_tier"] = rare_tier
+		item["rare_variant_mult"] = rare_mult
+		add_xp(10)
+
+	item["research_note"] = "Deep Research — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] | Result: %s%s Range £%d–£%d -> £%d–£%d." % [chance * 100.0, roll * 100.0, reason, rare_text, before[0], before[1], after[0], after[1]]
+	apply_price_highlight(item, "deep_research", float(before[1]), float(after[1]))
+	show_inventory()
+
+func test_item(index):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	if item["tested"]:
+		set_status("Testing has already been completed once.")
+		return
+	if cash < 2.0 or energy < 5:
+		set_status("Need £2 and E5.")
+		return
+	var before = estimate_identified_potential(item)
+	cash -= 2.0
+	item["extra_spend"] += 2.0
+	energy -= 5
+	current_time_minutes += 10
+	day_stats["research"] += 2.0
+	item["tested"] = true
+	item["action_order"].append("test")
+
+	var result_text = "WORKING"
+	if item["fault"]:
+		result_text = item["fault_severity"] + " FAULT"
+	var plain_line = "Fault chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [item["fault_chance"] * 100.0, item["fault_roll"] * 100.0, result_text]
+	record_rng(plain_line)
+	var colored_line = "[color=#e08fd0]Fault chance: %.1f%% | Rolled: %.2f%%[/color] | Result: %s" % [item["fault_chance"] * 100.0, item["fault_roll"] * 100.0, result_text]
+	var after = estimate_identified_potential(item)
+	item["test_note"] = "Test Complete — %s. Selling price %s: £%d–£%d -> £%d–£%d." % [colored_line, ("decreased" if after[1] < before[1] else "unchanged"), before[0], before[1], after[0], after[1]]
+	show_inventory()
+
+func fault_multiplier(severity):
+	if severity == "Minor":
+		return 0.85
+	if severity == "Moderate":
+		return 0.64
+	if severity == "Major":
+		return 0.42
+	if severity == "Dead":
+		return 0.24
+	return 1.0
+
+func authentication_cost(item):
+	var cost = 18.0
+	if float(item["true_value"]) > 150.0:
+		cost = 32.0
+	if item["special_discovered"] and item["hidden_special"] != "":
+		cost += 42.0
+	return cost
+
+func authentication_accuracy(item):
+	var cost = authentication_cost(item)
+	var accuracy = 0.84
+	if cost >= 32.0:
+		accuracy = 0.92
+	if item["special_discovered"] and item["hidden_special"] != "":
+		accuracy = 0.96
+	return accuracy
+
+func authenticate_item(index):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	if item["auth_attempted"]:
+		set_status("Authentication has already been attempted once.")
+		return
+	var cost = authentication_cost(item)
+	if cash < cost or energy < 6:
+		set_status("Need £%.0f and E6." % cost)
+		return
+	cash -= cost
+	item["extra_spend"] += cost
+	energy -= 6
+	current_time_minutes += 15
+	day_stats["authentication"] += cost
+	day_stats["authentications_done"] += 1
+	item["auth_attempted"] = true
+	item["action_order"].append("authenticate")
+
+	var accuracy = authentication_accuracy(item)
+	var roll = rng.randf()
+	var success = roll < accuracy
+	var plain_line = "Accuracy: %.0f%% | Rolled: %.2f%% | Result: %s" % [accuracy * 100.0, roll * 100.0, "SUCCESS" if success else "INCONCLUSIVE"]
+	var line = "[color=#e08fd0]Accuracy: %.0f%% | Rolled: %.2f%%[/color] | Result: %s" % [accuracy * 100.0, roll * 100.0, "SUCCESS" if success else "INCONCLUSIVE"]
+	record_rng(plain_line)
+	if success:
+		if item["authentic"]:
+			item["auth_status"] = "Confirmed Genuine"
+		else:
+			item["auth_status"] = "Confirmed Counterfeit"
+			item["identified_mult"] *= 0.10
+			unlock_achievement("Should've Known Better")
+	else:
+		item["auth_status"] = "Inconclusive"
+	item["auth_note"] = "%s — %s" % [line, item["auth_status"]]
+	add_xp(3)
+	set_status("AUTHENTICATION COMPLETE — %s. This one-time attempt cannot be rerolled." % item["auth_status"])
+	show_inventory()
+
+func repair_cost(item):
+	if item["fault_severity"] == "Minor":
+		return 5.0
+	if item["fault_severity"] == "Moderate":
+		return 10.0
+	if item["fault_severity"] == "Major":
+		return 18.0
+	return 25.0
+
+func repair_item(index):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	if toolbox_level <= 0:
+		set_status("Buy a Toolbox in the Shop first.")
+		return
+	if item["repair_attempted"]:
+		set_status("You've already attempted this repair once.")
+		return
+	var cost = repair_cost(item)
+	if cash < cost or energy < 10:
+		set_status("Need £%.0f and E10." % cost)
+		return
+	cash -= cost
+	item["extra_spend"] += cost
+	energy -= 10
+	current_time_minutes += 30
+	day_stats["repairs"] += cost
+	day_stats["repairs_done"] += 1
+	item["repair_attempted"] = true
+
+	var base_chance = 0.62
+	if item["fault_severity"] == "Moderate":
+		base_chance = 0.48
+	elif item["fault_severity"] == "Major":
+		base_chance = 0.30
+	elif item["fault_severity"] == "Dead":
+		base_chance = 0.16
+	var chance = clamp(base_chance + float(toolbox_upgrades[toolbox_level]["bonus"]), 0.05, 0.90)
+	var roll = rng.randf()
+	var success = roll < chance
+	record_rng("Repair success chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [chance * 100.0, roll * 100.0, "SUCCESS" if success else "FAILED"])
+	if success:
+		if item["fault_severity"] == "Minor" or item["fault_severity"] == "Moderate":
+			item["fault"] = false
+			item["fault_severity"] = "None"
+		elif item["fault_severity"] == "Major":
+			item["fault_severity"] = "Minor"
+		else:
+			item["fault_severity"] = "Moderate"
+	item["repair_note"] = "Repair — [color=#e08fd0]Chance %.0f%% | Rolled %.2f%%[/color] — %s. %s" % [chance * 100.0, roll * 100.0, ("SUCCESS" if success else "FAILED"), function_status(item)]
+	add_xp(3)
+	show_inventory()
+
+func buyer_interest_score(item, price):
+	var potential = estimate_identified_potential(item)
+	var low = float(potential[0])
+	var high = float(potential[1])
+	var span = max(1.0, high - low)
+	var position = clamp((price - low) / span, 0.0, 1.0)
+	var score = 0.92 - position * 0.70
+	score *= lerp(1.0, float(current_trends.get(item["category"], 1.0)), 0.5)
+	if item["condition"] >= 8:
+		score *= 1.08
+	elif item["condition"] <= 4:
+		score *= 0.90
+	if item["auth_status"] == "Confirmed Genuine":
+		score *= 1.10
+	elif item["auth_status"] == "Unauthenticated" and item["fake_chance"] >= 0.08:
+		score *= 0.88
+	if item["one_in"] >= 500:
+		score *= 1.08
+	var checks_done = 0
+	var checks_total = 4
+	if item["condition_checked"]:
+		checks_done += 1
+	if item["basic_researched"]:
+		checks_done += 1
+	if item["deep_researched"]:
+		checks_done += 1
+	if item["auth_attempted"]:
+		checks_done += 1
+	if item["testable"]:
+		checks_total += 1
+		if item["tested"]:
+			checks_done += 1
+	score *= lerp(0.90, 1.14, float(checks_done) / float(checks_total))
+	return clamp(score, 0.08, 0.98)
+
+func buyer_interest_label(item, price):
+	var score = buyer_interest_score(item, price)
+	if score >= 0.78:
+		return "VERY HIGH"
+	if score >= 0.62:
+		return "HIGH"
+	if score >= 0.45:
+		return "AVERAGE"
+	if score >= 0.28:
+		return "LOW"
+	return "VERY LOW"
+
+func create_listing(index, value_edit):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	if item["auth_status"] == "Confirmed Counterfeit":
+		set_status("Confirmed counterfeit items cannot be listed normally.")
+		return
+	if item["testable"] and not item["tested"]:
+		queue_popup("You need to test this item first.")
+		return
+	var potential = estimate_identified_potential(item)
+	var price = clamp(_parse_price(value_edit.text), float(potential[0]), float(potential[1]))
+	item["listing"] = price
+	item["listed"] = true
+	var interest = buyer_interest_score(item, price)
+	var instant_chance = clamp(0.04 + interest * 0.22, 0.02, 0.30)
+	var result = resolve_item_sale(item, instant_chance)
+	if result == "sold_removed":
+		inventory.remove_at(index)
+	elif result == "returned":
+		set_status("Sold instantly, then returned — %s is back in your inventory, unlisted." % item["name"])
+	else:
+		queue_popup("Item Listed!", "success")
+		set_status("LISTED %s at £%.2f — Buyer Interest %s." % [item["name"], price, buyer_interest_label(item, price)])
+	show_inventory()
+
+func unlist_item(index):
+	if index >= inventory.size():
+		return
+	var item_name = inventory[index]["name"]
+	inventory[index]["listed"] = false
+	inventory[index]["listing"] = 0.0
+	queue_popup("Item Delisted: %s" % item_name)
+	set_status("Listing removed.")
+	show_inventory()
+
+func scrap_item(index):
+	if index >= inventory.size():
+		return
+	var item = inventory[index]
+	var recovery = max(1.0, round(float(item["paid"]) * rng.randf_range(0.04, 0.18)))
+	cash += recovery
+	day_stats["items_scrapped"] += 1
+	carry_used = max(0, carry_used - size_units(item))
+	inventory.remove_at(index)
+	unlock_achievement("Better Than Nothing")
+	set_status("Recovered £%.2f from scrap/parts." % recovery)
+	show_inventory()
+
+func selling_costs(item, sale_price):
+	var fee = sale_price * float(fee_upgrades[fee_level]["fee"])
+	var postage = 2.70
+	if item["size"] == "medium":
+		postage = 5.20
+	elif item["size"] == "large":
+		postage = 8.50
+	if sale_price < 10.0:
+		postage *= 0.45
+	elif sale_price < 20.0:
+		postage *= 0.65
+	elif sale_price < 35.0:
+		postage *= 0.85
+	var insurance = 0.0
+	if sale_price >= 100.0:
+		insurance = 3.50
+	if sale_price >= 250.0:
+		insurance = 6.50
+	var packaging = 0.80
+	if item["size"] == "medium":
+		packaging = 1.50
+	elif item["size"] == "large":
+		packaging = 2.50
+	return {"fee":fee, "postage":postage, "insurance":insurance, "packaging":packaging}
+
+func resolve_item_sale(item, sale_chance):
+	var sale_roll = rng.randf()
+	var sold = sale_roll < sale_chance
+	record_rng("Buyer chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [sale_chance * 100.0, sale_roll * 100.0, "SOLD" if sold else "NO SALE"])
+	if not sold:
+		return "no_sale"
+	var sale_price = float(item["listing"])
+	var costs = selling_costs(item, sale_price)
+	var net = sale_price - costs["fee"] - costs["postage"] - costs["insurance"] - costs["packaging"]
+	cash += net
+	day_stats["sales_revenue"] += sale_price
+	day_stats["fees"] += costs["fee"]
+	day_stats["postage"] += costs["postage"] + costs["insurance"] + costs["packaging"]
+	day_stats["items_sold"] += 1
+
+	var return_chance = 0.02
+	if item["auth_status"] == "Unauthenticated":
+		return_chance += float(item["fake_chance"]) * 0.55
+	if not item["authentic"] and item["auth_status"] == "Unauthenticated":
+		return_chance += 0.18
+	if item["fault"]:
+		if fault_is_known(item):
+			return_chance += 0.06
+		else:
+			return_chance += 0.14
+	if not item["condition_checked"]:
+		return_chance += 0.12
+	var return_roll = rng.randf()
+	var returned = return_roll < return_chance
+	record_rng("Buyer return chance: %.2f%% | Rolled: %.2f%% | Result: %s" % [return_chance * 100.0, return_roll * 100.0, "RETURN" if returned else "NO RETURN"])
+	if returned:
+		cash -= sale_price
+		day_stats["returns"] += 1
+		item["listed"] = false
+		return "returned"
+	sold_history.append({"name":item["name"], "price":sale_price, "day":day, "condition":item["condition"], "condition_checked":item["condition_checked"], "paid":item["paid"], "fee":costs["fee"], "postage":costs["postage"], "insurance":costs["insurance"], "packaging":costs["packaging"], "extra_spend":float(item.get("extra_spend", 0.0))})
+	carry_used = max(0, carry_used - size_units(item))
+	var sale_profit = net - float(item["paid"]) - float(item.get("extra_spend", 0.0))
+	add_xp(3 + (3 if sale_profit > 0.0 else 0))
+	if family_stats.has(item["name"]):
+		var fs_sale = family_stats[item["name"]]
+		fs_sale["highest_sold"] = max(float(fs_sale["highest_sold"]), sale_price)
+		fs_sale["lifetime_profit"] = float(fs_sale["lifetime_profit"]) + sale_profit
+	total_lifetime_profit += sale_profit
+	if sale_profit > 0.0:
+		day_stats["profitable_sales"] += 1
+	queue_popup("Item Sold: %s — £%.2f — Profit %+.2f" % [item["name"], sale_price, sale_profit], "success")
+	save_game()
+	if sale_price - item["paid"] > 0:
+		unlock_achievement("First Flip")
+	return "sold_removed"
+
+func process_sales():
+	var to_remove = []
+	for i in range(inventory.size()):
+		var item = inventory[i]
+		if not item["listed"]:
+			continue
+		var interest = buyer_interest_score(item, float(item["listing"]))
+		var chance = clamp(0.05 + interest * 0.47, 0.04, 0.55)
+		var result = resolve_item_sale(item, chance)
+		if result == "sold_removed":
+			to_remove.append(i)
+	for j in range(to_remove.size() - 1, -1, -1):
+		inventory.remove_at(to_remove[j])
+
+func package_budget(tier):
+	if tier == "Poor":
+		return rng.randf_range(5, 20)
+	if tier == "Average":
+		return rng.randf_range(18, 35)
+	if tier == "Good":
+		return rng.randf_range(35, 60)
+	if tier == "Excellent":
+		return rng.randf_range(60, 120)
+	if tier == "Jackpot":
+		return rng.randf_range(150, 400)
+	return rng.randf_range(500, 900)
+
+func buy_mystery_package():
+	if mystery_packages_left <= 0:
+		set_status("No Mystery Packages left today.")
+		return
+	if cash < 30.0:
+		set_status("You need £30.")
+		return
+	if inventory_space_used() + 2 > int(storage_upgrades[storage_level]["capacity"]):
+		set_status("You need at least 2 free storage space before opening a package.")
+		return
+	cash -= 30.0
+	day_stats["buy_spend"] += 30.0
+	mystery_packages_left -= 1
+
+	var roll = rng.randf()
+	var cumulative = 0.0
+	var tier = "Poor"
+	for row in get_package_chances():
+		cumulative += row["chance"]
+		if roll <= cumulative:
+			tier = row["tier"]
+			break
+	record_rng("Mystery Package tier roll | Rolled: %.2f%% | Result: %s" % [roll * 100.0, tier])
+
+	var count = 1
+	if rng.randf() < 0.30:
+		count = 2
+	var budget = package_budget(tier)
+	var contents = []
+	for i in range(count):
+		var source = "House Clearance"
+		if tier == "Excellent" or tier == "Jackpot" or tier == "Grail":
+			source = "Collector"
+		var item = generate_item(source)
+		var share = budget / float(count) * rng.randf_range(0.85, 1.15)
+		item["true_value"] = max(1.0, share)
+		item["paid"] = 30.0 / float(count)
+		inventory.append(item)
+		register_collection(item)
+		contents.append(item["name"])
+	set_status("MYSTERY PACKAGE — %s tier | %d item(s) | Contents: %s" % [tier, count, ", ".join(contents)])
+	update_header()
+
+func show_trends():
+	current_screen_name = "show_trends"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "MARKET & TRENDS — Week %d | %s" % [current_week, get_season_name()]
+	body.add_child(title)
+	var intro = Label.new()
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	intro.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	intro.text = "Public market signals affect selling potential and Buyer Interest. Future changes remain hidden."
+	body.add_child(intro)
+	for category in current_trends.keys():
+		var mult = float(current_trends[category])
+		var direction = "-> STEADY"
+		if mult >= 1.10:
+			direction = "^ HOT"
+		elif mult >= 1.03:
+			direction = "^ RISING"
+		elif mult <= 0.90:
+			direction = "v WEAK"
+		elif mult <= 0.97:
+			direction = "v COOLING"
+		var line = Label.new()
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.text = "%-13s %s %+.0f%%" % [category, direction, (mult - 1.0) * 100.0]
+		body.add_child(line)
+	var chatter = Label.new()
+	chatter.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	chatter.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chatter.add_theme_font_size_override("font_size", 16)
+	chatter.text = "MARKET CHATTER"
+	body.add_child(chatter)
+	for headline in trend_headlines:
+		var line = Label.new()
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.text = "• " + headline
+		body.add_child(line)
+
+func show_shop():
+	current_screen_name = "show_shop"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "SHOP & UPGRADES"
+	body.add_child(title)
+	var upkeep_note = Label.new()
+	upkeep_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	upkeep_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	upkeep_note.text = "Current daily business upkeep: £%.2f (scales with total upgrade levels owned — a bigger operation costs more to run every day, on top of rent)." % compute_upkeep()
+	upkeep_note.add_theme_color_override("font_color", Color(0.85,0.68,0.55,1.0))
+	body.add_child(upkeep_note)
+	add_upgrade_card("Car Boot Carrying", bag_upgrades, bag_level, "bag")
+	add_upgrade_card("Home Storage", storage_upgrades, storage_level, "storage")
+	add_upgrade_card("Repair Tools", toolbox_upgrades, toolbox_level, "toolbox")
+	add_upgrade_card("Inspect Skill", eye_upgrades, eye_level, "eye")
+	add_upgrade_card("Selling Fees", fee_upgrades, fee_level, "fee")
+	add_scaling_upgrade_card("Package Insight", package_insight_level, PACKAGE_INSIGHT_MAX, package_insight_cost(package_insight_level), "Shifts Mystery Package odds away from Poor and into better tiers. Current: Poor reduced by %d%%, redistributed mostly to Average/Good." % package_insight_level, "package_insight")
+	add_scaling_upgrade_card("Persuasion Knowledge", persuasion_level, PERSUASION_MAX, persuasion_cost(persuasion_level), "A flat bonus to your acceptance chance on every haggle offer. Current: +%d%%." % persuasion_level, "persuasion")
+
+func add_scaling_upgrade_card(title, level, max_level, cost, description, kind, target = null):
+	if target == null:
+		target = body
+	var panel = make_card()
+	target.add_child(panel)
+	var box = VBoxContainer.new()
+	panel.add_child(box)
+	var head = Label.new()
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_theme_font_size_override("font_size", 17)
+	head.text = "%s — Level %d/%d" % [title, level, max_level]
+	box.add_child(head)
+	var desc = Label.new()
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	desc.text = description
+	box.add_child(desc)
+	if level < max_level:
+		var button = Button.new()
+		button.text = "Upgrade to Level %d — £%.0f" % [level + 1, cost]
+		button.pressed.connect(Callable(self, "buy_scaling_upgrade").bind(kind))
+		style_button(button, "buy")
+		box.add_child(button)
+	else:
+		var maxed = Label.new()
+		maxed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		maxed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		maxed.text = "MAX LEVEL"
+		box.add_child(maxed)
+
+func buy_scaling_upgrade(kind):
+	var level = 0
+	var max_level = 0
+	var cost = 0.0
+	if kind == "package_insight":
+		level = package_insight_level
+		max_level = PACKAGE_INSIGHT_MAX
+		cost = package_insight_cost(level)
+	else:
+		level = persuasion_level
+		max_level = PERSUASION_MAX
+		cost = persuasion_cost(level)
+	if level >= max_level:
+		return
+	if cash < cost:
+		set_status("You need £%.0f for that upgrade." % cost)
+		return
+	cash -= cost
+	if kind == "package_insight":
+		package_insight_level += 1
+	else:
+		persuasion_level += 1
+	set_status("UPGRADE PURCHASED.")
+	save_game()
+	show_shop()
+
+func add_upgrade_card(title, data, level, kind, target = null):
+	if target == null:
+		target = body
+	var panel = make_card()
+	target.add_child(panel)
+	var box = VBoxContainer.new()
+	panel.add_child(box)
+	var head = Label.new()
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_theme_font_size_override("font_size", 17)
+	head.text = title + " — Current: " + str(data[level]["name"])
+	box.add_child(head)
+	var description = Label.new()
+	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	description.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if kind == "bag":
+		description.text = "Capacity %d per car-boot day. Small=1, Medium=2, Large=4." % data[level]["capacity"]
+	elif kind == "storage":
+		description.text = "Home inventory capacity %d space." % data[level]["capacity"]
+	elif kind == "eye":
+		description.text = "Inspect accuracy %d%%. An Inspect can still be wrong and never reveals exact Condition." % int(float(data[level]["accuracy"]) * 100.0)
+	elif kind == "fee":
+		description.text = "Platform fee %.1f%% on every sale. Lower fees compound the more you sell." % (float(data[level]["fee"]) * 100.0)
+	else:
+		description.text = "Unlocks repair RNG and improves repair chance by +%d%%." % int(float(data[level]["bonus"]) * 100.0)
+	box.add_child(description)
+	if level < data.size() - 1:
+		var next = data[level + 1]
+		var button = Button.new()
+		button.text = "Upgrade to %s — £%.0f" % [next["name"], next["cost"]]
+		button.pressed.connect(Callable(self, "buy_upgrade").bind(kind))
+		style_button(button, "buy")
+		box.add_child(button)
+	else:
+		var maxed = Label.new()
+		maxed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		maxed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		maxed.text = "MAX UPGRADE"
+		box.add_child(maxed)
+
+func buy_upgrade(kind):
+	var data = []
+	var level = 0
+	if kind == "bag":
+		data = bag_upgrades
+		level = bag_level
+	elif kind == "storage":
+		data = storage_upgrades
+		level = storage_level
+	elif kind == "eye":
+		data = eye_upgrades
+		level = eye_level
+	elif kind == "fee":
+		data = fee_upgrades
+		level = fee_level
+	else:
+		data = toolbox_upgrades
+		level = toolbox_level
+	if level >= data.size() - 1:
+		return
+	var cost = float(data[level + 1]["cost"])
+	if cash < cost:
+		set_status("You need £%.0f for that upgrade." % cost)
+		return
+	cash -= cost
+	if kind == "bag":
+		bag_level += 1
+	elif kind == "storage":
+		storage_level += 1
+	elif kind == "eye":
+		eye_level += 1
+	elif kind == "fee":
+		fee_level += 1
+	else:
+		toolbox_level += 1
+	set_status("UPGRADE PURCHASED.")
+	save_game()
+	show_shop()
+
+var patch_notes = [
+	{"version": "v53", "notes": [
+		"Fixed a real mobile bug: the Skill Tree's 3 categories side-by-side didn't fit mobile screen width, cutting off the Fortune column, Storage stat, and the legend text entirely. Categories now stack vertically, each getting the full screen width — should display correctly on mobile now",
+		"Added a subtle divider between the stacked categories for clearer separation",
+	]},
+	{"version": "v52", "notes": [
+		"Added per-category icons (Clothing, Games, Pokemon, Electronics, Home, Vinyl, Cameras, Tools, Collectables, Jewellery, Books, Musical Instruments, Garden & Outdoor) shown next to the category text on both the stall page and Inventory item cards",
+	]},
+	{"version": "v51", "notes": [
+		"Grail-tier finds (1-in-5000) now get a distinct visual treatment — a glowing gold border and shadow on the item card, plus a 'GRAIL FIND' badge — on the stall page, Inventory, and the Collection Log's Grails view",
+	]},
+	{"version": "v50", "notes": [
+		"Added 12 new item families (84 total, up from 72): 9 are seasonal (Christmas Decorations/Jumper, Winter Coat in Winter; Garden Furniture, BBQ Set, Paddling Pool in Summer; Halloween Costume, Fireworks Display Box in Autumn; Easter Decorations in Spring), 3 are year-round (Antique Mirror, Leather Satchel, Board Game Collection)",
+		"Seasons now actually restrict availability, not just pricing — seasonal items only appear during their matching season, at any seller who stocks that category. This applies everywhere items are generated: stalls, Mystery Packages, and side deal special offers",
+		"Collection Log automatically scales to the new total (84 families x 5 rarity tiers = 420 possible discoveries) since it reads the item list dynamically rather than a hardcoded count",
+	]},
+	{"version": "v49", "notes": [
+		"Cross-system audit pass: checked skill/level/challenge interactions across the whole game",
+		"Fixed: Deep Pockets' +25% Deep Research odds bonus wasn't reflected in either odds preview (stall page's Researched box, Inventory's Deep Research button) — the real roll already included it, but players with the skill saw a lower percentage than they actually got",
+		"Confirmed clean (no issues found): save/load covers every persistent stat correctly, all 11 Daily Challenge types match real tracked stats, all 9 achievements are correctly wired both ways, all 5 Level Unlock tiers match their implementation, no stale seller names remain, no popups bypass the queue system, and haggle/Inspect/Condition/Research displays all correctly reflect their skill bonuses",
+	]},
+	{"version": "v48", "notes": [
+		"Ran a full economy check now that Level Unlocks, Skill Tree, Daily Challenges, and Fixer's Gamble all exist together — found a real drift: a player using every system was accumulating ~62% more wealth over 60 days than the core trading loop alone intended",
+		"Isolated the cause: Daily Challenges' cash rewards were doing almost all of it (+52% alone), while Level Unlocks (+0%), Skill Tree (+13%), and Fixer's Gamble (+11%) were all fine on their own",
+		"Reduced Daily Challenge rewards: £15 -> £8 per individual challenge, £75 -> £40 for completing all of them — simulated result: drift drops from +46% to a much more reasonable +24%",
+	]},
+	{"version": "v47", "notes": [
+		"Save codes were huge because they were just base64 of raw JSON with no compression — added gzip compression before encoding, which cut a realistic save code from ~33,000 characters down to ~1,700 in testing (a ~95% reduction), with zero data loss",
+	]},
+	{"version": "v46", "notes": [
+		"Added Export/Import Save Code in the More tab — generates a text code containing your full save, copies it to your clipboard automatically, and shows it in a field you can select/copy manually as a fallback",
+		"Paste a save code into the Import field and press Load Save Code to restore progress on another device or browser — bridges the gap until real cloud saves exist",
+		"Importing a code overwrites your current progress, so treat it like loading a save file",
+	]},
+	{"version": "v45", "notes": [
+		"Cash pill now actually turns red when your balance goes negative, not just the text inside it — matches the £-42.25 case shown in feedback",
+		"Energy and Level header chips got their own distinct accent colors (teal and purple) instead of flat grey, matching Cash/Carry/Storage's treatment",
+		"Item names in cards are now noticeably bigger than the details below them, for clearer visual hierarchy",
+		"Disabled buttons (like an unaffordable Fixer's Gamble wager) are now clearly dimmed instead of looking nearly identical to active ones",
+		"Added a second, larger-scale background texture layer for more visual depth",
+	]},
+	{"version": "v44", "notes": [
+		"Rebuilt the Skill Tree to actually look like a tree — circular node buttons in 3 columns (one per category), color-coded green/gold/grey for unlocked/ready/locked, connected by visual bars showing prerequisite relationships",
+		"Tap a node to see what it does, use the small button below it to unlock",
+	]},
+	{"version": "v43", "notes": [
+		"Added a Skill Tree — 9 skills across 3 categories (Trading, Appraisal, Fortune), spent using Skill Points earned at 1 per level, separate from the existing automatic Level Unlocks",
+		"Trading: Sharp Tongue/Silver Tongue (+8%/+18% haggle success), Bulk Buyer (+1 Carry slot)",
+		"Appraisal: Keen Eye (+10% Inspect accuracy), Efficient Research (-20% Condition/Research cost), Deep Pockets (+25% Deep Research rare-variant odds)",
+		"Fortune: Lucky Streak (Fixer's Gamble 47% -> 51%), Frugal Living (-15% upkeep), Golden Touch (+8% XP)",
+		"Some skills require an earlier skill in their branch first — accessible from a new Skill Tree button in the More tab",
+	]},
+	{"version": "v42", "notes": [
+		"Major rebalance based on simulated play: sellers were wildly unbalanced (Clueless Seller was ~10x more profitable than any other seller; Collector and Dealer actually lost money despite their better rarity odds) and Deep Research had gone negative-EV after an earlier nerf, making it never worth using",
+		"Fixed the root cause for Collector/Dealer: their accurate pricing meant bargains almost never appeared for their rarity bonus to ever pay off. Widened the general pricing variance so even accurate sellers occasionally produce real bargains",
+		"Clueless Seller's pricing knowledge raised (0.16 -> 0.40) — still the most likely to underprice, but no longer absurdly dominant over every other seller",
+		"Deep Research cost now scales with the item's price (roughly 35% of asking, minimum £4) instead of a flat £18 — cheap on cheap items, pricier on expensive ones, which prevents the old 'spam it on junk' exploit regardless of odds",
+		"Deep Research odds and multiplier tiers raised again now that cost scales properly (odds roughly doubled, multipliers raised ~15-20%) — it should be a genuinely worthwhile gamble again, not just a losing proposition",
+		"This was validated with a Python simulation matching the game's real formulas as closely as possible, not by running the actual Godot code — please play-test and flag if anything still feels off",
+	]},
+	{"version": "v41", "notes": [
+		"Added 3 new achievements tied to the newer systems: Level Headed (reach Level 10), Challenge Crusher (complete 30 daily challenges total, across all days), High Roller (win the Fixer's Gamble 5 times) — these are lifetime/cumulative, not day-scoped, so they're saved properly",
+		"These 3 show live progress (e.g. '12/30 challenges completed') until unlocked, unlike the older one-off achievements",
+	]},
+	{"version": "v40", "notes": [
+		"Patch note timestamps were never actually accurate — they were plausible-looking but fabricated, since there's no reliable way to know the exact real-world date/time when each change was made. Switched to simple sequential version numbers (v1, v2, v3...) instead, which don't claim precision that was never real",
+	]},
+	{"version": "v39", "notes": [
+		"Turned up the visual refresh significantly — the first pass was too subtle to actually notice on a real screen",
+		"Nav buttons (Stall/Stalls/Inventory/etc.) now get their own teal accent instead of barely-there gray — these are the most-seen buttons in the whole game, so this should be the most noticeable change",
+		"Cards and completed-action boxes (Condition Checked, Research, etc.) now have a much bolder colored left stripe and stronger drop shadow",
+		"Background dot pattern is denser, bigger, and tinted blue instead of a barely-visible white speck",
+		"Stat pills got thicker borders and a stronger shadow too",
+	]},
+	{"version": "v38", "notes": [
+		"Visual refresh: added a subtle repeating dot-grid pattern behind everything instead of flat black",
+		"Cards now have a soft drop shadow and a colored accent stripe on the left edge instead of a flat uniform border",
+		"Buttons now have a subtle top-edge accent color (matching their type — green for buy, red for danger, blue for actions) and a soft shadow that flattens when pressed, for a more tactile feel",
+		"Top stat pills (Cash/Carry/Storage) got the same subtle shadow treatment for consistency",
+		"This was a styling-only pass — no gameplay, balance, or layout logic changed",
+	]},
+	{"version": "v37", "notes": [
+		"Individual Daily Challenges now actually give a reward on completion (+£15, +8 XP each) — previously only completing ALL of them gave anything, which wasn't clearly shown. Each challenge now displays its reward directly, and the big bonus for completing all of them is on top of these",
+		"Achievement progress bars (Haggled Savings, Total Profit) now have their own distinct accent colors matching the Level Unlocks bar's style — pink for Haggled Savings, gold for Total Profit",
+	]},
+	{"version": "v36", "notes": [
+		"Fixed: Daily Challenges could ask you to Repair items before you'd bought Repair Tools, making it impossible to complete — now skipped until you've actually unlocked it",
+		"Raised base fault chance across the board by roughly 40% (e.g. average Electronics went from ~20% to ~28% chance of a fault) — Condition and Seller-type still scale it up or down from there as before",
+	]},
+	{"version": "v35", "notes": [
+		"Added Daily Challenges: 3-5 random challenges each day (buy/sell/research/haggle/rarity-based), visible in the More tab showing live X/Y progress. Completing all of them in one day gives a bonus: +£75 and +30 XP",
+		"Added Level Unlocks screen in the More tab, showing your current Level, XP progress bar, and XP needed for next level",
+		"Level now has real effects for the first time: Level 3 = +1 Mystery Package/day, Level 5 = Fixer's Gamble gets a £350 stake option, Level 8 = Dig Deeper reveals 1 extra item, Level 12 = -10% daily upkeep, Level 15 = Fixer's Gamble usable twice a day",
+	]},
+	{"version": "v34", "notes": [
+		"Pre-press ? buttons now visually merge with their action button (matching color, no gap, flattened inner corners) instead of looking like two separate boxes side by side — matches how the completed-box ? already looked",
+	]},
+	{"version": "v33", "notes": [
+		"Found the real bug behind several issues at once: style_button() unconditionally resets button height to 36px and font size to 13, and several of my recent additions were setting their custom size BEFORE calling style_button(), silently undoing it. This affected: the X dismiss button (was actually still 36px despite the code saying 52px), the Test/Authenticate buttons (were being squished from their intended 48px to 36px, likely a real contributor to the 'boxes moving' issue since their size was inconsistent), Create Listing's prominence, the ? help buttons, and the Collection Log category/Grails boxes",
+		"Fixed all 7 instances by reordering — style_button() now always runs first, custom sizing after",
+		"Also gave the invisible placeholder (used to stop the button row reflowing) a proper matching height instead of zero, which should further help with layout stability",
+	]},
+	{"version": "v32", "notes": [
+		"Fixed ? help buttons to also show before pressing, not just in the completed box — now grouped together with each action button in a shared row so they can't separate via layout wrapping",
+	]},
+	{"version": "v31", "notes": [
+		"Fixed a real bug in the ? help buttons that could have broken the game (a parenthesis mistake on my end) — moved them inside the completed action boxes at the right side, as requested, and removed the outside ones entirely",
+		"Found and fixed the actual cause of the scroll drift: per-render scroll position restoration had stopped firing after an earlier architecture change. Note: since the completed box is genuinely taller than the button it replaces, content below it will still shift down somewhat — that's an inherent trade-off of showing more detail, not something further fixable without a much bigger redesign",
+		"Condition now shows a Chance/Rolled line like other actions — shown honestly as 100% chance (checking Condition is a guaranteed reveal, not a real gamble), with a genuine rolled number for visual consistency",
+		"Sellers of the same type no longer share the same name within a day (e.g. two Dodgy Sellers now get different first names) — each stall gets a name assigned uniquely at day-start",
+		"Create Listing is now the larger, more prominent button; Quick Sell is smaller and in its own separate row",
+	]},
+	{"version": "v30", "notes": [
+		"Achievements progress bars redesigned: green fill, milestones properly spread out and wrapping instead of cramped on one line",
+		"Added a new Total Lifetime Profit progress bar alongside Total Haggled Savings",
+		"Completed action boxes (Condition/Research/Deep Research/Test/Authenticate) should no longer shift position when you click another one — the button row now keeps a stable slot instead of reflowing",
+		"Added a small ? help button next to each action button, showing its explanation via a popup",
+		"Increased the item-dismiss × button size further (44px -> 52px)",
+		"Pressing Dig Deeper now scrolls down to the newly revealed items automatically",
+		"Sellers now have first names (e.g. 'Stephen the Desperate Seller', 'Arran the Collector') shown everywhere their name appears — purely cosmetic, doesn't affect the underlying seller type or odds",
+		"Moved Quick Sell into its own row, away from Create Listing, to prevent accidental mis-clicks",
+	]},
+	{"version": "v29", "notes": [
+		"Added a manual 'Save Now' button in the More tab, with a confirmation popup — on top of the existing automatic saves",
+	]},
+	{"version": "v28", "notes": [
+		"Fixed: Total Log was counting distinct items (72) instead of all discoverable item+rarity combinations (360), inconsistent with how the category boxes count",
+		"Added a local save system using Godot's user:// storage, which persists in your browser — saves Cash, Day, Level/XP, Inventory, all Shop upgrades, Achievements, Collection Log progress, and Sold History",
+		"Auto-saves after buying, selling, quick selling, buying an upgrade, and ending the day — and loads automatically when the game starts",
+		"More tab now shows a live 'Last saved' line plus a summary of exactly what's saved",
+		"Stall-specific state (today's stock, energy, time of day) is NOT saved — loading resumes your progress but generates a fresh day, rather than trying to resume mid-day",
+	]},
+	{"version": "v27", "notes": [
+		"Collection Log overhauled into a Pokedex-style system: one box per category (13 total) plus a GRAILS box for your rarest tier finds, each showing X/Y discovered, with an unclickable TOTAL LOG box showing how many of the 72 distinct items you've ever found",
+		"Each discovered item now shows real tracked stats: times found, best condition ever seen, cheapest ever bought, highest ever sold, specials discovered X/Y, highest rarity tier found, and lifetime profit — all newly tracked from this update onward",
+		"Undiscovered items show as ??? until you've owned at least one",
+	]},
+	{"version": "v26", "notes": [
+		"Added popups: Item Purchased (green), Item Delisted (red), Item Quick Sold (green, shows actual price), Item Sold — item/price/profit (green) for both instant-sale and end-of-day sales",
+		"Removed the old separate instant-sale banner — it's now the same Item Sold popup as everything else",
+		"Multiple popups (e.g. several items selling at once during end-of-day) now queue and show one after another instead of overwriting each other",
+		"Trending was genuinely overpowered — it boosted both price AND sale speed with no downside. Price effect kept fully intact; its effect on sale speed halved",
+		"Side deals still exist and had real value (Collector's can boost an item's value up to 2.2x!) but were invisible and very rare — odds boosted and now shown directly on both the Stalls list and the individual stall page",
+		"New: The Fixer's Gamble — a big, visible, once-per-day double-or-nothing coinflip (47% chance) available on the stall page at £25/£75/£200 stakes",
+	]},
+	{"version": "v25", "notes": [
+		"Fixed: Quick Sell never actually recorded the sale — it wasn't showing up in £ Sold at all",
+		"Testing an item and confirming it WORKS now gives a small value boost (+12%) — previously testing only ever revealed a penalty (fault) or nothing",
+		"Seller risk/reward rebalanced: low-margin sellers (Clueless Seller, House Clearance) now have meaningfully worse odds of anything rare (previously identical odds to every other seller); high-margin/expert sellers (Dealer, Collector) now have notably better odds — Dealer's rare-tier odds are roughly 3x Clueless Seller's",
+		"Creating a listing now shows a green 'Item Listed!' popup, same style as the existing blocked-action popups",
+		"Item cards now say 'Carry Space - X Slots' instead of just 'Space X'",
+		"Trends already affected both price and sale speed — now made visible with a purple TRENDING badge on items in a hot category (+10% or more), shown on both the stall page and Inventory",
+	]},
+	{"version": "v24", "notes": [
+		"Replaced Reputation with a Level/XP system — starts at Level 1, 0 XP, shown compactly as 'LVL 1 | XP 0/100' in the header",
+		"XP from normal play: +2 buying, +3 selling (+3 more if the sale was actually profitable), +3 repairing, +3 authenticating, +10 for a Deep Research rare-variant find",
+		"XP needed per level rises each time (100, 150, 200...) so it can't be easily farmed",
+		"'LEVEL UP! Level X' shows through the existing status message system",
+		"No unlocks or gameplay bonuses tied to Level yet — Reputation's old mechanical bonus to Buyer Interest has been removed entirely, not replaced",
+	]},
+	{"version": "v23", "notes": [
+		"Economy rebalance: simulated 40 days of play to find the actual runaway-wealth driver — it was Deep Research's rare-variant jackpot, which let players cheaply spam it on bargain-bought junk for near-free lottery odds",
+		"Deep Research cost raised £9 -> £18 (energy cost unchanged)",
+		"Rare-variant total chance roughly halved (was up to 35% on well-researched items, now up to 18%; default dropped from 20% to 10%), and the multiplier tiers softened (top tier was x5-10, now x3-5)",
+		"Simulated result: a skilled bargain-hunting player using haggling and Deep Research went from ~£300 to ~£2,800 average in 40 days before this change, now more like ~£1,350 — still a rewarding climb, not an exponential one",
+	]},
+	{"version": "v22", "notes": [
+		"Reverted the energy icon rebuild from the previous update — it broke things",
+		"Replaced with a much simpler, zero-risk approach: the header now reads 'Energy 100/100' with a bold light-blue E, and every button showing an energy cost (Condition, Research, Deep Research, Test, Authenticate, Inspect, Offer, Dig Deeper, Repair) now has its whole text colored light blue instead — same visual cue, no custom rebuilding of how buttons work",
+	]},
+	{"version": "v21", "notes": [
+		"Replaced the hand-drawn Cash/Carry/Storage header icons with proper pixel-art versions, widened the chip padding slightly to fit them comfortably",
+	]},
+	{"version": "v20", "notes": [
+		"Added the Inspect icon — same treatment as the other action icons, shown on the button in both its active and completed states",
+	]},
+	{"version": "v19", "notes": [
+		"Added icons for Condition, Research, Test, and Authenticate — same 32×32 crisp pixel-art treatment as Deep Research, shown on both the active button and its completed result box, on the stall page and Inventory alike",
+	]},
+	{"version": "v18", "notes": [
+		"Fixed a real crash in Inventory: format_sale_estimate() was missing an argument for its daily-chance percentage, left over from an earlier edit — this was throwing a red error every time the Inventory listing screen rendered",
+	]},
+	{"version": "v17", "notes": [
+		"Added a Deep Research icon (32×32, crisp pixel-art filtering) next to the Deep Research text — shown consistently on the button itself and on its completed result box",
+	]},
+	{"version": "v16", "notes": [
+		"Highlight system redesigned: whichever action (Condition/Research/Deep Research) most recently ran now always takes the highlight, colored yellow if it increased the price or gold if it decreased it — replacing the old 'highest ever' comparison",
+	]},
+	{"version": "v15", "notes": [
+		"Reverted the box reordering from last update — Condition/Research/Deep Research/Test/Authenticate now stay in their original fixed positions again",
+		"Fixed: Condition checked on the STALL page (before buying) never actually recorded the price-change note — only the Inventory version did. Now both do, so the values genuinely carry over when you buy the item",
+		"Stall page now uses the same greyed-out box style as Inventory for Condition and Research results, instead of a bare line above the buttons",
+		"New: the action currently holding the highest max price value (across Condition, Research, and Deep Research) is now highlighted yellow — recalculated live as you do more actions, whichever action or page it happens on",
+	]},
+	{"version": "v14", "notes": [
+		"Fixed: Condition/Research/Deep Research results were showing twice in Inventory (old lines above the actions row never got removed when the boxes were added) — removed the duplicates",
+		"Hidden-defect description ('No hidden defects found' / fault warning) now lives inside the Condition Checked box instead of its own separate line",
+		"Completed-action boxes (Condition/Research/Deep Research/Test/Authenticate) now stack most-recently-clicked first",
+		"Slightly larger text in these boxes, before and after completion",
+	]},
+	{"version": "v13", "notes": [
+		"Fixed: blocked-action popup wasn't actually centering correctly — was positioning itself before the box's size had updated for the new text; now waits for layout to settle first",
+		"Fixed: press-and-hold tooltips on mobile stopped working after the popup rework — restored with their own small bottom bar, separate from the red error popup",
+		"Inventory cards decluttered: Buyer Interest now shows only next to Create Listing (was appearing 3 times), removed the redundant Unlisted/Listed text (tabs already show this)",
+		"Condition, Research, Deep Research, Test, and Authenticate now show their result INSIDE the greyed-out completed box, instead of as a separate line below it",
+	]},
+	{"version": "v12", "notes": [
+		"Brought back the floating red center popup for the three blocked-action messages (not enough cash, not enough bag space, test-required) — everything else stays inline as before",
+	]},
+	{"version": "v11", "notes": [
+		"Fixed: Deep Research note was missing the actual rolled value — now shows Chance/Rolled/Result like everywhere else",
+		"Fixed: blocked-action messages (not enough cash, not enough bag space, test-required) had genuinely stopped showing anywhere after the popup removal — now shown inline on the relevant item card",
+	]},
+	{"version": "v10", "notes": [
+		"Removed all floating popups/toasts entirely — action results now appear inline in the item card instead",
+		"Unified coloring: normal result text blue, any RNG/chance/rolled-percentage text pink — applies to Inspect, Research, Condition, Offers, Testing, Authentication, Repairs, and rare-variant rolls",
+		"Offers and Repairs now show a persistent inline result for the first time (previously only a temporary message)",
+	]},
+	{"version": "v9", "notes": [
+		"Removed swipe-to-dismiss on mobile (kept just the × button, made bigger and easier to tap on both mobile and desktop)",
+		"Blocked-action messages now use exact short wording: 'Not enough cash.', 'Not enough space in your bag.', 'You need to test this item first.'",
+		"Inventory split into UNLISTED / LISTED tabs with live counts — always opens on Unlisted; listing/unlisting moves items between tabs immediately",
+	]},
+	{"version": "v8", "notes": [
+		"Swipe left to dismiss a stall item on mobile (session-only, doesn't touch the real item pool, free — no Energy or time cost)",
+		"Added a small × button next to every stall item for the same dismiss action on desktop",
+	]},
+	{"version": "v7", "notes": [
+		"Authenticate button now shows its accuracy % before pressing, and the actual Chance/Rolled/Result outcome on the button itself afterward — matching Test and Deep Research",
+	]},
+	{"version": "v6", "notes": [
+		"The exact Inspect result (e.g. 'Looks rough', 'Looks unusually clean') now persists into the Inventory card if the item was inspected before buying",
+	]},
+	{"version": "v5", "notes": [
+		"£ Sold tab now shows a Profit column, calculated from the actual realised sale after fees/postage/packaging/paid/research spend — green if positive, red if negative",
+	]},
+	{"version": "v4", "notes": [
+		"Polished the main mobile navigation: Stall, Stalls, Inventory, £ Sold, Shop and More now fill the full row cleanly with no wasted space",
+		"Stall, Stalls and especially Inventory have been given more room while all six navigation buttons remain on one line",
+	]},
+	{"version": "v3", "notes": [
+		"Reclaimed mobile screen space: status/help and Last RNG no longer reserve a permanent footer area",
+		"Button hold-help and RNG results now appear in a temporary bottom overlay and automatically disappear after 4 seconds",
+	]},
+	{"version": "v2", "notes": [
+		"Improved mobile readability: increased smaller gameplay, research, condition, sale-breakdown and RNG text sizes",
+		"Energy, Rep, Listed and Day are now larger and centred in the second HUD row; End Day text increased to match",
+	]},
+	{"version": "v1", "notes": [
+		"Header spacing polished for mobile: Cash, Carry and Storage now fill the entire first row evenly; Energy, Rep, Listed, Day and End Day fill the entire second row evenly",
+	]},
+	{"version": "Previous Update — 08/09/2026 21:39", "notes": [
+		"Fixed Jersey 10 font loading for Web/mobile exports by using Godot's imported font resource",
+	]},
+	{"version": "Previous Update — 08/09/2026 21:33", "notes": [
+		"Added Jersey 10 as the global UI font across the game",
+	]},
+	{"version": "Previous Update", "notes": [
+		"Fixed: Haggled Savings achievement wasn't tracking at all — it was wired to the wrong purchase path (special offers instead of normal buys)",
+		"Selling an item without ever checking Condition now carries a real extra return risk",
+		"The 'Rare-variant gamble' shown after Basic Research is now real — it directly sets your Deep Research odds instead of being flavor text",
+		"Test and Deep Research buttons now show their odds directly on the button; results appear as blue text in the same place as other research results",
+		"Renamed 'Quick Look' to 'Inspect' throughout",
+		"Removed nested scrollboxes — the whole page now scrolls as one, with Cash/Carry/Storage/nav fixed at the top",
+		"Added this Patch Notes screen",
+	]},
+	{"version": "Earlier", "notes": [
+		"Mobile support: Web export, real touch-drag scrolling, numeric keyboard on price fields, responsive layout for phone portrait/landscape",
+		"Haggle overhaul: player-chosen offer price with a live acceptance %, escalating consequences for aggressive lowballing",
+		"Quick Sell, Condition now visibly affects price, postage rebalanced for cheap items, colored profit/Buyer Interest throughout",
+		"Header redesigned with colored stat pills and hand-drawn icons for Cash/Carry/Storage",
+		"Shop economy expanded (Selling Fees, Package Insight, Persuasion Knowledge tracks) for a longer game",
+		"Bankruptcy, business upkeep, and haggle-backfire risk added for a harder long game",
+	]},
+]
+
+func show_patch_notes():
+	current_screen_name = "show_patch_notes"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "PATCH NOTES"
+	body.add_child(title)
+	for entry in patch_notes:
+		var panel = make_card()
+		body.add_child(panel)
+		var box = VBoxContainer.new()
+		box.add_theme_constant_override("separation", 4)
+		panel.add_child(box)
+		var version_label = Label.new()
+		version_label.add_theme_font_size_override("font_size", 15)
+		version_label.text = entry["version"]
+		box.add_child(version_label)
+		for note in entry["notes"]:
+			var note_label = Label.new()
+			note_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			note_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			note_label.add_theme_font_size_override("font_size", 13)
+			note_label.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+			note_label.text = "- " + note
+			box.add_child(note_label)
+	footer_label.text = ""
+
+func show_sold_history():
+	current_screen_name = "show_sold_history"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "£ SOLD LISTINGS"
+	body.add_child(title)
+	if sold_history.size() == 0:
+		var empty = Label.new()
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		empty.text = "No sales yet."
+		body.add_child(empty)
+		return
+	for sale in sold_history:
+		var sold_condition_text = "Unknown"
+		if sale["condition_checked"]:
+			sold_condition_text = "%d/10" % sale["condition"]
+		var costs_total = float(sale.get("fee", 0.0)) + float(sale.get("postage", 0.0)) + float(sale.get("insurance", 0.0)) + float(sale.get("packaging", 0.0))
+		var profit = float(sale["price"]) - costs_total - float(sale.get("paid", 0.0)) - float(sale.get("extra_spend", 0.0))
+		var profit_color = "#8cd98f" if profit >= 0.0 else "#e88c7a"
+		var line = RichTextLabel.new()
+		line.bbcode_enabled = true
+		line.fit_content = true
+		line.scroll_active = false
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.text = "%s | Condition %s | Sold £%.2f | [color=%s]Profit £%+.2f[/color] | Day %d" % [sale["name"], sold_condition_text, sale["price"], profit_color, profit, sale["day"]]
+		body.add_child(line)
+
+var seller_first_name_pools = {
+	"Desperate Seller": ["Stephen", "Colin", "Trevor"],
+	"House Clearance": ["Barry", "Malcolm", "Derek"],
+	"Clueless Seller": ["Sandra", "Karen", "Doreen"],
+	"Regular Seller": ["Dave", "Paul", "Steve"],
+	"Collector": ["Arran", "Julian", "Marcus"],
+	"Dodgy Seller": ["Kyle", "Wayne", "Vinnie"],
+	"Dealer": ["Will", "Terry", "Frank"],
+}
+var seller_name_templates = {
+	"Desperate Seller": "%s the Desperate Seller",
+	"House Clearance": "%s's House Clearance",
+	"Clueless Seller": "%s the Clueless Seller",
+	"Regular Seller": "%s the Regular Seller",
+	"Collector": "%s the Collector",
+	"Dodgy Seller": "%s the Dodgy Seller",
+	"Dealer": "%s the Dealer",
+}
+
+func pick_unique_seller_name(seller, used_names_today):
+	var pool = seller_first_name_pools.get(seller, [seller])
+	var template = seller_name_templates.get(seller, "%s")
+	var shuffled = pool.duplicate()
+	shuffled.shuffle()
+	for first_name in shuffled:
+		if not used_names_today.has(first_name):
+			used_names_today[first_name] = true
+			return template % first_name
+	var fallback_name = pool[0] + " " + str(used_names_today.size() + 1)
+	used_names_today[fallback_name] = true
+	return template % fallback_name
+
+func seller_display_name(seller):
+	return seller
+
+func get_category_list():
+	var cats = []
+	for family in item_families:
+		if not cats.has(family["category"]):
+			cats.append(family["category"])
+	cats.sort()
+	return cats
+
+func category_discovery_count(category):
+	var found = 0
+	var total = 0
+	for family in item_families:
+		if family["category"] != category:
+			continue
+		for tier_row in rarity_table:
+			total += 1
+			var key = category + "|" + family["name"] + "|" + tier_row["tier"]
+			if discovered_log.has(key):
+				found += 1
+	return [found, total]
+
+func grails_discovery_count():
+	var found = 0
+	for family in item_families:
+		if family_stats.has(family["name"]) and family_stats[family["name"]]["highest_rarity"] == "Grail":
+			found += 1
+	return [found, item_families.size()]
+
+func total_families_discovered():
+	return [discovered_log.size(), item_families.size() * rarity_table.size()]
+
+func render_family_stat_card(family, force_undiscovered = false):
+	var fam_name = family["name"]
+	var panel = make_card()
+	var box = VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	panel.add_child(box)
+	if force_undiscovered or not family_stats.has(fam_name):
+		var unknown_label = Label.new()
+		unknown_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		unknown_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		unknown_label.add_theme_font_size_override("font_size", 16)
+		unknown_label.add_theme_color_override("font_color", Color(0.42,0.47,0.55,1.0))
+		unknown_label.text = "???"
+		box.add_child(unknown_label)
+		return panel
+	var fs = family_stats[fam_name]
+	if fs["highest_rarity"] == "Grail":
+		apply_grail_glow(panel)
+		box.add_child(make_grail_badge())
+	var header = Label.new()
+	header.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_theme_font_size_override("font_size", 16)
+	header.text = fam_name
+	box.add_child(header)
+	var condition_text = "Unknown" if int(fs["best_condition"]) == 0 else "%d/10" % int(fs["best_condition"])
+	var cheapest_text = "—" if float(fs["cheapest_bought"]) < 0.0 else "£%.0f" % float(fs["cheapest_bought"])
+	var specials_total = family.get("specials", []).size()
+	var stats_label = Label.new()
+	stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stats_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats_label.add_theme_font_size_override("font_size", 13)
+	stats_label.add_theme_color_override("font_color", Color(0.72,0.78,0.85,1.0))
+	stats_label.text = "Found: %d\nBest condition: %s\nCheapest bought: %s\nHighest sold: £%.0f\nSpecials discovered: %d/%d\nRarity: %s\nLifetime profit: £%+.0f" % [int(fs["times_found"]), condition_text, cheapest_text, float(fs["highest_sold"]), fs["specials_found"].size(), specials_total, fs["highest_rarity"], float(fs["lifetime_profit"])]
+	box.add_child(stats_label)
+	return panel
+
+func show_collection_log():
+	current_screen_name = "show_collection_log"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "COLLECTION LOG"
+	body.add_child(title)
+
+	var total_counts = total_families_discovered()
+	var total_panel = make_card()
+	body.add_child(total_panel)
+	var total_label = Label.new()
+	total_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	total_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	total_label.add_theme_font_size_override("font_size", 16)
+	total_label.text = "TOTAL LOG: %d/%d discovered" % [total_counts[0], total_counts[1]]
+	total_panel.add_child(total_label)
+
+	var grid = HFlowContainer.new()
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	body.add_child(grid)
+
+	for category in get_category_list():
+		var counts = category_discovery_count(category)
+		var cat_button = Button.new()
+		cat_button.text = "%s\n%d/%d" % [category, counts[0], counts[1]]
+		style_button(cat_button, "action")
+		cat_button.custom_minimum_size = Vector2(150, 56)
+		cat_button.pressed.connect(Callable(self, "show_collection_category").bind(category))
+		grid.add_child(cat_button)
+
+	var grail_counts = grails_discovery_count()
+	var grail_button = Button.new()
+	grail_button.text = "GRAILS\n%d/%d" % [grail_counts[0], grail_counts[1]]
+	style_button(grail_button, "danger")
+	grail_button.custom_minimum_size = Vector2(150, 56)
+	grail_button.pressed.connect(show_collection_grails)
+	grid.add_child(grail_button)
+
+func show_collection_category(category):
+	current_screen_name = "show_collection_log"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	var counts = category_discovery_count(category)
+	title.text = "%s — %d/%d discovered" % [category, counts[0], counts[1]]
+	body.add_child(title)
+	var back_button = Button.new()
+	back_button.text = "Back to Collection Log"
+	style_button(back_button, "nav")
+	back_button.pressed.connect(show_collection_log)
+	body.add_child(back_button)
+	for family in item_families:
+		if family["category"] == category:
+			body.add_child(render_family_stat_card(family))
+
+func show_collection_grails():
+	current_screen_name = "show_collection_log"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	var grail_counts = grails_discovery_count()
+	title.text = "GRAILS — %d/%d found" % [grail_counts[0], grail_counts[1]]
+	body.add_child(title)
+	var back_button = Button.new()
+	back_button.text = "Back to Collection Log"
+	style_button(back_button, "nav")
+	back_button.pressed.connect(show_collection_log)
+	body.add_child(back_button)
+	for family in item_families:
+		var hit_grail = family_stats.has(family["name"]) and family_stats[family["name"]]["highest_rarity"] == "Grail"
+		body.add_child(render_family_stat_card(family, not hit_grail))
+
+func sort_log(a, b):
+	return int(a["one_in"]) > int(b["one_in"])
+
+func make_progress_bar_section(title_text, current_value, max_value, milestones, fill_color = Color(0.35,0.75,0.40,1.0)):
+	var container = VBoxContainer.new()
+	container.add_theme_constant_override("separation", 6)
+
+	var title_label = Label.new()
+	title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.add_theme_font_size_override("font_size", 15)
+	title_label.text = title_text
+	container.add_child(title_label)
+
+	var bar = ProgressBar.new()
+	bar.min_value = 0
+	bar.max_value = max_value
+	bar.value = clamp(current_value, 0, max_value)
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 22)
+	var fill_style = StyleBoxFlat.new()
+	fill_style.bg_color = fill_color
+	fill_style.corner_radius_top_left = 6
+	fill_style.corner_radius_top_right = 6
+	fill_style.corner_radius_bottom_left = 6
+	fill_style.corner_radius_bottom_right = 6
+	bar.add_theme_stylebox_override("fill", fill_style)
+	var bg_style = StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.10,0.12,0.15,1.0)
+	bg_style.corner_radius_top_left = 6
+	bg_style.corner_radius_top_right = 6
+	bg_style.corner_radius_bottom_left = 6
+	bg_style.corner_radius_bottom_right = 6
+	bar.add_theme_stylebox_override("background", bg_style)
+	container.add_child(bar)
+
+	var milestone_row = HFlowContainer.new()
+	milestone_row.add_theme_constant_override("h_separation", 16)
+	milestone_row.add_theme_constant_override("v_separation", 4)
+	milestone_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	container.add_child(milestone_row)
+	for m in milestones:
+		var reached = current_value >= m
+		var label_text = "£%d" % int(m) if m < 1000.0 else "£%dk" % int(m / 1000.0)
+		var m_label = Label.new()
+		m_label.add_theme_font_size_override("font_size", 12)
+		m_label.text = ("X " if reached else "- ") + label_text
+		m_label.add_theme_color_override("font_color", fill_color if reached else Color(0.50,0.55,0.62,1.0))
+		milestone_row.add_child(m_label)
+	return container
+
+func show_achievements():
+	current_screen_name = "show_achievements"
+	clear_body()
+	update_header()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 20)
+	title.text = "ACHIEVEMENTS"
+	body.add_child(title)
+
+	body.add_child(make_progress_bar_section("Total Haggled Savings: £%.2f / £100,000" % total_haggled_savings, total_haggled_savings, 100000, [100.0, 500.0, 1000.0, 5000.0, 10000.0, 25000.0, 50000.0, 100000.0], Color(0.88,0.56,0.82,1.0)))
+
+	body.add_child(make_progress_bar_section("Total Lifetime Profit: £%.2f / £50,000" % total_lifetime_profit, total_lifetime_profit, 50000, [250.0, 1000.0, 2500.0, 5000.0, 10000.0, 25000.0, 50000.0], Color(0.91,0.76,0.35,1.0)))
+
+	var all_achievements = ["First Flip", "Against the Odds", "Should've Known Better", "Better Than Nothing", "Actually Mate...", "Car Boot King", "Level Headed", "Challenge Crusher", "High Roller"]
+	var progress_text = {
+		"Level Headed": "Level %d/10" % player_level,
+		"Challenge Crusher": "%d/30 challenges completed" % lifetime_challenges_completed,
+		"High Roller": "%d/5 Fixer wins" % lifetime_fixer_wins,
+	}
+	for achievement in all_achievements:
+		var line = Label.new()
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var prefix = "[ ] "
+		if achievements.has(achievement):
+			prefix = ""
+		var suffix = ""
+		if not achievements.has(achievement) and progress_text.has(achievement):
+			suffix = " (%s)" % progress_text[achievement]
+		line.text = prefix + achievement + suffix
+		body.add_child(line)
+
+func unlock_achievement(name):
+	if not achievements.has(name):
+		achievements[name] = true
+		set_status("Achievement unlocked: " + name)
+
+func record_rng(line):
+	last_rng_line = line
+	footer_label.text = "Last RNG: " + last_rng_line
+	day_stats["rng_events"].append(line)
+	if day_stats["rng_events"].size() > 12:
+		day_stats["rng_events"].pop_front()
+	_show_status_overlay(true)
+
+func chance_text(chance):
+	if chance <= 0.0:
+		return "0%"
+	var pct = chance * 100.0
+	var one = int(round(1.0 / chance))
+	if chance < 0.10:
+		return "%.2f%% (1/%d)" % [pct, one]
+	return "%.1f%%" % pct
+
+func end_day():
+	process_sales()
+	var upkeep = compute_upkeep()
+	cash -= daily_expenses
+	cash -= upkeep
+	day_stats["rent"] = daily_expenses
+	day_stats["upkeep"] = upkeep
+	day_stats["expenses"] += daily_expenses + upkeep
+	if cash < 0:
+		var interest = abs(cash) * 0.06
+		cash -= interest
+		day_stats["interest"] = interest
+		day_stats["expenses"] += interest
+		negative_days_streak += 1
+	else:
+		negative_days_streak = 0
+	if negative_days_streak >= 4:
+		show_bankruptcy_screen()
+		return
+	show_day_summary()
+	day += 1
+	energy = 100
+	current_time_minutes = 7 * 60
+	if cash >= 50000:
+		unlock_achievement("Car Boot King")
+	if (day - 1) % 7 == 0:
+		generate_weekly_trends()
+	reset_day_stats()
+	generate_day()
+	save_game()
+	update_header()
+
+func show_bankruptcy_screen():
+	clear_body()
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 24)
+	title.text = "BANKRUPT — GAME OVER"
+	body.add_child(title)
+	var msg = Label.new()
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	msg.text = "Cash stayed negative for %d days in a row and the overdraft interest finally buried the business. Final cash: £%.2f on Day %d." % [negative_days_streak, cash, day]
+	body.add_child(msg)
+	var stats = Label.new()
+	stats.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	stats.text = "Items sold: %d  •  Achievements unlocked: %d/9  •  Collection: %d discovered" % [sold_history.size(), achievements.size(), discovered_log.size()]
+	body.add_child(stats)
+	var restart = Button.new()
+	restart.text = "Start New Game"
+	restart.pressed.connect(restart_game)
+	style_button(restart, "buy")
+	body.add_child(restart)
+	set_status("Game over. Start a new run whenever you're ready.")
+	footer_label.text = ""
+
+func restart_game():
+	day = 1
+	cash = 300.0
+	energy = 100
+	player_level = 1
+	player_xp = 0
+	current_time_minutes = 7 * 60
+	daily_expenses = 6.50
+	current_stall_index = 0
+	stalls.clear()
+	inventory.clear()
+	sold_history.clear()
+	discovered_log.clear()
+	family_stats.clear()
+	achievements.clear()
+	negative_days_streak = 0
+	bag_level = 0
+	storage_level = 0
+	toolbox_level = 0
+	eye_level = 0
+	fee_level = 0
+	package_insight_level = 0
+	persuasion_level = 0
+	carry_used = 0
+	mystery_packages_left = 0
+	current_trends.clear()
+	trend_headlines.clear()
+	current_week = 1
+	pending_special_offer = null
+	reset_day_stats()
+	generate_weekly_trends()
+	generate_day()
+	update_header()
+	show_stall()
+
+func show_day_summary():
+	clear_body()
+	var end_cash = cash
+	var start_cash = float(day_stats["start_cash"])
+	var profit_today = end_cash - start_cash
+	var title = Label.new()
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 22)
+	title.text = "DAY %d COMPLETE" % day
+	body.add_child(title)
+	var profit_line = Label.new()
+	profit_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	profit_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	profit_line.add_theme_font_size_override("font_size", 18)
+	profit_line.text = "Profit today: %+.2f" % profit_today
+	if profit_today >= 0.0:
+		profit_line.add_theme_color_override("font_color", Color(0.55,0.85,0.58,1.0))
+	else:
+		profit_line.add_theme_color_override("font_color", Color(0.92,0.55,0.45,1.0))
+	body.add_child(profit_line)
+	var lines = [
+		"Cash £%.2f -> £%.2f (%+.2f)" % [start_cash, end_cash, end_cash - start_cash],
+		"Stock purchased £%.2f" % day_stats["buy_spend"],
+		"Sales revenue £%.2f" % day_stats["sales_revenue"],
+		"Selling fees -£%.2f" % day_stats["fees"],
+		"Postage/insurance/packaging -£%.2f" % day_stats["postage"],
+		"Research/testing spend -£%.2f" % day_stats["research"],
+		"Authentication spend -£%.2f" % day_stats["authentication"],
+		"Repair spend -£%.2f" % day_stats["repairs"],
+		"Daily rent -£%.2f  |  Business upkeep -£%.2f" % [day_stats["rent"], day_stats["upkeep"]],
+		"Bought %d | Sold %d | Scrapped %d | Returns %d" % [day_stats["items_bought"], day_stats["items_sold"], day_stats["items_scrapped"], day_stats["returns"]],
+		"Collection additions %d | Rarest 1/%d" % [day_stats["collection_adds"], day_stats["rarest_one_in"]]
+	]
+	if float(day_stats["interest"]) > 0.0:
+		lines.append("[!] Overdraft interest -£%.2f (cash negative %d day%s running — bankruptcy after 4)" % [day_stats["interest"], negative_days_streak, "" if negative_days_streak == 1 else "s"])
+	for text in lines:
+		var line = Label.new()
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.add_theme_font_size_override("font_size", 13)
+		line.text = text
+		body.add_child(line)
+	if cash < 0:
+		var warning = Label.new()
+		warning.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		warning.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		warning.text = "[!] CASH NEGATIVE — sell stock or the run is in serious trouble."
+		body.add_child(warning)
+	var sold_today = []
+	for sale in sold_history:
+		if sale["day"] == day:
+			sold_today.append(sale)
+	if sold_today.size() > 0:
+		var sold_title = Label.new()
+		sold_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		sold_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sold_title.add_theme_font_size_override("font_size", 16)
+		sold_title.text = "SOLD TODAY (%d)" % sold_today.size()
+		body.add_child(sold_title)
+		for sale in sold_today:
+			var sold_condition_text = "Unknown"
+			if sale["condition_checked"]:
+				sold_condition_text = "%d/10" % sale["condition"]
+			var net = float(sale["price"]) - float(sale["fee"]) - float(sale["postage"]) - float(sale["insurance"]) - float(sale["packaging"])
+			var profit = net - float(sale["paid"]) - float(sale.get("extra_spend", 0.0))
+			var sold_line = Label.new()
+			sold_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			sold_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			sold_line.add_theme_font_size_override("font_size", 13)
+			sold_line.text = "• %s | Sold £%.2f | Paid £%.2f | Net £%.2f | Profit %+.2f | Condition %s" % [sale["name"], sale["price"], sale["paid"], net, profit, sold_condition_text]
+			body.add_child(sold_line)
+			var cost_line = Label.new()
+			cost_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			cost_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			cost_line.add_theme_font_size_override("font_size", 12)
+			cost_line.add_theme_color_override("font_color", Color(0.62,0.68,0.76,1.0))
+			cost_line.text = "    Fee £%.2f  •  Postage £%.2f  •  Insurance £%.2f  •  Packaging £%.2f" % [sale["fee"], sale["postage"], sale["insurance"], sale["packaging"]]
+			body.add_child(cost_line)
+	if day_stats["rng_events"].size() > 0:
+		var rng_title = Label.new()
+		rng_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rng_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rng_title.text = "Today's RNG events:"
+		body.add_child(rng_title)
+		for event in day_stats["rng_events"]:
+			var event_line = Label.new()
+			event_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			event_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			event_line.text = "• " + event
+			event_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			event_line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			body.add_child(event_line)
+	set_status("A new day is ready after this summary.")
