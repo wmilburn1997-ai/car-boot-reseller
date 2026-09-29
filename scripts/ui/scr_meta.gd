@@ -396,7 +396,7 @@ func toggle_row(name, on, cb):
 # Tutorial
 # ---------------------------------------------------------------------------
 const SLIDES = [
-	{"glyph": "stall", "title": "Welcome to the car boot", "body": "You've got £300, two hands and a spare room. Every morning you walk the car boot and buy things you think are worth more than the asking price. Then you sell them online.\n\nFour nights in a row in the red and you're finished."},
+	{"glyph": "stall", "title": "Welcome to the car boot", "body": "You've got £300, two hands and a spare room. Every morning you walk the car boot and buy things you think are worth more than the asking price. Then you sell them online.\n\nFour nights in the red with nothing you could sell to cover it, and you're finished."},
 	{"glyph": "person", "title": "Know your sellers", "body": "Clueless sellers price at random. Dealers know what things are worth. Dodgy sellers are cheap for a reason.\n\nMany of them are regulars. Treat them well and they'll warm to you: better haggles, things put aside for you, tip-offs about house clearances."},
 	{"glyph": "glass", "title": "Look before you buy", "body": "INSPECT is a quick glance, and it can be wrong. CHECK CONDITION gives the exact score and hidden damage. RESEARCH shows recent sold prices and your margin after fees.\n\nFees and postage eat cheap stuff. Only buy when there's a real gap."},
 	{"glyph": "q", "title": "Everything has a story", "body": "Items hide details: a first pressing, a hallmark under the tarnish, a missing battery door, a signature that's printed, a gem buried in a box of junk.\n\nPurple clues tell you something's there. Checks, expertise and workshop kit identify it. Anything you miss, a buyer will spot, for better or worse."},
