@@ -161,7 +161,7 @@ func _run():
 	check(f.vehicle_level == 2, "0.10 bag migrated to vehicle")
 	check(f.skills_unlocked.size() == 0 and f.skill_points_available() == 8, "old skills refunded")
 	check(abs(f.cash - (1200.0 + 50.0 + 64.0 + 50.0)) < 0.01, "retired upgrades refunded (%.0f)" % f.cash)
-	check(f.expertise_tier("Vinyl") >= 1 and f.goals_done == 0, "knowledge -> expertise, goals re-checked")
+	check(f.expertise_tier("Vinyl") >= 1 and f.goals_done >= 1 and f.goals_done < 10, "knowledge -> expertise, goals re-checked from scratch")
 	check(f.regulars.size() > 0 and f.rival.has("name") and f.stalls.size() > 0, "world created for old save")
 	f.check_goals()
 	check(f.goals_done > 0, "old save fast-forwards met goals")

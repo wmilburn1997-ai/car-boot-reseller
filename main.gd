@@ -337,7 +337,7 @@ func apply_save_data(parsed):
 		inventory[i] = normalize_item(inventory[i])
 	# Full mid-day state (save_version 2+). Older saves fall back to a fresh day.
 	var restored_day = false
-	if version >= 2 and typeof(parsed.get("stalls", null)) == TYPE_ARRAY and parsed["stalls"].size() > 0:
+	if version >= 3 and typeof(parsed.get("stalls", null)) == TYPE_ARRAY and parsed["stalls"].size() > 0:
 		energy = int(parsed.get("energy", 100))
 		current_time_minutes = int(parsed.get("current_time_minutes", 7 * 60))
 		daily_expenses = float(parsed.get("daily_expenses", daily_expenses))
@@ -397,6 +397,11 @@ func apply_save_data(parsed):
 	ensure_week_plan()
 	for n in migrated_notes:
 		pending_notices.append(n)
+	if version < 3:
+		var popups_ui = ui
+		ui = null
+		check_goals()
+		ui = popups_ui
 	return true
 
 func item_template():
