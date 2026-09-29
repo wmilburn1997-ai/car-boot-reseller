@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1
+
+- **Touch scrolling:** drag with your finger anywhere on a list or sheet to scroll it, with a little momentum. You no longer need the thin scrollbar. A drag that starts on a card or button scrolls instead of tapping it, and a plain tap still works as before. It works with a mouse drag on desktop too.
+
 ## 0.11.0 — "The Business Update" (from 0.10.0)
 
 ### Every item can be a story: Discoveries

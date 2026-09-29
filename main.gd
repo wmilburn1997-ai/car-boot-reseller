@@ -4814,6 +4814,15 @@ func _ui_restore_scrolls():
 func _unhandled_input(event):
 	if ui != null and ui.handle_key(event):
 		get_viewport().set_input_as_handled()
+
+func _input(event):
+	# Drag-to-scroll anywhere (touch or mouse), even when the finger starts on a button.
+	if ui != null and not sim_mode:
+		ui.handle_pointer(event)
+
+func _process(delta):
+	if ui != null and not sim_mode:
+		ui.process_scroll(delta)
 # --- debug helpers (used by tools/shot.gd) ---
 func _debug_open_first():
 	if stalls.size() == 0:

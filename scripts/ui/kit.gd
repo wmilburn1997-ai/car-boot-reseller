@@ -148,6 +148,7 @@ func scroll(content_node = null):
 	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.scroll_deadzone = 60   # our own drag handler (ui_root.handle_pointer) takes over first
 	if content_node != null:
 		content_node.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		sc.add_child(content_node)

@@ -1102,3 +1102,142 @@ func cap_width(node, maxw = 1180):
 	var avail = logical.x - (240 if not mobile else 0)
 	var side = int(max(0.0, (avail - maxw) / 2.0))
 	return k.margin(node, side, 0, side, 0)
+
+
+# --- drag to scroll -----------------------------------------------------------------
+# Godot's ScrollContainer only drag-scrolls when the finger starts on empty space; nearly
+# everything here is a button. So we watch every press: once it moves more than a few pixels
+# vertically it becomes a scroll of whatever list is under the finger, and the button that
+# was touched is told the press was cancelled instead of clicked.
+const DRAG_THRESHOLD = 10.0
+var drag_sc = null
+var drag_down = false
+var dragging = false
+var drag_start = Vector2.ZERO
+var drag_last = Vector2.ZERO
+var drag_last_t = 0
+var drag_vel = 0.0
+var drag_fake = false
+var drag_swallow_touch = false
+
+func handle_pointer(ev):
+	if drag_fake:
+		return
+	if ev is InputEventScreenDrag and dragging:
+		g.get_viewport().set_input_as_handled()
+		return
+	if ev is InputEventScreenTouch and not ev.pressed and drag_swallow_touch:
+		# The touch release that ends a drag must not reach the GUI either,
+		# or the control now under the finger treats it as a tap.
+		drag_swallow_touch = false
+		var t = InputEventScreenTouch.new()
+		t.index = ev.index
+		t.pressed = false
+		t.position = Vector2(-10000, -10000)
+		_push_fake(t)
+		g.get_viewport().set_input_as_handled()
+		return
+	if ev is InputEventMouseButton:
+		if ev.button_index != MOUSE_BUTTON_LEFT:
+			return
+		var p = ev.position  # already in logical canvas space here
+		if ev.pressed:
+			drag_vel = 0.0
+			dragging = false
+			drag_swallow_touch = false
+			drag_start = p
+			drag_last = p
+			drag_last_t = Time.get_ticks_msec()
+			drag_sc = scroll_at(p)
+			drag_down = drag_sc != null and not _over_text_field(p)
+		else:
+			drag_down = false
+			if dragging:
+				dragging = false
+				drag_swallow_touch = true
+				# Swallow the real release and hand the GUI one far off-screen, so the
+				# pressed button resets without firing and nothing new gets tapped.
+				var r = InputEventMouseButton.new()
+				r.button_index = MOUSE_BUTTON_LEFT
+				r.pressed = false
+				r.position = Vector2(-10000, -10000)
+				r.global_position = r.position
+				_push_fake(r)
+				g.get_viewport().set_input_as_handled()
+	elif ev is InputEventMouseMotion and drag_down:
+		if drag_sc == null or not is_instance_valid(drag_sc) or not drag_sc.is_inside_tree():
+			drag_down = false
+			return
+		var p = ev.position  # already in logical canvas space here
+		if not dragging:
+			if abs(p.y - drag_start.y) >= DRAG_THRESHOLD and abs(p.y - drag_start.y) > abs(p.x - drag_start.x):
+				dragging = true
+				drag_last = p
+				_cancel_press()
+			else:
+				return
+		var dy = p.y - drag_last.y
+		drag_sc.scroll_vertical = int(drag_sc.scroll_vertical - dy)
+		var now = Time.get_ticks_msec()
+		var dt = max(1, now - drag_last_t) / 1000.0
+		drag_vel = lerp(drag_vel, -dy / dt, 0.5)
+		drag_last = p
+		drag_last_t = now
+		g.get_viewport().set_input_as_handled()
+
+func _cancel_press():
+	# BaseButton only re-checks "is the pointer inside me" on motion, so send it
+	# a motion far off-screen; its release then won't fire pressed.
+	var away = InputEventMouseMotion.new()
+	away.position = Vector2(-10000, -10000)
+	away.global_position = away.position
+	away.button_mask = MOUSE_BUTTON_MASK_LEFT
+	_push_fake(away)
+
+func _push_fake(e):
+	drag_fake = true
+	g.get_viewport().push_input(e)
+	drag_fake = false
+
+func process_scroll(delta):
+	if drag_down or abs(drag_vel) < 20.0:
+		return
+	if drag_sc == null or not is_instance_valid(drag_sc) or not drag_sc.is_inside_tree():
+		drag_vel = 0.0
+		return
+	var before = drag_sc.scroll_vertical
+	drag_sc.scroll_vertical = int(before + drag_vel * delta)
+	if drag_sc.scroll_vertical == before:
+		drag_vel = 0.0
+	drag_vel *= pow(0.04, delta)   # glide to a stop in about a second
+
+func scroll_at(p):
+	# The innermost vertically scrollable ScrollContainer under the point, sheets first.
+	var roots = []
+	if sheet_layer != null and sheet_layer.get_child_count() > 0:
+		roots.append(sheet_layer)
+	elif popup_open:
+		return null
+	else:
+		roots.append(content)
+	var best = null
+	for r in roots:
+		best = _find_scroll(r, p, best)
+	return best
+
+func _find_scroll(node, p, best):
+	for c in node.get_children():
+		if not (c is Control) or not c.is_visible_in_tree():
+			continue
+		if not c.get_global_rect().has_point(p):
+			continue
+		if c is ScrollContainer and c.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+			var vb = c.get_v_scroll_bar()
+			if vb != null and vb.max_value > vb.page + 1.0:
+				best = c
+		best = _find_scroll(c, p, best)
+	return best
+
+func _over_text_field(p):
+	var f = g.get_viewport().gui_get_hovered_control() if g.get_viewport().has_method("gui_get_hovered_control") else null
+	return f is LineEdit or f is TextEdit or f is Slider
