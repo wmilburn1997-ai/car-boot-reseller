@@ -1,55 +1,67 @@
-# Dev notes — 0.10.0 playtest pass
+# Dev notes: 0.11.0
 
-## The value model (important)
+See `notes/DESIGN_0.11.md` for the design and `CHANGELOG.md` for the player-facing summary.
 
-Every item has hidden truth and a player belief.
+## Architecture
 
-- `true_value`: rolled at generation, including rarity and any genuine hidden special.
-- `market_value(item)`: what buyers pay right now. It's `true_value × identified_mult × trend × condition_factor(condition)`, with known-fault and tested/genuine adjustments. **This drives sale rolls, trader offers and auctions.**
-- `perceived_center(item)`: the player's belief. Market value with the unknown parts replaced by what the player actually knows:
-  - average condition, or their Inspect read;
-  - undiscovered special premium removed;
-  - multiplied by a persistent per-item error `exp(est_noise × u × 0.62)`.
+- **`main.gd`** holds game state and rules only.
+  - It never builds UI. It calls a small bridge (`add_toast`, `show_big_popup`, `fx_money`, `show_*`), and each bridge function returns early in `sim_mode` or when `ui` is null. That's why the bots can drive the real rules headless.
+  - Screen changes go through `_screen()`, which also saves after every action. This is the anti-reroll guarantee from 0.10.
+- **`scripts/ui/ui_root.gd`** owns the shell (desktop sidebar or mobile tab bar), scaling, HUD, toasts, popups, sheets and screen dispatch.
+  - Screens are plain RefCounted modules (`scr_*.gd`) that build nodes into a parent.
+  - Re-rendering is "clear and rebuild". Scroll positions are remembered by key.
+- **Layout mode:** mobile if the CSS width is under 820 (or short and under 1000). `adjust_scale()` makes 1 logical px ≈ 1 CSS px on phones, and about 1/1.15 of the window on desktop, clamped so desktop is at least 1020 wide.
+- **Content** lives in `scripts/data/*.gd` as const literals.
+  - `tools/check_data.gd` validates the family and trait schema and coverage.
+  - `tools/check_world.gd` validates `world.gd`.
 
-  `u` (`estimate_uncertainty`) starts at 0.32 and shrinks with Inspect, Condition, Research, Deep Research, testing and category knowledge.
-- `estimate_identified_potential(item)`: the displayed range, built from the perceived centre and `u`.
-- `buyer_interest_score(item, price, perceived)`: `perceived=true` for UI labels, `false` for real rolls.
+## The value model (0.11)
 
-- `true_market_value(item)` is market value with undiscovered faults and fakes applied. Auctions and trade buyers use this, because they inspect the item.
-- Sale rolls use market value. Undisclosed faults and fakes are handled through return chance, which scales with severity.
-- Hidden-information rule: the game shows every roll, but not odds that would reveal hidden truth, until that truth comes out (a sale, a condition check).
+- **`true_value`** is the family roll × rarity × the product of every trait multiplier.
+- **`market_value()`** is what buyers pay. It excludes unknown faults, which come back as returns instead.
+- **`true_market_value()`** adds unknown faults and fakes. Auctions, traders, trade buyers, the shop floor and collectors use it.
+- **`perceived_center()`** is the player's belief:
+  1. Remove unknown condition, unknown traits and legacy specials.
+  2. Blend in log space toward a **family prior** (family midpoint × expected rarity × trend × known condition and traits) using `knowledge_weight()`. Research carries most of the weight (0.8); an unresearched item is mostly a guess from its type.
+  3. Apply the persistent per-item noise, scaled by `estimate_uncertainty()`.
+- **Comps** are generated from the truth *without* unknown traits. That's why a bad hidden trait makes an item look better than it is.
+- **Traits:** `roll_item_traits()` rolls 0–3 of them (plus a hidden item for lots), good vs bad weighted by rarity, condition and seller. Mean multiplier ≈ 1.10 (arithmetic), 0.96 (geometric): `tools/trait_stats.gd`.
+- **Sellers** price in only the traits their knowledge beats (`seller_known_trait_mult`).
 
-## Balance snapshot (bot runs, 80 runs each)
+## Balance snapshot
 
-| Strategy | Day 40 median net worth | Bankrupt by day 40 |
+| Bot (60 days) | Median business value | Bankrupt |
 |---|---|---|
-| careful (research, buy at ≥45% after-fees margin) | ~£950 | ~5% |
-| casual_fee (reads the after-fees line, buys at ≥20% margin, never checks condition) | ~£360 | ~25% (none before day 11) |
-| naive (no research, buys "cheap-looking" things) | ~£0 | ~90% |
-| greedy (lists everything at 1.6× the top of the estimate) | stock never sells | 100% |
-| reckless / gambler | bankrupt | 100% |
+| careful | ~£2.9k | 1 of 24 |
+| casual_fee | ~£0.7k | 2 of 24 |
+| specialist | ~£1.5–1.9k (high variance) | ~2 of 16 |
+| naive / reckless / greedy | ~£0 | nearly all |
 
-Day 60, careful: median ~£1.5k. Growth is roughly linear, capped by energy and time per day. Late-game scaling needs new sourcing (see next steps).
+- **Premises:** careful play usually reaches the garage around day 30–50 and a van around day 90–110. The shop and warehouse are long-term goals, 120+ days.
+- **Clearances:** `tools/clearance_ev.gd`. After the price rework, a "look round, then decide" rule profits on average; taking every job blind is roughly break-even with real losses.
 
-Other checks:
-- Every seller type is profitable with careful play. Clearance, Clueless and Desperate sellers give volume; Collector and Dealer give fewer, rarer deals.
-- Auction expected value is about 1.0× market for common items, rising to ~1.09× for rare or trending ones.
-- Mystery packages are negative expected value, by design.
+**Exploits closed:**
+- relist-for-instant-sales;
+- auction-everything;
+- the collector engine;
+- trader-only openings;
+- free value information via the "gut" estimate;
+- always-accept clearances.
+
+See the git history ("Balance round 2") and the balance review summary in the final report.
 
 ## Tooling
 
-See the README table. Always run `sim.gd` for `careful` and `casual_fee`, `fuzz_ui.gd` on 3–4 seeds, and `save_test.gd` after gameplay changes.
+- `tools/sim.gd` runs strategies headless. The bot itself is in `tools/bot.gd`.
+- `tools/midgame.gd` has the bot play N days in the real UI, then screenshots every screen at a given size.
+- `tools/fuzz_ui.gd` presses random buttons. Use `W=390 H=844` for the phone layout.
+- `tools/save_test.gd` covers round-trips, 0.10 migration, clearance mid-job and duplication regressions.
+- `tools/shots_inv.sh` / `tools/shot.gd` take scripted screenshots.
 
-## Next steps (not in this build)
+## Next steps
 
-1. **Split `main.gd`.** Suggested layout:
-   - `data/*.gd` or JSON for item families, sellers and upgrades;
-   - a `GameState` autoload for run state and save/load;
-   - `Economy` for the value model, sales and returns;
-   - one scene/script per screen.
-
-   The value-model functions above are already self-contained and are the natural first extraction.
-2. **Late-game sourcing** (house clearances, auctions as a buyer, marketplace pickups), vehicle tiers, and an assistant who does checks for a daily wage. These break the linear growth ceiling.
-3. **A named rival reseller** who turns up at stalls, building on `rival_pressure()`.
-4. **Item artwork**: category icons are wired in (`res://cat_icons/cat_*.png`) but the files don't exist yet.
-5. **Music.**
+1. **Items:** per-item artwork (or procedural pixel thumbnails per family).
+2. **Relationships** with regulars could drive quests: "find me a…" requests paying a premium.
+3. **The rival:** a direct rivalry arc (a weekly scoreboard, a clearance bidding war).
+4. **Late game:** more for a warehouse to do, e.g. bulk wholesale buying and running several markets through staff.
+5. **Trait text:** split the few shared traits so they're more specific per family.

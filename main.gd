@@ -2786,17 +2786,16 @@ func bug_report_text():
 	return "\n".join(lines)
 
 var patch_notes = [
-	{"version": "What's in this playtest", "notes": [
-		"Full loop: browse stalls, inspect/check/research, haggle once, buy — then test, research, authenticate, repair, price and list at home. Buyers roll overnight.",
-		"Your price estimate on stock is YOUR estimate. It has real error in it that shrinks as you check condition, research and gain experience in a category. Sales roll against what the item is really worth.",
-		"Returns hit harder now: selling untested faults, unchecked condition or unauthenticated fakes risks refunds and damages your seller rating, which slows future sales.",
-		"Selling experience in a category makes your estimates sharper and Deep Research more likely to find something.",
-		"Mid-day saving: quit any time and carry on exactly where you left off.",
+	{"version": "0.11: The Business Update", "notes": [
+		"Discoveries: items hide details, good and bad, specific to their category. Purple clues tell you something's there; checks, expertise and workshop kit identify it.",
+		"Expertise: selling and researching in a category makes you an Enthusiast, then a Specialist (with a hands-on check at stalls), an Expert (a collector contact) and an Authority.",
+		"The Business: move from a box room to a garage, lock-up, shop and warehouse. Buy vehicles, fit out a workshop, hire staff.",
+		"A living market: weather, special market days, regular sellers who remember you, a rival who snaps up bargains, and house clearances once you have a van.",
+		"A new interface, built separately for desktop and phones.",
 	]},
 	{"version": "Known rough edges", "notes": [
-		"Balance is still being tuned — we especially want to know if the first few days feel too harsh or too easy.",
-		"Late-game progression (vans, lock-ups, staff, auctions as a sourcing method) is planned but not in this build.",
-		"Category artwork for items is placeholder text for now.",
+		"Balance is still being tuned, especially the shop and warehouse late game.",
+		"Items use category icons rather than individual artwork.",
 	]},
 ]
 

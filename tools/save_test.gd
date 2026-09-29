@@ -149,11 +149,13 @@ func _run():
 		if int(x["uid"]) == uid2:
 			found = x
 	check(found != null and found["traits"].size() == 1 and found["traits"][0]["known"] == true, "item traits restored with uid")
+	f.premises_level = 4
+	f.cash += 20000.0
 	f.accept_clearance()
 	check(f.clearance == null, "clearance can be completed after reload")
 	f.end_day()
 	await process_frame
-	check(f.day == 2, "day ends after clearance")
+	check(f.day == 2, "day ends after clearance (day %d, over=%s)" % [f.day, str(f.game_over)])
 	# 0.10 mid-game save (version 2) migration
 	var old = {"save_version": 2, "cash": 1200.0, "day": 30, "player_level": 9, "player_xp": 10, "inventory": [], "bag_level": 3, "storage_level": 3, "toolbox_level": 2, "eye_level": 2, "fee_level": 1, "package_insight_level": 2, "persuasion_level": 1, "skills_unlocked": {"Keen Eye": true}, "category_knowledge": {"Vinyl": 25, "Games": 10}, "goals_done": 9, "tutorial_seen": true, "sold_history": [{"name": "Punk LP", "price": 40.0, "day": 3, "paid": 10.0, "category": "Vinyl"}]}
 	f.apply_save_data(old)
