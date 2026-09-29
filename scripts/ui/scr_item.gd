@@ -307,36 +307,63 @@ func stall_verdict(it, index, stall):
 	h.add_child(left)
 	var right = k.vbox(2)
 	k.expand(right)
+	var pot = g.estimate_identified_potential(it)
 	if it["basic_researched"]:
 		var med = g.comps_median_value(it)
 		var costs = g.selling_costs(it, med)
 		var net = med - float(costs["fee"]) - float(costs["postage"]) - float(costs["insurance"]) - float(costs["packaging"])
 		var margin = net - asking
 		var c = k.GREEN if margin >= asking * 0.3 and margin >= 5.0 else (k.GOLD if margin > 0.0 else k.RED)
-		right.add_child(k.label("AFTER FEES, A MIDDLE SALE CLEARS", "xs", k.TEXT3))
+		var conf = confidence(it)
+		var th = k.hbox(8)
+		th.add_child(k.label("WORTH", "xs", k.TEXT3))
+		th.add_child(k.label(conf[0], "xs", conf[1]))
+		right.add_child(th)
 		var mh = k.hbox(8)
-		mh.add_child(k.label(g.fmt_money(net), "xl", k.TEXT))
-		var ml = k.label("%s vs asking" % g.money_signed(margin), "m", c)
+		mh.add_child(k.label("%s–%s" % [g.fmt_money(pot[0]), g.fmt_money(pot[1])], "xl", k.TEAL))
+		var ml = k.label("%s after fees" % g.money_signed(margin), "m", c)
 		ml.size_flags_vertical = Control.SIZE_SHRINK_END
 		mh.add_child(ml)
 		right.add_child(mh)
-		right.add_child(k.label("Sold recently: %s" % it["basic_comps"], "xs", k.TEXT3, true))
+		right.add_child(k.label("Sold recently: %s" % g.comps_text(it), "xs", k.TEXT3, true))
 	elif g.expertise_tier(it["category"]) >= 1:
-		var pot = g.estimate_identified_potential(it)
 		right.add_child(k.label("YOUR GUT SAYS", "xs", k.TEXT3))
 		right.add_child(k.label("%s–%s" % [g.fmt_money(pot[0]), g.fmt_money(pot[1])], "l", k.TEAL))
-		right.add_child(k.label("Rough, before fees. Research for real sold prices.", "xs", k.TEXT3, true))
+		var rc0 = g.research_cost()
+		var rb0 = k.button("Research  %s" % (g.fmt_money(rc0) if rc0 > 0 else "free"), "action", func(): g.prebuy_research(index), "Recent sold prices for ones like this, and your margin after fees. 2 energy, 4 minutes.", "s", 0, 36)
+		rb0.disabled = g.cash < rc0 or g.energy < 2
+		right.add_child(rb0)
 	else:
-		var fam = g.content.family(it["name"])
-		right.add_child(k.label("WHAT'S IT WORTH?", "xs", k.TEXT3))
-		if fam != null:
-			right.add_child(k.label("These usually go for %s–%s. This one? Find out." % [g.fmt_money(fam["value"][0]), g.fmt_money(fam["value"][1])], "s", k.TEXT2, true))
+		right.add_child(k.label("THESE USUALLY SELL FOR", "xs", k.TEXT3))
+		right.add_child(k.label("%s–%s" % [g.fmt_money(pot[0]), g.fmt_money(pot[1])], "l", k.TEXT2))
 		var rc = g.research_cost()
-		var rb = k.button("Research  %s" % (g.fmt_money(rc) if rc > 0 else "free"), "action", func(): g.prebuy_research(index), "Recent sold prices, and your margin after fees. 2 energy, 4 minutes.", "s", 0, 36)
+		var rb = k.button("Research  %s" % (g.fmt_money(rc) if rc > 0 else "free"), "action", func(): g.prebuy_research(index), "Recent sold prices for ones like this, and your margin after fees. 2 energy, 4 minutes.", "s", 0, 36)
 		rb.disabled = g.cash < rc or g.energy < 2
 		right.add_child(rb)
 	h.add_child(right)
+	var bd = breakdown(it)
+	if bd != null:
+		p.remove_child(h)
+		var pv = k.vbox(8)
+		pv.add_child(h)
+		pv.add_child(bd)
+		p.add_child(pv)
 	return p
+
+func breakdown(it):
+	# "Why this range": typical example, then each thing you know that moves it.
+	var parts = g.value_breakdown(it)
+	if parts.size() <= 1:
+		return null
+	var f = k.flow(6, 4)
+	for i in range(parts.size()):
+		var e = parts[i]
+		var col = k.TEXT2
+		if i > 0:
+			col = k.GREEN if float(e[1]) > 0.0 else k.RED
+		var txt = str(e[0]) if i == 0 else "%s %+d%%" % [e[0], int(round(float(e[1]) * 100.0))]
+		f.add_child(k.label(("" if i == 0 else "· ") + txt, "xs", col))
+	return f
 
 func inv_verdict(it):
 	var p = k.panel("inset", 12)
@@ -364,17 +391,26 @@ func inv_verdict(it):
 	var prof = g.estimated_profit_at(it, mid)
 	right.add_child(k.label("At %s you'd make about %s after fees." % [g.fmt_money(mid), g.money_signed(prof)], "xs", k.GREEN if prof >= 0 else k.RED, true))
 	h.add_child(right)
+	var bd = breakdown(it)
+	if bd != null:
+		p.remove_child(h)
+		var pv = k.vbox(8)
+		pv.add_child(h)
+		pv.add_child(bd)
+		p.add_child(pv)
 	return p
 
 func confidence(it):
+	if not it["basic_researched"]:
+		return ["guesswork", k.ORANGE]
 	var u = g.estimate_uncertainty(it)
-	if u <= 0.10:
-		return ["very confident", k.GREEN]
-	if u <= 0.16:
-		return ["confident", k.TEAL]
-	if u <= 0.24:
-		return ["rough guess", k.GOLD]
-	return ["wild guess", k.ORANGE]
+	if u <= 0.12:
+		return ["very sure", k.GREEN]
+	if u <= 0.20:
+		return ["fairly sure", k.TEAL]
+	if u <= 0.30:
+		return ["rough idea", k.GOLD]
+	return ["guesswork", k.ORANGE]
 
 func facts(it, ctx):
 	var f = k.flow(6, 6)
@@ -484,8 +520,8 @@ func findings(it, ctx):
 		notes.append(["bolt", "Test: " + strip_bb(it["test_note"]), k.GREEN if not it["fault"] else k.RED])
 	if str(it.get("research_note", "")) != "":
 		notes.append(["book", "Deep Research: " + strip_bb(it["research_note"]), k.BLUE])
-	if ctx == "inv" and it["basic_researched"] and str(it.get("basic_comps", "")) != "":
-		notes.append(["glass", "Sold recently: " + it["basic_comps"], k.BLUE])
+	if ctx == "inv" and it["basic_researched"] and it.get("comps_values", []).size() > 0:
+		notes.append(["glass", "Sold recently (ones like yours): " + g.comps_text(it), k.BLUE])
 	if str(it.get("auth_note", "")) != "":
 		notes.append(["check", "Authentication: " + strip_bb(it["auth_note"]), k.TEXT2])
 	if str(it.get("repair_note", "")) != "":

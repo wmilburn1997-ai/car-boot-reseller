@@ -952,6 +952,7 @@ func make_item_from_family(base, seller, ctx = {}):
 		"traits": [],
 	})
 	roll_item_traits(item, base, profile, rarity["tier"], ctx)
+	cap_condition_for_damage(item)
 	var knowledge = clamp(float(profile["knowledge"]) + float(ctx.get("knowledge_mod", 0.0)), 0.05, 0.98)
 	var seller_value = base_value * seller_known_trait_mult(item, knowledge)
 	var random_ask = rng.randf_range(float(base["ask"][0]), float(base["ask"][1]))
@@ -959,6 +960,18 @@ func make_item_from_family(base, seller, ctx = {}):
 	var asking = lerp(random_ask, marketish, knowledge) * float(ctx.get("price_mult", 1.0))
 	item["asking"] = max(1.0, round(asking))
 	return item
+
+func cap_condition_for_damage(item):
+	# Physical damage and a 10/10 condition can't both be true.
+	var cap = 10
+	for t in item.get("traits", []):
+		var d = trait_def(t)
+		if d == null or str(d.get("kind", "")) not in ["bad", "fixable"] or d.has("group"):
+			continue
+		if str(d.get("reveal", "")) in ["condition", "look", "clean"] or str(d.get("kind", "")) == "fixable":
+			cap = min(cap, 7 if float(t["mult"]) >= 0.72 else 5)
+	if int(item["condition"]) > cap:
+		item["condition"] = rng.randi_range(max(3, cap - 2), cap)
 
 func get_fault_chance(name, category, condition, seller_mult):
 	var base = 0.15
@@ -1090,7 +1103,7 @@ func prebuy_research(index):
 	do_research("stall", index)
 
 func comps_median_value(item):
-	var v = item.get("comps_values", [])
+	var v = comps_now(item)
 	if v.size() == 0:
 		return 0.0
 	var s = v.duplicate()
@@ -1132,20 +1145,73 @@ func condition_reveal_note(item):
 		note += "\nYour Inspect read was %s." % ("[color=#8cd98f]about right[/color]" if agreed else "[color=#e88c7a]off[/color]")
 	return note
 
+func all_trait_mult(item):
+	var m = 1.0
+	for t in item.get("traits", []):
+		m *= float(t["mult"])
+	return m
+
+func known_basis(item):
+	# How THIS example compares with a typical one, as far as you know:
+	# condition, identified traits, known faults, test and authentication results.
+	var b = float(item.get("identified_mult", 1.0))
+	if item["condition_checked"]:
+		b *= condition_factor(int(item["condition"]))
+	elif item["quick_look_done"]:
+		b *= condition_factor(int(item.get("perceived_condition", 6)))
+	for t in item.get("traits", []):
+		if t.get("known", false):
+			b *= float(t["mult"])
+	if item["fault"] and fault_is_known(item):
+		b *= fault_multiplier(item["fault_severity"])
+	if item["testable"] and item["tested"] and not item["fault"]:
+		b *= 1.12
+	if item["auth_status"] == "Confirmed Genuine" and float(item["fake_chance"]) >= 0.05:
+		b *= 1.08
+	if item["hidden_special"] != "" and item["special_discovered"]:
+		b *= max(1.0, float(item.get("special_premium", 1.0)))
+	return max(0.01, b)
+
+func typical_value(item):
+	# The hidden value of a typical example of this item (no traits, average condition).
+	var v = float(item["true_value"]) * float(current_trends.get(item["category"], 1.0)) / max(0.01, all_trait_mult(item))
+	if item["hidden_special"] != "":
+		v /= max(1.0, float(item.get("special_premium", 1.0)))
+	return v
+
 func make_comps(item, deep):
-	# Sold listings for the version of this item you *think* you have: anything you haven't identified isn't in the comps.
+	# Recent sold prices for examples like the one you *think* you have. They follow what you know:
+	# check the condition or find a flaw later and the comps you're shown move with it.
 	var values = []
 	var count = 6 if deep else 5
-	var comp_base = float(item["true_value"]) * float(current_trends.get(item["category"], 1.0)) / max(0.05, item_unknown_trait_mult(item))
-	if item["hidden_special"] != "" and not item["special_discovered"]:
-		comp_base /= max(1.0, float(item.get("special_premium", 1.0)))
+	var basis = known_basis(item)
+	var comp_base = typical_value(item) * basis
 	for i in range(count):
 		var spread = rng.randf_range(0.70, 1.30) if deep else rng.randf_range(0.45, 1.60)
 		values.append(max(1, int(comp_base * spread)))
 	values.sort()
 	item["comps_values"] = values
+	item["comps_basis"] = basis
 	item["basic_comps_max"] = float(values[-1])
+	return comps_text(item)
+
+func comps_now(item):
+	# Comps rescaled to what you know right now.
+	var v = item.get("comps_values", [])
+	if v.size() == 0:
+		return []
+	var basis_then = float(item.get("comps_basis", 0.0))
+	if basis_then <= 0.0:
+		return v
+	var f = known_basis(item) / basis_then
+	var out = []
+	for x in v:
+		out.append(max(1, int(round(float(x) * f))))
+	return out
+
+func comps_text(item):
 	var text = ""
+	var values = comps_now(item)
 	for i in range(values.size()):
 		if i > 0:
 			text += ", "
@@ -1616,26 +1682,39 @@ func true_market_value(item):
 	return max(1.0, v)
 
 func estimate_uncertainty(item):
-	var u = 0.40
-	if item["quick_look_done"]:
-		u -= 0.02
-	if item["condition_checked"]:
-		u -= 0.07
-	if item["basic_researched"]:
-		u -= 0.09
-	if item["deep_researched"]:
-		u -= 0.09
-	if item["testable"] and item["tested"]:
-		u -= 0.02
+	# Relative half-width of your value range (~80% of the time the known-version value lands inside).
+	if not item["basic_researched"] or item.get("comps_values", []).size() == 0:
+		var u = 0.40
+		if item["quick_look_done"]:
+			u -= 0.02
+		if item["condition_checked"]:
+			u -= 0.07
+		u -= 0.02 * float(expertise_tier(item["category"]))
+		return clamp(u, 0.12, 0.40)
+	# Researched: the spread of a median of real sold prices, plus whatever condition you haven't pinned down.
+	var ev = 0.14 if item["deep_researched"] else 0.29
+	ev *= 1.0 - 0.08 * float(expertise_tier(item["category"]))
 	if item.get("expert_checked", false):
-		u -= 0.03
-	u -= 0.02 * float(expertise_tier(item["category"]))
-	u -= clamp((float(category_knowledge.get(item["category"], 5)) - 5.0) * 0.002, 0.0, 0.04)
-	return clamp(u, 0.04, 0.40)
+		ev *= 0.9
+	var c = 0.0
+	if not item["condition_checked"]:
+		c = 0.10 if item["quick_look_done"] else 0.18
+	return clamp(sqrt(ev * ev + c * c), 0.05, 0.40)
+
+func known_value(item):
+	# The value of the item as you understand it (unknown traits, unknown faults and unchecked condition left out).
+	return max(1.0, typical_value(item) * known_basis(item))
 
 func perceived_center(item):
-	# The player's belief: market value with what they don't know stripped out,
-	# plus a persistent per-item error that shrinks as they learn more about it.
+	# The player's belief. Once researched, it's what the sold prices say about examples like yours;
+	# before that, a guess from what this *kind* of thing usually fetches, sharpened by expertise.
+	if item["basic_researched"] and item.get("comps_values", []).size() > 0:
+		var ev = comps_median_value(item)
+		var tier = float(expertise_tier(item["category"]))
+		if tier > 0.0:
+			# Experts read the comps better: a little pull toward the real thing.
+			ev = exp(lerp(log(max(1.0, ev)), log(known_value(item)), 0.08 * tier))
+		return max(1.0, ev)
 	var v = market_value(item)
 	if not item["condition_checked"]:
 		v /= condition_factor(int(item["condition"]))
@@ -1644,7 +1723,6 @@ func perceived_center(item):
 	if item["hidden_special"] != "" and not item["special_discovered"]:
 		v /= max(1.0, float(item.get("special_premium", 1.0)))
 	v /= max(0.05, item_unknown_trait_mult(item))
-	# Without real evidence you can only guess from what this *kind* of thing usually fetches.
 	var w = knowledge_weight(item)
 	if w < 0.999:
 		var prior = family_prior(item)
@@ -1653,6 +1731,63 @@ func perceived_center(item):
 	var u = estimate_uncertainty(item)
 	var bias = exp(clamp(float(item.get("est_noise", 0.0)), -2.2, 2.2) * u * 0.62)
 	return max(1.0, v * bias)
+
+func value_breakdown(item):
+	# [[label, pct]] explaining the estimate: first entry is the typical example, then each known adjustment.
+	var out = []
+	if item["basic_researched"] and item.get("comps_values", []).size() > 0:
+		out.append(["Typical one ~%s" % fmt_money(comps_median_value(item) / known_basis(item)), 0.0])
+	else:
+		out.append(["Before research", 0.0])
+	var cf = 1.0
+	var clabel = ""
+	if item["condition_checked"]:
+		cf = condition_factor(int(item["condition"]))
+		clabel = "Condition %d/10" % int(item["condition"])
+	elif item["quick_look_done"]:
+		cf = condition_factor(int(item.get("perceived_condition", 6)))
+		clabel = "Looks ~%d/10" % int(item.get("perceived_condition", 6))
+	if clabel != "" and abs(cf - 1.0) >= 0.02:
+		out.append([clabel, cf - 1.0])
+	for t in item.get("traits", []):
+		if t.get("known", false) and abs(float(t["mult"]) - 1.0) >= 0.02:
+			var d = trait_def(t)
+			out.append([str(d["name"]) if d != null else "Detail", float(t["mult"]) - 1.0])
+	if item["fault"] and fault_is_known(item):
+		out.append([fault_label(item), fault_multiplier(item["fault_severity"]) - 1.0])
+	if item["testable"] and item["tested"] and not item["fault"]:
+		out.append(["Tested working", 0.12])
+	if item["auth_status"] == "Confirmed Genuine" and float(item["fake_chance"]) >= 0.05:
+		out.append(["Authenticated", 0.08])
+	if float(item.get("identified_mult", 1.0)) != 1.0 and abs(float(item["identified_mult"]) - 1.0) >= 0.02:
+		out.append(["Identified", float(item["identified_mult"]) - 1.0])
+	return out
+
+func family_range(item):
+	# What examples of this kind usually go for, adjusted for what you already know about this one.
+	var fam = content.family(str(item["name"])) if content != null else null
+	if fam == null:
+		var c = perceived_center(item)
+		return [c * 0.5, c * 1.6]
+	var adj = float(RARITY_EXPECT.get(item["rarity"], 1.0)) * float(current_trends.get(item["category"], 1.0)) * known_basis(item)
+	return [max(1.0, float(fam["value"][0]) * adj), max(2.0, float(fam["value"][1]) * adj)]
+
+func value_range(item):
+	# The range shown to the player. Honest by construction: before research it's the family range
+	# (narrowed by expertise), after research it's the comps median ± a calibrated spread.
+	if item["basic_researched"] and item.get("comps_values", []).size() > 0:
+		var c = perceived_center(item)
+		var u = estimate_uncertainty(item)
+		return [max(1.0, c * (1.0 - u)), max(2.0, c * (1.0 + u))]
+	var fr = family_range(item)
+	var tier = float(expertise_tier(item["category"]))
+	if tier <= 0.0:
+		return fr
+	var kv = known_value(item)
+	var t = clamp(0.2 * tier, 0.0, 0.8)
+	var lo = exp(lerp(log(fr[0]), log(max(1.0, kv * 0.72)), t))
+	var hi = exp(lerp(log(fr[1]), log(max(2.0, kv * 1.35)), t))
+	return [min(lo, hi - 1.0), max(hi, lo + 1.0)]
 
 const RARITY_EXPECT = {"Common": 1.0, "Uncommon": 1.3, "Rare": 1.85, "Very Rare": 3.2, "Grail": 8.5}
 
@@ -1697,10 +1832,9 @@ func family_prior(item):
 	return max(1.0, p)
 
 func estimate_identified_potential(item):
-	var center = perceived_center(item)
-	var u = estimate_uncertainty(item)
-	var low = int(max(1.0, round(center * (1.0 - u * 0.85))))
-	var high = int(max(float(low) + 1.0, round(center * (1.0 + u * 0.85))))
+	var r = value_range(item)
+	var low = int(max(1.0, round(r[0])))
+	var high = int(max(float(low) + 1.0, round(r[1])))
 	return [low, high]
 
 func inventory_check_condition(index):
@@ -2664,7 +2798,7 @@ var master_volume = 0.8
 var sfx_enabled = true
 var ui_scale = 1.0
 var fullscreen = false
-var show_rng_toasts = true
+var show_rng_toasts = false
 
 func load_settings():
 	var cfg = ConfigFile.new()
@@ -2675,7 +2809,7 @@ func load_settings():
 	sfx_enabled = to_bool(cfg.get_value("audio", "sfx_enabled", true))
 	ui_scale = float(cfg.get_value("display", "ui_scale2", 1.0))
 	fullscreen = to_bool(cfg.get_value("display", "fullscreen", false))
-	show_rng_toasts = to_bool(cfg.get_value("gameplay", "show_rng_toasts", true))
+	show_rng_toasts = to_bool(cfg.get_value("gameplay", "show_dice_popups", false))
 	music_volume = float(cfg.get_value("audio", "music_volume", 0.5))
 	var ts = cfg.get_value("gameplay", "tips_seen", {})
 	tips_seen = ts if typeof(ts) == TYPE_DICTIONARY else {}
@@ -2687,7 +2821,7 @@ func save_settings():
 	cfg.set_value("audio", "music_volume", music_volume)
 	cfg.set_value("display", "ui_scale2", ui_scale)
 	cfg.set_value("display", "fullscreen", fullscreen)
-	cfg.set_value("gameplay", "show_rng_toasts", show_rng_toasts)
+	cfg.set_value("gameplay", "show_dice_popups", show_rng_toasts)
 	cfg.set_value("gameplay", "tips_seen", tips_seen)
 	cfg.save(SETTINGS_PATH)
 

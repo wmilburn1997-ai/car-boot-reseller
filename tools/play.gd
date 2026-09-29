@@ -163,9 +163,17 @@ func _cmd(cmd):
 				args.append(_conv(p[i]))
 			var r = m.callv(p[1], args)
 			print("  = ", _short(r))
+		"view", "iview":
+			# select a stall item (view N) or stock item (iview N) and show its screen, for screenshots
+			if c == "view":
+				m.selected_stall_uid = int(m.stalls[m.current_stall_index]["stock"][n]["uid"])
+				m.show_stall()
+			else:
+				m.selected_inv_uid = int(m.inventory[n]["uid"])
+				m.show_inventory()
+		"screen":
+			m.call(p[1])
 		"shot":
-			m.ui.build_root()
-			m._ui_rerender() if m.has_method("_ui_rerender") else null
 			for i in range(12):
 				await process_frame
 			get_root().get_texture().get_image().save_png(p[1])
