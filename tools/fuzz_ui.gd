@@ -29,6 +29,19 @@ func collect(node, out):
 func _run(steps):
 	for i in range(5):
 		await process_frame
+	if OS.get_environment("RICH") != "":
+		main.start_new_game()
+		main.tutorial_seen = true
+		main._debug_rich_state()
+		main.cash = 20000.0
+		main.vehicle_level = 4
+		main.premises_level = 3
+		main.add_clearance_lead("paper")
+		main.add_clearance_lead("tip", "Doreen")
+		main.expertise["Tools"] = 900.0
+		main.skills_unlocked = {}
+		main.player_level = 12
+		main.ui.show_market()
 	var presses = 0
 	var days_seen = {}
 	for step in range(steps):
