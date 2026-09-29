@@ -492,7 +492,7 @@ func build_hud_desktop():
 	row.add_child(vsep())
 	var mw = 72 if compact else 96
 	row.add_child(meter("bolt", "Energy", g.energy, g.max_energy(), k.TEAL, "Energy for today. Most actions use some. Refills every morning.", mw))
-	row.add_child(meter("bag", "Carry", g.carry_used, g.effective_bag_capacity(), k.BLUE, "What you can carry home today (%s)." % g.vehicle()["name"], mw))
+	row.add_child(meter("bag", "Carry", g.carry_used, g.effective_bag_capacity(), k.BLUE, "Room left in your %s for today's buys. Selling or scrapping something bought today frees it; it empties overnight." % g.vehicle()["name"].to_lower(), mw))
 	row.add_child(meter("box", "Storage", g.inventory_space_used(), g.storage_capacity(), k.ORANGE, "Space at your %s." % g.premises()["name"], mw))
 	var gap = k.vbox(2)
 	k.expand(gap)

@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Car Boot Reseller"
-config/version="0.11.1-playtest"
+config/version="0.11.2-playtest"
 run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.7")
 boot_splash/bg_color=Color(0.035, 0.045, 0.06, 1)

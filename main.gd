@@ -44,7 +44,17 @@ var day_stats = {}
 var last_rng_line = "No RNG rolls yet."
 var category_knowledge = {}   # legacy 0.10 (5..25), migration only
 var expertise = {}            # category -> xp
-var carry_used = 0
+# What's in the car from today's buys. Worked out from stock, so scrapping or
+# selling something you bought today frees the space again.
+var carry_used:
+	get:
+		var used = 0
+		for it in inventory:
+			if int(it.get("carried_day", -1)) == day:
+				used += size_units(it)
+		return used
+	set(_v):
+		pass
 var mystery_packages_left = 0
 var current_trends = {}
 var trend_headlines = []
@@ -351,7 +361,10 @@ func apply_save_data(parsed):
 				stock[j] = normalize_item(stock[j])
 			stall["stock"] = stock
 		current_stall_index = clamp(int(parsed.get("current_stall_index", 0)), 0, stalls.size() - 1)
-		carry_used = int(parsed.get("carry_used", 0))
+		# Saves from before 0.11.2 only kept a running total; tag today's buys instead.
+		for it in inventory:
+			if not it.has("carried_day") and int(it.get("bought_day", -1)) == day:
+				it["carried_day"] = day
 		fixer_uses_today = int(parsed.get("fixer_uses_today", 0))
 		mystery_packages_left = int(parsed.get("mystery_packages_left", 0))
 		daily_challenges = parsed.get("daily_challenges", [])
@@ -1303,7 +1316,7 @@ func buy_item(index):
 		queue_popup("Not enough cash.")
 		return
 	if not can_carry(item):
-		queue_popup("You can't carry any more today (%d/%d). A bigger vehicle carries more." % [carry_used, effective_bag_capacity()])
+		queue_popup("Your %s is full of today's buys (%d/%d). Selling or scrapping something you bought today frees the space, and it all empties overnight. A bigger vehicle carries more." % [vehicle()["name"].to_lower(), carry_used, effective_bag_capacity()])
 		return
 	if not can_store(item):
 		queue_popup("No room at home (storage %d/%d). Sell stock, or get bigger premises." % [inventory_space_used(), storage_capacity()])
@@ -1316,7 +1329,7 @@ func buy_item(index):
 		total_haggled_savings += float(item["haggle_savings"])
 	item["bought_from"] = stall.get("seller_full_name", stall["seller_display_name"])
 	item["bought_day"] = day
-	carry_used += size_units(item)
+	item["carried_day"] = day
 	inventory.append(item)
 	stall["stock"].remove_at(index)
 	stall["revealed"] = clamp(int(stall["revealed"]) - 1, 0, stall["stock"].size())
@@ -1428,7 +1441,7 @@ func accept_special_offer():
 	day_stats["buy_spend"] += item["asking"]
 	day_stats["items_bought"] += 1
 	item["paid"] = item["asking"]
-	carry_used += size_units(item)
+	item["carried_day"] = day
 	inventory.append(item)
 	register_collection(item)
 	add_xp(2)

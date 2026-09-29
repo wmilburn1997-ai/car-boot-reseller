@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.2
+
+- **Carry space fix:** carry space now counts what's actually in your car from today's buys. Scrapping or selling something you bought today frees its space straight away. Before, the space stayed used until the next day. The "car full" message explains this too.
+
 ## 0.11.1
 
 - **Touch scrolling:** drag with your finger anywhere on a list or sheet to scroll it, with a little momentum. You no longer need the thin scrollbar. A drag that starts on a card or button scrolls instead of tapping it, and a plain tap still works as before. It works with a mouse drag on desktop too.
