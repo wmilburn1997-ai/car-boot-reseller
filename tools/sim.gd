@@ -45,7 +45,7 @@ func new_game(seed):
 		g.free()
 	g = load("res://main.gd").new()
 	g.sim_mode = true
-	g.rng.seed = seed
+	g.forced_run_seed = seed
 	seed(seed)
 	g.init_new_run()
 	bot = Bot.new(g, strategy)

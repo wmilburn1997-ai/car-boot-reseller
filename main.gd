@@ -2,10 +2,16 @@ extends Control
 # Car Boot Reseller — game state and rules. The UI lives in scripts/ui/.
 
 var rng = RandomNumberGenerator.new()
+# Each run has a seed. Nights and markets draw from a per-day stream derived from it,
+# and the live RNG state is saved, so reloading a save can't reroll outcomes.
+var run_seed = 0
+var forced_run_seed = -1   # tools set this for reproducible runs
 
 const GAME_VERSION = "0.11.0-playtest"
 const STARTING_CASH = 300.0
 const SAVE_PATH = "user://savegame.json"
+# Tools can point the game at another save file (CBR_SAVE=user://x.json) so parallel test runs don't collide.
+var save_path = OS.get_environment("CBR_SAVE") if OS.get_environment("CBR_SAVE") != "" else SAVE_PATH
 const CATEGORIES = ["Clothing","Games","Trading Cards","Vinyl","Cameras","Tools","Electronics","Collectables","Jewellery","Books","Home","Musical Instruments","Garden & Outdoor"]
 const ContentScript = preload("res://scripts/content.gd")
 const Biz = preload("res://scripts/data/business.gd")
@@ -168,6 +174,9 @@ func get_save_data():
 	return {
 		"save_version": SAVE_VERSION,
 		"game_version": GAME_VERSION,
+		"run_seed": str(run_seed),
+		"rng_seed": str(rng.seed),
+		"rng_state": str(rng.state),
 		"energy": energy,
 		"current_time_minutes": current_time_minutes,
 		"daily_expenses": daily_expenses,
@@ -243,7 +252,7 @@ func save_game():
 	if sim_mode:
 		return
 	var data = get_save_data()
-	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var file = FileAccess.open(save_path, FileAccess.WRITE)
 	if file == null:
 		return
 	file.store_string(JSON.stringify(data))
@@ -279,6 +288,16 @@ func apply_save_data(parsed):
 	parsed = migrate_legacy_names(parsed)
 	var version = int(parsed.get("save_version", 1))
 	init_new_run_state_only()
+	# 64-bit RNG values are stored as strings; JSON numbers would lose precision.
+	if parsed.has("run_seed"):
+		run_seed = int(str(parsed["run_seed"]))
+	else:
+		run_seed = hash([str(parsed.get("save_time", "")), int(parsed.get("day", 1)), float(parsed.get("cash", 0))])
+	if parsed.has("rng_state"):
+		rng.seed = int(str(parsed.get("rng_seed", "0")))
+		rng.state = int(str(parsed["rng_state"]))
+	else:
+		rng.seed = hash([run_seed, "live", int(parsed.get("day", 1))])
 	cash = float(parsed.get("cash", cash))
 	day = int(parsed.get("day", day))
 	player_level = int(parsed.get("player_level", player_level))
@@ -406,7 +425,7 @@ func apply_save_data(parsed):
 	if not restored_day:
 		pending_special_offer = null
 		reset_day_stats()
-		generate_day()
+		generate_day_seeded()
 	ensure_week_plan()
 	for n in migrated_notes:
 		pending_notices.append(n)
@@ -474,9 +493,9 @@ func normalize_item(item):
 func load_game():
 	if sim_mode:
 		return false
-	if not FileAccess.file_exists(SAVE_PATH):
+	if not FileAccess.file_exists(save_path):
 		return false
-	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var file = FileAccess.open(save_path, FileAccess.READ)
 	if file == null:
 		return false
 	var text = file.get_as_text()
@@ -2543,6 +2562,8 @@ func end_day():
 	var closing_day = day
 	var start_cash = float(day_stats["start_cash"])
 	var cash_before_resolution = cash
+	var live_rng = rng
+	rng = day_rng(closing_day, "night")
 	process_sales()
 	process_auctions()
 	process_shop_floor()
@@ -2592,6 +2613,7 @@ func end_day():
 		"running": running,
 	}
 	best_net_worth = max(best_net_worth, business_value())
+	rng = live_rng
 	in_end_day = false
 	if negative_days_streak >= 4:
 		game_over = true
@@ -2601,10 +2623,12 @@ func end_day():
 		return
 	day += 1
 	if (day - 1) % 7 == 0:
+		rng = day_rng(day, "week")
 		generate_weekly_trends()
 		weekly_regular_churn()
+		rng = live_rng
 	reset_day_stats()
-	generate_day()
+	generate_day_seeded()
 	check_goals()
 	check_progress_achievements()
 	save_game()
@@ -3126,8 +3150,26 @@ func _ready():
 	apply_settings()
 	show_title_screen()
 
+func day_rng(d, stream):
+	var r = RandomNumberGenerator.new()
+	r.seed = hash([int(run_seed), int(d), str(stream)])
+	return r
+
+func generate_day_seeded():
+	var live = rng
+	rng = day_rng(day, "market")
+	generate_day()
+	rng = live
+
 func init_new_run():
 	# Resets every piece of run state. Settings and tutorial_seen survive.
+	if forced_run_seed >= 0:
+		run_seed = forced_run_seed
+	else:
+		var seeder = RandomNumberGenerator.new()
+		seeder.randomize()
+		run_seed = seeder.randi()
+	rng.seed = hash([run_seed, "live"])
 	day = 1
 	cash = STARTING_CASH
 	energy = 100
@@ -3195,7 +3237,7 @@ func init_new_run():
 	init_rival()
 	generate_weekly_trends()
 	reset_day_stats()
-	generate_day()
+	generate_day_seeded()
 
 var pending_notices = []   # shown once the UI is up (e.g. after migrating an old save)
 

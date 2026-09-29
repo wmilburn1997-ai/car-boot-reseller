@@ -29,8 +29,8 @@ func _go(outdir, days, s, strat):
 	m.tutorial_seen = true
 	for k in m.ui.COACH:
 		m.tips_seen[k] = true
+	m.forced_run_seed = s
 	m.start_new_game()
-	m.rng.seed = s
 	var bot = Bot.new(m, strat)
 	var summary = null
 	for d in range(days):
