@@ -18,8 +18,10 @@ const Biz = preload("res://scripts/data/business.gd")
 const Lines012 = preload("res://scripts/data/lines_012.gd")
 const Ident = preload("res://scripts/data/identity.gd")
 const WorldSys = preload("res://scripts/sys_world.gd")
+const TradeSys = preload("res://scripts/sys_trade.gd")
 var w2 = {}
 var world = WorldSys.new(self)
+var trade = TradeSys.new(self)
 const WorldData = preload("res://scripts/data/world.gd")
 const UIRoot = preload("res://scripts/ui/ui_root.gd")
 static var _content_cache = null
@@ -173,7 +175,7 @@ func fixer_gamble(amount):
 	save_game()
 	show_stall_list()
 
-const SAVE_VERSION = 3
+const SAVE_VERSION = 4
 
 func get_save_data():
 	return {
@@ -181,6 +183,9 @@ func get_save_data():
 		"game_version": GAME_VERSION,
 		"run_seed": str(run_seed),
 		"w2": w2,
+		"signatures": signatures,
+		"signature_changed_day": signature_changed_day,
+		"signature_nagged": signature_nagged,
 		"rng_seed": str(rng.seed),
 		"rng_state": str(rng.state),
 		"energy": energy,
@@ -307,6 +312,11 @@ func apply_save_data(parsed):
 	cash = float(parsed.get("cash", cash))
 	day = int(parsed.get("day", day))
 	w2 = parsed.get("w2", {}) if typeof(parsed.get("w2", {})) == TYPE_DICTIONARY else {}
+	signature_changed_day = int(parsed.get("signature_changed_day", -99))
+	signature_nagged = parsed.get("signature_nagged", {}) if typeof(parsed.get("signature_nagged", {})) == TYPE_DICTIONARY else {}
+	signatures = []
+	for c in parsed.get("signatures", []):
+		signatures.append(str(c))
 	for e in w2.get("gaz_shop", []):
 		e["item"] = normalize_item(e["item"])
 	player_level = int(parsed.get("player_level", player_level))
@@ -336,6 +346,10 @@ func apply_save_data(parsed):
 	activity_log = parsed.get("activity_log", [])
 	best_net_worth = float(parsed.get("best_net_worth", 0.0))
 	goals_done = int(parsed.get("goals_done", 0))
+	if version < 4 and goals_done > 0:
+		# Goals were re-ordered in 0.12: carry progress over by goal, not position.
+		var last_id = OLD_GOAL_IDS[clamp(goals_done - 1, 0, OLD_GOAL_IDS.size() - 1)]
+		goals_done = max(0, goal_index(last_id) + 1)
 	var ck = parsed.get("category_knowledge", null)
 	category_knowledge = ck if typeof(ck) == TYPE_DICTIONARY else {}
 	var migrated_notes = []
@@ -436,6 +450,18 @@ func apply_save_data(parsed):
 		reset_day_stats()
 		generate_day_seeded()
 	ensure_week_plan()
+	if not parsed.has("signatures"):
+		# 0.12 introduces signatures. Keep your two strongest categories at full strength.
+		var strong = []
+		for c in CATEGORIES:
+			if raw_expertise_tier(c) >= 3:
+				strong.append(c)
+		strong.sort_custom(func(a, b): return expertise_xp(a) > expertise_xp(b))
+		for i in range(min(signature_slots(), strong.size())):
+			signatures.append(strong[i])
+		migrated_notes.append("Expertise now has Signatures: only the categories you commit to go beyond Specialist. %s" % (("Your strongest, %s, %s been made your signature%s." % [" and ".join(signatures), "has" if signatures.size() == 1 else "have", "" if signatures.size() == 1 else "s"]) if signatures.size() > 0 else "Choose yours from the Expertise screen when you're ready."))
+		if strong.size() > signatures.size():
+			migrated_notes.append("%s %s now capped at Specialist. You keep the knowledge; make one a signature any time a slot frees up." % [", ".join(strong.slice(signatures.size())), "is" if strong.size() - signatures.size() == 1 else "are"])
 	for n in migrated_notes:
 		pending_notices.append(n)
 	if version < 3:
@@ -709,8 +735,9 @@ func generate_weekly_trends():
 		var up = str(news["dir"]) == "up"
 		trend_random[news["cat"]] = clamp(float(trend_random[news["cat"]]) * (rng.randf_range(1.10, 1.20) if up else rng.randf_range(0.84, 0.92)), 0.70, 1.35)
 		week_news = {"text": news["text"], "cat": news["cat"], "dir": news["dir"]}
+	trade.weekly_bubble()
 	for category in categories:
-		current_trends[category] = clamp(float(trend_random[category]) * season_factor(category, season), 0.70, 1.40)
+		current_trends[category] = clamp(float(trend_random[category]) * season_factor(category, season) * trade.bubble_mult(category), 0.55, 2.0)
 	var sorted = categories.duplicate()
 	sorted.sort_custom(func(a, b): return float(current_trends[a]) > float(current_trends[b]))
 	trend_headlines.append("%s is attracting the most buyers this week." % sorted[0])
@@ -807,6 +834,7 @@ func generate_day():
 	world.roll_market_event()
 	world.expire_commissions()
 	world.roll_commission()
+	trade.ensure_catalogue()
 	lines_used_today = {}
 	current_stall_index = 0
 
@@ -854,7 +882,7 @@ func build_stall(reg, mfx, wfx):
 		if fams.size() > 0:
 			var fam = fams[rng.randi_range(0, fams.size() - 1)]
 			var it = make_item_from_family(fam, seller, {"trait_bias": 0.18, "rarity_boost": 1.5})
-			it["asking"] = max(1.0, round(true_market_value(it) * rng.randf_range(0.35, 0.55)))
+			it["asking"] = max(1.0, round(true_market_value(it) * rng.randf_range(0.55, 0.8)))
 			it["saved_for_player"] = true
 			stall["stock"].insert(0, it)
 	if int(reg["id"]) >= 0 and float(reg["rel"]) >= 35.0 and can_do_clearances() and clearance_leads.size() < 3 and rng.randf() < 0.14:
@@ -1625,6 +1653,27 @@ func fill_pools(t, depth):
 			out += key
 		i = b + 1
 	return out
+
+func buyer_message(item, price):
+	# What the buyer says should fit what they actually got.
+	if price < true_market_value(item) * 0.6 and item_unknown_trait_mult(item) > 1.25:
+		return pick_line(WorldData.BUYER_MESSAGES.get("missed", [""]))
+	var flawed = (item["fault"] and fault_is_known(item)) or int(item["condition"]) <= 4
+	if flawed:
+		return pick_line(["As described. Fine for what I need it for.", "Arrived. Honest listing, flaws and all. Thanks.", "It's rough, but you said so. No complaints.", "Spares or repair, as advertised. Cheers.", "Exactly the state you said. Fair price for it."])
+	var cands = []
+	for l in WorldData.BUYER_MESSAGES.get("happy", []):
+		var t = str(l)
+		if t.findn("working") >= 0 and not item["testable"]:
+			continue
+		if t.findn("perfect condition") >= 0 and int(item["condition"]) < 8:
+			continue
+		if t.findn("loft") >= 0 and int(item["condition"]) >= 8:
+			continue
+		if t.findn("photos") >= 0 and not has_equip("photo"):
+			continue
+		cands.append(t)
+	return pick_line(cands)
 
 func sale_buyer_phrase(channel):
 	var town = pick_line(Ident.POOLS["town"])
@@ -2535,6 +2584,13 @@ func start_auction(index):
 		queue_popup("You're at your listing limit (%d)." % listing_cap())
 		return
 	var center = true_market_value(item)
+	# Bidders only half-believe in what you haven't found yourself: unknown upside is discounted.
+	var unk_good = 1.0
+	for t in item.get("traits", []):
+		if not t.get("known", false) and float(t["mult"]) > 1.0:
+			unk_good *= float(t["mult"])
+	center /= sqrt(unk_good)
+	item["auction_center"] = center
 	var hype = 0.0
 	if item["one_in"] >= 25:
 		hype += 0.15
@@ -2605,7 +2661,7 @@ func process_auctions():
 		else:
 			var progress = (3.0 - float(item["auction_days_left"])) / 3.0
 			var approach_frac = clamp(0.35 + progress * 0.35 + rng.randf_range(-0.15, 0.15), 0.2, 0.95)
-			item["auction_current_bid"] = max(float(item["auction_current_bid"]), round(true_market_value(item) * approach_frac))
+			item["auction_current_bid"] = max(float(item["auction_current_bid"]), round(float(item.get("auction_center", true_market_value(item))) * approach_frac))
 	for i in range(to_remove.size() - 1, -1, -1):
 		inventory.remove_at(to_remove[i])
 
@@ -2851,8 +2907,7 @@ func resolve_item_sale(item, sale_chance, channel = "listing"):
 	seller_rating = min(100.0, seller_rating + 1.0)
 	var sale_profit = record_completed_sale(item, sale_price, costs, channel)
 	if in_end_day:
-		var msgs = WorldData.BUYER_MESSAGES.get("happy", [""])
-		night_events.append({"kind": "sale", "text": "Sold: %s for £%.0f" % [item_display_name(item), sale_price], "sub": pick_line(msgs), "amount": sale_price, "profit": sale_profit, "kind_name": item["name"]})
+		night_events.append({"kind": "sale", "text": "Sold: %s for £%.0f" % [item_display_name(item), sale_price], "sub": buyer_message(item, sale_price), "amount": sale_price, "profit": sale_profit, "kind_name": item["name"]})
 	else:
 		add_toast("SOLD: %s for £%.0f (profit %s)" % [item["name"], sale_price, money_signed(sale_profit)], "success" if sale_profit >= 0.0 else "warn")
 		fx_money(net)
@@ -3115,6 +3170,7 @@ func end_day():
 	process_shop_floor()
 	process_staff()
 	world.gaz_night()
+	trade.resolve_saleroom()
 	world.check_big_finds()
 	if closing_day % 7 == 0:
 		world.week_rollover()
@@ -3396,28 +3452,50 @@ func sale_profit_of(sale):
 
 var goals_done = 0
 var business_goals = [
-	{"text": "Make your first sale", "xp": 15},
-	{"text": "Sell 5 items at a profit", "xp": 20},
-	{"text": "Identify a hidden detail on an item", "xp": 20},
-	{"text": "Buy a Shopping Trolley (Business)", "xp": 20},
-	{"text": "Install your first piece of workshop kit", "xp": 25},
-	{"text": "Reach level 3", "xp": 25},
-	{"text": "Reach £800 business value", "xp": 30},
-	{"text": "Become an Enthusiast in any category", "xp": 30},
-	{"text": "Rent a garage", "xp": 40},
-	{"text": "Become a regular at someone's stall", "xp": 30},
-	{"text": "Become a Specialist in any category", "xp": 40},
-	{"text": "Reach £2,000 business value", "xp": 50},
-	{"text": "Buy an estate car", "xp": 50},
-	{"text": "Move into an industrial lock-up", "xp": 60},
-	{"text": "Buy a van", "xp": 70},
-	{"text": "Do a house clearance", "xp": 70},
-	{"text": "Become an Expert in any category", "xp": 80},
-	{"text": "Open a High Street shop", "xp": 100},
-	{"text": "Reach £20,000 business value", "xp": 120},
-	{"text": "Move into a warehouse", "xp": 150},
-	{"text": "Reach £60,000 business value: Car Boot King", "xp": 250},
+	{"id": "first_sale", "text": "Make your first sale", "xp": 15},
+	{"id": "five_profit", "text": "Sell 5 items at a profit", "xp": 20},
+	{"id": "discovery", "text": "Identify a hidden detail on an item", "xp": 20},
+	{"id": "trolley", "text": "Buy a Shopping Trolley (Business)", "xp": 20},
+	{"id": "kit", "text": "Install your first piece of workshop kit", "xp": 25},
+	{"id": "level3", "text": "Reach level 3", "xp": 25},
+	{"id": "worth800", "text": "Reach £800 business value", "xp": 30},
+	{"id": "enthusiast", "text": "Become an Enthusiast in any category", "xp": 30},
+	{"id": "garage", "text": "Rent a garage", "xp": 40},
+	{"id": "regular", "text": "Become a regular at someone's stall", "xp": 30},
+	{"id": "specialist", "text": "Become a Specialist in any category", "xp": 40},
+	{"id": "worth2k", "text": "Reach £2,000 business value", "xp": 50},
+	{"id": "estate_car", "text": "Buy an estate car", "xp": 50},
+	{"id": "signature", "text": "Make a category your signature (Expertise)", "xp": 40},
+	{"id": "commission", "text": "Fill a Wanted request", "xp": 45},
+	{"id": "lockup", "text": "Move into an industrial lock-up", "xp": 60},
+	{"id": "beat_gaz", "text": "Beat Gaz over a week", "xp": 50},
+	{"id": "van", "text": "Buy a van", "xp": 70},
+	{"id": "clearance", "text": "Do a house clearance", "xp": 70},
+	{"id": "expert", "text": "Become an Expert in a signature", "xp": 80},
+	{"id": "saleroom", "text": "Win a lot at the Saleroom", "xp": 70},
+	{"id": "shop", "text": "Open a High Street shop", "xp": 100},
+	{"id": "estate", "text": "Win an estate sale with a sealed bid (Luton van)", "xp": 110},
+	{"id": "worth20k", "text": "Reach £20,000 business value", "xp": 120},
+	{"id": "authority", "text": "Become an Authority", "xp": 130},
+	{"id": "warehouse", "text": "Move into a warehouse", "xp": 150},
+	{"id": "gaz10", "text": "Beat Gaz in ten weeks", "xp": 150},
+	{"id": "king", "text": "Reach £60,000 business value: Car Boot King", "xp": 250},
 ]
+# 0.11 goal order, for migrating old saves' progress.
+const OLD_GOAL_IDS = ["first_sale", "five_profit", "discovery", "trolley", "kit", "level3", "worth800", "enthusiast", "garage", "regular", "specialist", "worth2k", "estate_car", "lockup", "van", "clearance", "expert", "shop", "worth20k", "warehouse", "king"]
+
+func goal_index(id):
+	for i in range(business_goals.size()):
+		if business_goals[i]["id"] == id:
+			return i
+	return -1
+
+func channel_count(ch):
+	var n = 0
+	for s2 in sold_history:
+		if str(s2.get("channel", "")) == ch:
+			n += 1
+	return n
 
 func profitable_sales_count():
 	var n = 0
@@ -3428,48 +3506,63 @@ func profitable_sales_count():
 
 func goal_met(index):
 	var worth = business_value()
-	match index:
-		0:
+	var d = world.st()
+	match str(business_goals[index]["id"]):
+		"first_sale":
 			return sold_history.size() >= 1
-		1:
+		"five_profit":
 			return profitable_sales_count() >= 5
-		2:
+		"discovery":
 			return discoveries_log.size() >= 1
-		3:
+		"trolley":
 			return vehicle_level >= 1
-		4:
+		"kit":
 			return workshop_slots_used() >= 1
-		5:
+		"level3":
 			return player_level >= 3
-		6:
+		"worth800":
 			return worth >= 800.0
-		7:
+		"enthusiast":
 			return max_expertise_tier() >= 1
-		8:
+		"garage":
 			return premises_level >= 1
-		9:
+		"regular":
 			return best_rel() >= 35.0
-		10:
+		"specialist":
 			return max_expertise_tier() >= 2
-		11:
+		"worth2k":
 			return worth >= 2000.0
-		12:
+		"estate_car":
 			return vehicle_level >= 2
-		13:
+		"signature":
+			return signatures.size() >= 1
+		"commission":
+			return channel_count("commission") >= 1
+		"lockup":
 			return premises_level >= 2
-		14:
+		"beat_gaz":
+			return int(d["record"]["wins"]) >= 1
+		"van":
 			return vehicle_level >= 3
-		15:
+		"clearance":
 			return achievements.has("House Call")
-		16:
+		"expert":
 			return max_expertise_tier() >= 3
-		17:
+		"saleroom":
+			return int(d.get("saleroom_wins", 0)) >= 1
+		"shop":
 			return premises_level >= 3
-		18:
+		"estate":
+			return int(d.get("estates_won", 0)) >= 1
+		"worth20k":
 			return worth >= 20000.0
-		19:
+		"authority":
+			return max_expertise_tier() >= 4
+		"warehouse":
 			return premises_level >= 4
-		20:
+		"gaz10":
+			return int(d["record"]["wins"]) >= 10
+		"king":
 			return worth >= 60000.0
 	return false
 
@@ -3819,6 +3912,9 @@ func init_new_run_state_only():
 	home_venue = ""
 	pending_notices = []
 	w2 = {}
+	signatures = []
+	signature_changed_day = -99
+	signature_nagged = {}
 
 func migrate_from_0_10(parsed):
 	# 0.10 -> 0.11: upgrade tracks become the business; knowledge becomes expertise; old perks are refunded.
@@ -3851,9 +3947,9 @@ func asset_value():
 	# Resale value of the business's kit (counts toward business value).
 	var v = 0.0
 	for i in range(1, premises_level + 1):
-		v += float(Biz.PREMISES[i]["cost"]) * 0.5
+		v += float(Biz.PREMISES[i]["cost"]) * 0.85
 	for i in range(1, vehicle_level + 1):
-		v += float(Biz.VEHICLES[i]["cost"]) * 0.6
+		v += float(Biz.VEHICLES[i]["cost"]) * 0.75
 	for id in equipment:
 		if Biz.EQUIPMENT.has(id):
 			for i in range(int(equipment[id])):
@@ -3864,6 +3960,10 @@ func business_value():
 	return cash + inventory_book_value() + asset_value()
 
 func weekly_regular_churn():
+	# Out of sight, out of mind: regulars you haven't seen for a fortnight cool a little.
+	for r in regulars:
+		if float(r["rel"]) > 0.0 and day - int(r.get("last_seen", -99)) > 14:
+			r["rel"] = max(0.0, float(r["rel"]) - 3.0)
 	# One stranger drifts away; a new face turns up. Friends stay.
 	var candidates = []
 	for i in range(regulars.size()):
@@ -4000,6 +4100,9 @@ func show_market():
 func show_gaz_shop():
 	_screen("show_gaz_shop")
 
+func show_saleroom():
+	_screen("show_saleroom")
+
 func show_stall_list():
 	_screen("show_market")
 
@@ -4069,15 +4172,65 @@ var journal = []             # recent story lines: {"day":d, "text":t, "kind":k}
 func expertise_xp(cat):
 	return float(expertise.get(cat, 0.0))
 
-func expertise_tier(cat):
+# Signatures: only the categories you commit to can go past Specialist.
+var signatures = []
+var signature_changed_day = -99
+var signature_nagged = {}
+
+func signature_slots():
+	return 2 + (1 if premises_level >= 3 else 0)
+
+func is_signature(cat):
+	return signatures.has(cat)
+
+func raw_expertise_tier(cat):
 	var xp = expertise_xp(cat)
 	var t = 0
 	for i in range(EXPERTISE_TIERS.size()):
 		if xp >= EXPERTISE_TIERS[i]:
 			t = i
+	return t
+
+func expertise_tier(cat):
+	var t = raw_expertise_tier(cat)
+	if not is_signature(cat):
+		t = min(t, 2)
 	if has_perk("polymath"):
 		t = max(t, 1)
 	return t
+
+func set_signature(cat):
+	if is_signature(cat) or not CATEGORIES.has(cat):
+		return
+	if signatures.size() >= signature_slots():
+		queue_popup("You've no signature slots free. Drop one first (once a fortnight).")
+		return
+	var before = expertise_tier(cat)
+	signatures.append(cat)
+	add_journal("Made %s a signature. This is what you're known for now." % cat, "level")
+	var after = expertise_tier(cat)
+	if after > before:
+		show_big_popup("%s: YOUR SIGNATURE" % cat.to_upper(), "Everything you've learned counts now: you're a %s %s.\n\n%s" % [cat, EXPERTISE_TIER_NAMES[after], tier_unlock_text(cat, after)], "level")
+	else:
+		add_toast("%s is now a signature. It can go all the way to Authority." % cat, "success")
+	save_game()
+	refresh_current()
+
+func drop_signature(cat):
+	if not is_signature(cat):
+		return
+	if day - signature_changed_day < 14:
+		queue_popup("You can only drop a signature once a fortnight (next on day %d)." % (signature_changed_day + 14))
+		return
+	signatures.erase(cat)
+	signature_changed_day = day
+	add_journal("Stepped back from %s. Your knowledge stays, capped at Specialist." % cat, "info")
+	save_game()
+	refresh_current()
+
+func refresh_current():
+	if ui != null and not sim_mode:
+		ui.refresh()
 
 func expertise_progress(cat):
 	# [xp into tier, xp needed for next tier] (needed = 0 at max)
@@ -4108,8 +4261,16 @@ func add_expertise(cat, amount):
 	if has_perk("quick_study"):
 		amount *= 1.5
 	var before = expertise_tier(cat)
+	var raw_before = raw_expertise_tier(cat)
 	expertise[cat] = expertise_xp(cat) + float(amount)
 	var after = expertise_tier(cat)
+	if not is_signature(cat) and raw_before < 3 and raw_expertise_tier(cat) >= 3 and not signature_nagged.has(cat):
+		signature_nagged[cat] = true
+		if signatures.size() < signature_slots():
+			if not sim_mode and ui != null:
+				ui.big_popup("MAKE %s A SIGNATURE?" % cat.to_upper(), "You know more about %s than most. Only signature categories go beyond Specialist: to Expert, a private collector contact, and Authority.\n\nYou have %d signature slot%s free." % [cat, signature_slots() - signatures.size(), "" if signature_slots() - signatures.size() == 1 else "s"], "level", {"buttons": [["Make it my signature", func(): set_signature(cat), "gold"], ["Not yet", func(): pass, "ghost"]]})
+		else:
+			add_journal("Your %s knowledge has hit the Specialist ceiling. Only signatures go further." % cat, "info")
 	if after > before:
 		for t in range(before + 1, after + 1):
 			add_journal("Became a %s %s." % [cat, EXPERTISE_TIER_NAMES[t]], "level")
@@ -4264,6 +4425,22 @@ func trait_can_reveal(item, d, method):
 			return (rv == "expert" or rv == "eye") and tier >= int(d.get("tier", 1))
 		_:
 			return rv == method
+
+func reveal_traits_quiet(item, methods):
+	# Identify traits without the fanfare (catalogues, the Tent's paperwork). Clues still show.
+	for t in item.get("traits", []):
+		if t.get("known", false):
+			continue
+		var d = trait_def(t)
+		if d == null:
+			continue
+		for m in methods:
+			if trait_can_reveal(item, d, m) or (m == "eye" and str(d.get("reveal", "")) == "eye" and expertise_tier(item["category"]) >= int(d.get("tier", 1))):
+				t["known"] = true
+				t["clue"] = true
+				break
+			if str(d.get("clue_by", "")) == m and str(d.get("clue", "")) != "":
+				t["clue"] = true
 
 func reveal_traits(item, method, chance = 1.0):
 	# Identify every trait `method` can find; show clues whose clue_by matches. Returns newly identified traits.
@@ -4577,7 +4754,7 @@ func collector_offer_for(item):
 	var key = str(item.get("uid", 0)) + ":" + str(day)
 	if not collector_offers.has(key):
 		var needs_test = item["testable"] and not item["tested"]
-		collector_offers[key] = max(1.0, round(min(perceived_center(item), true_market_value(item)) * rng.randf_range(0.85, 0.98) * (0.85 if needs_test else 1.0)))
+		collector_offers[key] = max(1.0, round(min(perceived_center(item), true_market_value(item)) * rng.randf_range(0.8, 0.95) * (0.85 if needs_test else 1.0)))
 	return float(collector_offers[key])
 
 func sell_to_collector(index):
@@ -4880,7 +5057,7 @@ func process_shop_floor():
 	if not shop_floor_enabled():
 		return
 	var to_remove = []
-	var footfall = 1.0 * (2.0 if staff.has("shopkeeper") else 1.0)
+	var footfall = 1.0 * (1.5 if staff.has("shopkeeper") else 1.0)
 	for i in range(inventory.size()):
 		var item = inventory[i]
 		if not item.get("on_shop_floor", false):
@@ -4890,9 +5067,11 @@ func process_shop_floor():
 			item["on_shop_floor"] = false
 			continue
 		# Walk-in customers handle the item: they judge it on what it really is.
-		var chance = daily_sale_chance(buyer_interest_score(item, price, false, true_market_value(item))) * 0.9 * footfall
+		var chance = daily_sale_chance(buyer_interest_score(item, price, false, true_market_value(item))) * 0.65 * footfall
 		var roll = rng.randf()
 		if roll < chance:
+			# Walk-ins always ask "what's your best price?"
+			price = round(price * rng.randf_range(0.86, 1.0))
 			cash += price
 			var profit = record_completed_sale(item, price, {"fee": 0.0, "postage": 0.0, "insurance": 0.0, "packaging": 0.0}, "shop")
 			record_rng("Shop floor: %s @ £%.0f | SOLD" % [item["name"], price], false)
@@ -5337,7 +5516,7 @@ func build_clearance(lead):
 		if cands.size() == 0:
 			continue
 		var fam = cands[rng.randi_range(0, cands.size() - 1)]
-		var it = make_item_from_family(fam, "House Clearance", {"trait_bias": 0.04, "hidden_bonus": 0.12, "rarity_boost": 1.2})
+		var it = make_item_from_family(fam, "House Clearance", {"trait_bias": 0.04 if lead["size"] != "large" else 0.07, "hidden_bonus": 0.12, "rarity_boost": 1.2 if lead["size"] != "large" else 2.2})
 		it["source"] = "clearance"
 		it["seller"] = "House Clearance"
 		it["story"] = "Belonged to %s." % str(st["owner"])

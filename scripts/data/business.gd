@@ -19,7 +19,7 @@ const PREMISES = [
 ]
 
 const VEHICLES = [
-	{"id":"foot","name":"On Foot","carry":6,"cost":0,"fuel":0.0,"desc":"Two hands and a bag for life."},
+	{"id":"foot","name":"On Foot","carry":8,"cost":0,"fuel":0.0,"desc":"Two hands and a bag for life."},
 	{"id":"trolley","name":"Shopping Trolley","carry":10,"cost":60,"fuel":0.0,"desc":"A folding tartan trolley. Squeaks, but holds a surprising amount."},
 	{"id":"estate","name":"Old Estate Car","carry":18,"cost":700,"fuel":3.0,"desc":"Rear seats down, boot full. Gets you to the Collectors' Fairs out of town.",
 		"unlocks":["Collectors' Fairs"]},
@@ -65,7 +65,7 @@ const ACCOUNTS = [
 
 const STAFF = {
 	"assistant": {"name":"Assistant","wage":10.0,"needs":2,"desc":"Works your stock overnight: tests untested electricals, cleans grimy items (if you have a Cleaning Station) and trims 10% off listings that have sat for a week."},
-	"shopkeeper": {"name":"Shop Keeper","wage":14.0,"needs":3,"desc":"Keeps the shop open all day: doubles walk-in customers on the shop floor."},
+	"shopkeeper": {"name":"Shop Keeper","wage":14.0,"needs":3,"desc":"Keeps the shop open all day: half as many walk-in customers again on the shop floor."},
 	"picker": {"name":"Picker","wage":15.0,"needs":4,"desc":"Works the car boot for you before you arrive: reveals extra items at every stall and keeps the rival honest."},
 }
 

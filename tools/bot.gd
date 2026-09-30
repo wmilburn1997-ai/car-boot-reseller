@@ -16,6 +16,7 @@ func play_day():
 	if not try_clearance():
 		play_market()
 	play_home()
+	saleroom_bids()
 
 func est_net(item, gross):
 	var costs = g.selling_costs(item, gross)
@@ -37,6 +38,15 @@ func try_clearance():
 	for it in g.clearance["items"]:
 		var c = g.perceived_center(it)
 		est += est_net(it, c)
+	if g.trade.is_estate(g.clearance):
+		# Sealed bid: a bit over half of what you think you'd clear after fees.
+		var bid = round(est * 0.55)
+		if bid >= 100 and g.cash > bid + 100 and g.inventory_space_used() + g.clearance_space_needed() <= g.storage_capacity():
+			g.trade.submit_estate_bid(bid)
+			stats["clearances"] += 1
+		else:
+			g.walk_away_clearance()
+		return true
 	var price = float(g.clearance["price"])
 	if est > price * 1.5 and g.cash > price + 80 and g.inventory_space_used() + g.clearance_space_needed() <= g.storage_capacity():
 		g.accept_clearance()
@@ -44,6 +54,32 @@ func try_clearance():
 	else:
 		g.walk_away_clearance()
 	return true
+
+func saleroom_bids():
+	# Leave bids where our read says the lot is worth comfortably more than it'll cost.
+	if strategy in ["naive", "reckless", "gambler"] or not g.trade.saleroom_today():
+		return
+	g.trade.ensure_catalogue()
+	var budget = g.cash - 250.0
+	for lot in g.trade.st()["saleroom"]["lots"]:
+		var it = lot["item"]
+		var worth = g.perceived_center(it)
+		var bid = round(est_net(it, worth) / 1.2 * 0.7)
+		if bid * 1.2 < budget and bid >= 20 and g.inventory_space_used() + g.trade.bids_space() + g.size_units(it) <= g.storage_capacity():
+			g.trade.set_bid(lot["lot"], bid)
+			budget -= bid * 1.2
+
+func choose_signatures():
+	while g.signatures.size() < g.signature_slots():
+		var best = ""
+		var bx = 150.0
+		for c in g.CATEGORIES:
+			if not g.is_signature(c) and g.expertise_xp(c) > bx and (strategy != "specialist" or focus.has(c)):
+				bx = g.expertise_xp(c)
+				best = c
+		if best == "":
+			return
+		g.set_signature(best)
 
 func play_market():
 	var reserve_energy = 38
@@ -238,6 +274,7 @@ func play_home():
 func spend_upgrades():
 	if strategy in ["reckless", "naive", "gambler"]:
 		return
+	choose_signatures()
 	var cash = g.cash
 	var reserve = 150.0 if strategy != "tycoon" else 100.0
 	var used = g.inventory_space_used()

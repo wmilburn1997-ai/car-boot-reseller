@@ -39,6 +39,9 @@ func build_market(parent):
 		var vt = valuation_card()
 		if vt != null:
 			v.add_child(vt)
+		var sr = saleroom_card()
+		if sr != null:
+			v.add_child(sr)
 		var leads = leads_card()
 		if leads != null:
 			v.add_child(leads)
@@ -97,6 +100,9 @@ func market_header():
 	info.add_child(k.chip("Pitch fee %s" % g.fmt_money(g.daily_expenses), k.TEXT3, null, "xs", "coin"))
 	if g.market_today.get("rival_here", false):
 		info.add_child(k.chip(gaz_whereabouts(), k.RED, null, "xs", "person"))
+	var bl = g.trade.bubble_label()
+	if bl != "":
+		info.add_child(k.chip(bl, k.PURPLE, null, "xs", "spark"))
 	tv.add_child(info)
 	h.add_child(tv)
 	return p
@@ -263,6 +269,112 @@ func event_card():
 		var b = k.button("Find the owner", "special", func(): g.world.help_lost_dog(), "Walk the dog round the field. 15 minutes, 5 energy.", "s")
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		h.add_child(b)
+	return p
+
+func saleroom_card():
+	if not g.trade.saleroom_today():
+		return null
+	g.trade.ensure_catalogue()
+	var info = g.trade.saleroom_card_info()
+	var p = k.panel("card2", 14)
+	var h = k.hbox(12)
+	p.add_child(h)
+	var gl = k.glyph("coin", k.GOLD, 28)
+	gl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	h.add_child(gl)
+	var tv = k.vbox(4)
+	k.expand(tv)
+	tv.add_child(k.label("THE SALEROOM · SALE TONIGHT", "s", k.GOLD))
+	tv.add_child(k.label("%d lots in the catalogue. Leave sealed bids; the hammer falls overnight. Your expertise shows you what the room might miss." % int(info["lots"]), "s" if ui.mobile else "m", k.TEXT, true))
+	if float(info["bids"]) > 0.0:
+		tv.add_child(k.label("Your bids: up to %s with premium" % g.fmt_money(info["bids"]), "xs", k.GREEN))
+	h.add_child(tv)
+	var b = k.button("Catalogue", "gold", func(): g.show_saleroom(), "", "s")
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(b)
+	return p
+
+func build_saleroom(parent):
+	g.trade.ensure_catalogue()
+	var sr = g.trade.st()["saleroom"]
+	var v = k.vbox(10)
+	var head = k.panel("card2", 14)
+	var hv = k.vbox(6)
+	head.add_child(hv)
+	var top = k.hbox(8)
+	top.add_child(k.icon_button("left", func(): ui.show_market(), "Back", "ghost", 38))
+	var tt = k.vbox(2)
+	k.expand(tt)
+	tt.add_child(k.label("The Saleroom", "xl", k.TEXT))
+	tt.add_child(k.label("A weekly trade auction. Leave a sealed maximum bid: you pay one step over the room, never more than your max, plus a 20% buyer's premium.", "s", k.TEXT3, true))
+	top.add_child(tt)
+	hv.add_child(top)
+	var tot = g.trade.bids_total()
+	hv.add_child(k.label("Your bids: up to %s including premium · you have %s · space for bids: %d needed, %d free" % [g.fmt_money(tot), g.fmt_money(g.cash), g.trade.bids_space(), g.storage_capacity() - g.inventory_space_used()], "s", k.GOLD if tot <= g.cash else k.RED, true))
+	v.add_child(head)
+	if sr["lots"].size() == 0:
+		v.add_child(k.label("No catalogue today. The sale is on day %d of each week." % (g.trade.SALE_WEEKDAY), "m", k.TEXT3, true))
+	for lot in sr["lots"]:
+		v.add_child(lot_card(lot))
+	v.add_child(k.spacer(0, 20))
+	parent.add_child(ui.keyed_scroll("saleroom", ui.cap_width(v, 1100)))
+
+func lot_card(lot):
+	var it = lot["item"]
+	var p = k.panel("card", 12)
+	var pv = k.vbox(6)
+	p.add_child(pv)
+	var h = k.hbox(12)
+	h.add_child(k.cat_icon(it["category"], 44))
+	var tv = k.vbox(2)
+	k.expand(tv)
+	tv.add_child(k.label("Lot %d · %s" % [int(lot["lot"]), it["name"]], "m", k.TEXT, true))
+	if str(it.get("ident", "")) != "":
+		tv.add_child(k.label(str(it["ident"]), "s", k.TEAL, true))
+	tv.add_child(k.label("Estimate %s–%s · condition %d/10%s" % [g.fmt_money(lot["est"][0]), g.fmt_money(lot["est"][1]), int(it["condition"]), ("" if it["rarity"] == "Common" else " · " + str(it["rarity"]))], "xs", k.TEXT2, true))
+	h.add_child(tv)
+	pv.add_child(h)
+	var notes = []
+	var clues = 0
+	for t in it.get("traits", []):
+		var d = g.trait_def(t)
+		if d == null:
+			continue
+		if t.get("known", false):
+			notes.append("%s %s%d%%" % [d["name"], "+" if float(t["mult"]) >= 1.0 else "", g.trait_value_pct(t)])
+		elif t.get("clue", false):
+			clues += 1
+	if it["auth_status"] == "Confirmed Counterfeit":
+		notes.append("You're sure it's a FAKE")
+	var tier = g.expertise_tier(it["category"])
+	var read = "Your read (%s %s): " % [it["category"], g.EXPERTISE_TIER_NAMES[tier]]
+	var pot = g.estimate_identified_potential(it)
+	read += "worth %s–%s" % [g.fmt_money(pot[0]), g.fmt_money(pot[1])]
+	if notes.size() > 0:
+		read += " · " + ", ".join(notes)
+	if clues > 0:
+		read += " · %d thing%s you can't place" % [clues, "" if clues == 1 else "s"]
+	pv.add_child(k.label(read, "s", k.GREEN if notes.size() > 0 else k.TEXT2, true))
+	var row = k.hbox(6)
+	var lotno = int(lot["lot"])
+	var edit = LineEdit.new()
+	edit.text = str(int(lot["bid"])) if float(lot["bid"]) > 0 else ""
+	edit.placeholder_text = "max bid"
+	edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+	edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	edit.custom_minimum_size = Vector2(100, 42)
+	row.add_child(k.label("£", "m", k.TEXT2))
+	row.add_child(edit)
+	var setb = k.button("Leave bid" if float(lot["bid"]) <= 0 else "Change bid", "action", func():
+		g.trade.set_bid(lotno, g._parse_price(edit.text))
+		ui.refresh(), "Your maximum. You'll pay one step above the room, up to this, plus 20%.", "s")
+	row.add_child(setb)
+	if float(lot["bid"]) > 0:
+		row.add_child(k.button("Withdraw", "ghost", func():
+			g.trade.set_bid(lotno, 0)
+			ui.refresh(), "", "s"))
+		row.add_child(k.label("max %s (%s with premium)" % [g.fmt_money(lot["bid"]), g.fmt_money(float(lot["bid"]) * 1.2)], "xs", k.GREEN))
+	pv.add_child(row)
 	return p
 
 func valuation_card():
@@ -721,7 +833,11 @@ func build_clearance(parent):
 	th.add_child(tt)
 	hv.add_child(th)
 	hv.add_child(k.label(st["story"], "b", k.TEXT, true))
-	hv.add_child(k.label("The family want it all gone today, for one fixed price. Look round as much as your energy allows, then decide. Junk goes to the skip; you take the rest.", "s", k.TEXT3, true))
+	var estate = g.trade.is_estate(c)
+	if estate:
+		hv.add_child(k.label("An estate sale. The executor takes sealed bids at noon: %s and %s have been round too. Look as much as your energy allows, then bid. Highest bid takes the lot; lose and you go home empty-handed." % [g.rival.get("nickname", "Gaz"), "a dealer"], "s", k.TEXT3, true))
+	else:
+		hv.add_child(k.label("The family want it all gone today, for one fixed price. Look round as much as your energy allows, then decide. Junk goes to the skip; you take the rest.", "s", k.TEXT3, true))
 	v.add_child(head)
 	ui.coach(v, "clearance")
 	# The deal
@@ -736,8 +852,12 @@ func build_clearance(parent):
 				seen_est += g.perceived_center(c["items"][idx])
 				seen_n += 1
 	var left = k.vbox(0)
-	left.add_child(k.label("THEIR PRICE", "xs", k.TEXT3))
-	left.add_child(k.label(g.fmt_money(c["price"]), "xxl", k.GOLD))
+	if estate:
+		left.add_child(k.label("SEALED BIDS", "xs", k.TEXT3))
+		left.add_child(k.label("3 bidders", "xl", k.GOLD))
+	else:
+		left.add_child(k.label("THEIR PRICE", "xs", k.TEXT3))
+		left.add_child(k.label(g.fmt_money(c["price"]), "xxl", k.GOLD))
 	left.add_child(k.label("for %d items (%d storage)" % [c["items"].size(), g.clearance_space_needed()], "xs", k.TEXT3))
 	dh.add_child(left)
 	var mid = k.vbox(0)
@@ -749,12 +869,42 @@ func build_clearance(parent):
 		var proj = per * c["items"].size() * 0.74
 		var margin = proj - float(c["price"])
 		var col = k.GREEN if margin >= float(c["price"]) * 0.25 else (k.GOLD if margin > 0 else k.RED)
-		mid.add_child(k.label("If the rest are similar, after fees you'd clear about %s: %s vs their price." % [g.fmt_money(proj), g.money_signed(margin)], "s", col, true))
+		if estate:
+			mid.add_child(k.label("If the rest are similar, after fees you'd clear about %s. Bid below that to make money; bid too low and someone else gets it." % g.fmt_money(proj), "s", k.TEXT2, true))
+		else:
+			mid.add_child(k.label("If the rest are similar, after fees you'd clear about %s: %s vs their price." % [g.fmt_money(proj), g.money_signed(margin)], "s", col, true))
 	mid.add_child(k.label("Rough guesses. The rooms you haven't seen could hold anything.", "xs", k.TEXT3, true))
 	dh.add_child(mid)
 	v.add_child(deal)
 	var actions = k.vbox(8) if ui.mobile else k.hbox(10)
 	var free = g.storage_capacity() - g.inventory_space_used()
+	if estate:
+		var br = k.hbox(6)
+		var edit = LineEdit.new()
+		var guess = 0.0
+		if seen_n > 0:
+			guess = round(seen_est / float(seen_n) * c["items"].size() * 0.45 / 10.0) * 10.0
+		edit.text = str(int(max(100.0, guess)))
+		edit.virtual_keyboard_type = LineEdit.KEYBOARD_TYPE_NUMBER
+		edit.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		edit.custom_minimum_size = Vector2(110, 48)
+		edit.add_theme_font_size_override("font_size", k.fs("l"))
+		br.add_child(k.label("£", "l", k.TEXT2))
+		br.add_child(edit)
+		var bb = k.button("Submit sealed bid", "buy", func(): g.trade.submit_estate_bid(g._parse_price(edit.text)), "One bid, no second chances. You pay what you bid if you win.", "m", 0, 52)
+		bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bb.disabled = free < g.clearance_space_needed()
+		br.add_child(bb)
+		br.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(br)
+		if free < g.clearance_space_needed():
+			actions.add_child(k.button("Make room: your stock", "action", func(): ui.show_inventory(true), "Sell or scrap things to free storage, then come back here.", "m", 0, 52))
+		actions.add_child(k.button("Walk away", "ghost", func(): g.walk_away_clearance(), "", "m", 0 if ui.mobile else 150, 52))
+		v.add_child(actions)
+		clearance_rooms(v, c)
+		v.add_child(k.spacer(0, 20))
+		parent.add_child(ui.keyed_scroll("clearance", v))
+		return
 	var take = k.button("Take the job  %s" % g.fmt_money(c["price"]), "buy", func(): g.accept_clearance(), "", "m", 0, 52)
 	take.disabled = g.cash < float(c["price"]) or free < g.clearance_space_needed()
 	if free < g.clearance_space_needed():
@@ -765,33 +915,7 @@ func build_clearance(parent):
 		actions.add_child(k.button("Make room: your stock", "action", func(): ui.show_inventory(true), "Sell or scrap things to free storage, then come back here.", "m", 0, 52))
 	actions.add_child(k.button("Walk away", "ghost", func(): g.walk_away_clearance(), "", "m", 0 if ui.mobile else 150, 52))
 	v.add_child(actions)
-	# Rooms
-	v.add_child(k.section("The house"))
-	var cols = 1 if ui.mobile else 2
-	var gr = k.grid(cols, 10, 10)
-	for ri in range(c["rooms"].size()):
-		var room = c["rooms"][ri]
-		var rp = k.panel("card", 12)
-		rp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var rv = k.vbox(6)
-		rp.add_child(rv)
-		var rh = k.hbox(8)
-		rh.add_child(k.label(room["name"], "l", k.TEXT))
-		rh.add_child(k.label("%d things" % room["items"].size(), "s", k.TEXT3))
-		rh.add_child(k.spacer(0, 0, true))
-		if not room["looked"]:
-			var lb = k.button("Look round", "action", func(): g.clearance_look(ri), "8 energy, 25 minutes. Your expertise shows you more.", "s")
-			lb.disabled = g.energy < 8
-			rh.add_child(lb)
-		rv.add_child(rh)
-		if room["looked"]:
-			for idx in room["items"]:
-				var it = c["items"][idx]
-				rv.add_child(ui.item.tile(it, "clearance", false, null))
-		else:
-			rv.add_child(k.label("Boxes, bin bags and a lot of dust.", "s", k.TEXT3))
-		gr.add_child(rp)
-	v.add_child(gr)
+	clearance_rooms(v, c)
 	v.add_child(k.spacer(0, 20))
 	parent.add_child(ui.keyed_scroll("clearance", v))
 
@@ -827,3 +951,31 @@ func stall_hook(stall):
 	if top != "" and tn >= 2:
 		return ["Mostly %s" % top, k.TEXT3]
 	return ["", k.TEXT3]
+
+func clearance_rooms(v, c):
+	v.add_child(k.section("The house"))
+	var cols = 1 if ui.mobile else 2
+	var gr = k.grid(cols, 10, 10)
+	for ri in range(c["rooms"].size()):
+		var room = c["rooms"][ri]
+		var rp = k.panel("card", 12)
+		rp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var rv = k.vbox(6)
+		rp.add_child(rv)
+		var rh = k.hbox(8)
+		rh.add_child(k.label(room["name"], "l", k.TEXT))
+		rh.add_child(k.label("%d things" % room["items"].size(), "s", k.TEXT3))
+		rh.add_child(k.spacer(0, 0, true))
+		if not room["looked"]:
+			var lb = k.button("Look round", "action", func(): g.clearance_look(ri), "8 energy, 25 minutes. Your expertise shows you more.", "s")
+			lb.disabled = g.energy < 8
+			rh.add_child(lb)
+		rv.add_child(rh)
+		if room["looked"]:
+			for idx in room["items"]:
+				var it = c["items"][idx]
+				rv.add_child(ui.item.tile(it, "clearance", false, null))
+		else:
+			rv.add_child(k.label("Boxes, bin bags and a lot of dust.", "s", k.TEXT3))
+		gr.add_child(rp)
+	v.add_child(gr)

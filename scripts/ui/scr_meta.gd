@@ -79,7 +79,7 @@ func continue_game():
 	g.on_title_screen = false
 	ui.sheet_open = false
 	for n in g.pending_notices:
-		ui.big_popup("0.11 UPDATE", n, "info")
+		ui.big_popup("WHAT'S NEW", n, "info")
 	g.pending_notices = []
 	if g.clearance != null:
 		ui.show_clearance()

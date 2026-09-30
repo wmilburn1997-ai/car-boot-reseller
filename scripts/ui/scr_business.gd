@@ -356,9 +356,19 @@ func knowledge_content():
 		tiers.add_child(k.chip("%s at %d" % [g.EXPERTISE_TIER_NAMES[t], g.EXPERTISE_TIERS[t]], k.tier_color(t)))
 	hv.add_child(tiers)
 	hv.add_child(k.label("Enthusiast: subtler tells show up when you Inspect, and your estimates tighten. Specialist: a hands-on check for that category, at stalls and at home. Expert: a private collector contact. Authority: spot fakes at a glance.", "xs", k.TEXT2, true))
+	var sp = k.panel("gold", 10)
+	var sv = k.vbox(4)
+	sp.add_child(sv)
+	var sig_txt = ", ".join(g.signatures) if g.signatures.size() > 0 else "none yet"
+	sv.add_child(k.label("Signatures (%d/%d): %s" % [g.signatures.size(), g.signature_slots(), sig_txt], "m", k.GOLD, true))
+	sv.add_child(k.label("Only signature categories go beyond Specialist. It's what you're known for: pick them to suit how you like to deal. A High Street shop adds a third slot.", "xs", k.TEXT2, true))
+	hv.add_child(sp)
 	v.add_child(head)
 	var cats = g.CATEGORIES.duplicate()
-	cats.sort_custom(func(a, b): return g.expertise_xp(a) > g.expertise_xp(b))
+	cats.sort_custom(func(a, b):
+		if g.is_signature(a) != g.is_signature(b):
+			return g.is_signature(a)
+		return g.expertise_xp(a) > g.expertise_xp(b))
 	var cols = 1 if ui.mobile else 2
 	var gr = k.grid(cols, 10, 10)
 	for c in cats:
@@ -379,6 +389,8 @@ func category_card(c):
 	var th = k.hbox(8)
 	th.add_child(k.label(c, "m", k.TEXT))
 	th.add_child(k.chip(g.EXPERTISE_TIER_NAMES[t], k.tier_color(t)))
+	if g.is_signature(c):
+		th.add_child(k.chip("SIGNATURE", k.GOLD, null, "xs", "star"))
 	th.add_child(k.spacer(0, 0, true))
 	var found = 0
 	var total = 0
@@ -390,7 +402,17 @@ func category_card(c):
 	th.add_child(k.label("%d/%d discoveries" % [found, total], "xs", k.PURPLE))
 	v.add_child(th)
 	var pr = g.expertise_progress(c)
-	if float(pr[1]) > 0:
+	var capped = not g.is_signature(c) and g.raw_expertise_tier(c) >= 2
+	if capped:
+		var ch = k.hbox(8)
+		var cl = k.label("Capped at Specialist%s." % (" (you know enough for %s)" % g.EXPERTISE_TIER_NAMES[g.raw_expertise_tier(c)] if g.raw_expertise_tier(c) > 2 else ""), "xs", k.TEXT3, true)
+		k.expand(cl)
+		ch.add_child(cl)
+		var sb = k.button("Make signature", "gold", func(): g.set_signature(c), "Commit to %s: it can go all the way to Authority." % c, "s")
+		sb.disabled = g.signatures.size() >= g.signature_slots()
+		ch.add_child(sb)
+		v.add_child(ch)
+	elif float(pr[1]) > 0:
 		var ph = k.hbox(8)
 		var pb = k.bar(pr[0], pr[1], k.tier_color(t + 1), 7)
 		k.expand(pb)
@@ -403,5 +425,15 @@ func category_card(c):
 		v.add_child(k.label("Mastered.", "xs", k.GOLD))
 	if t >= 2:
 		v.add_child(k.label("Specialist action: %s" % g.SPECIALIST_ACTIONS.get(c, ""), "xs", k.BLUE))
+	if g.is_signature(c):
+		var dr = k.hbox(8)
+		dr.add_child(k.spacer(0, 0, true))
+		dr.add_child(k.button("Drop signature", "ghost", func(): g.drop_signature(c), "Step back from %s (once a fortnight). You keep what you know, capped at Specialist." % c, "xs"))
+		v.add_child(dr)
+	elif g.raw_expertise_tier(c) < 2 and g.signatures.size() < g.signature_slots() and g.expertise_xp(c) >= 30:
+		var dr2 = k.hbox(8)
+		dr2.add_child(k.spacer(0, 0, true))
+		dr2.add_child(k.button("Make signature", "ghost", func(): g.set_signature(c), "Commit to %s early." % c, "xs"))
+		v.add_child(dr2)
 	h.add_child(v)
 	return p

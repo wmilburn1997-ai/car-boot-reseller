@@ -693,6 +693,10 @@ func maybe_phone_call():
 			name = g.item_display_name(it)
 	big_popup("YOUR PHONE RINGS", "[i]%s[/i]\n\n\"%s\"\n\nThey'd pay %s for %s. No fees, no postage." % [str(c["caller"]), str(c["line"]), g.fmt_money(c["offer"]), name], "rare", {"buttons": [["Accept %s" % g.fmt_money(c["offer"]), func(): g.world.answer_call(true), "buy"], ["Not yet", func(): g.world.answer_call(false), "ghost"]]})
 
+func show_saleroom():
+	begin("show_saleroom")
+	market.build_saleroom(content)
+
 func show_gaz_shop():
 	begin("show_gaz_shop")
 	market.build_gaz_shop(content)
