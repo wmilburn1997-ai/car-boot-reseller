@@ -1192,6 +1192,8 @@ func known_basis(item):
 		b *= 1.12
 	if item["auth_status"] == "Confirmed Genuine" and float(item["fake_chance"]) >= 0.05:
 		b *= 1.08
+	elif item["auth_status"] == "Suspected Counterfeit":
+		b *= 0.3
 	if item["hidden_special"] != "" and item["special_discovered"]:
 		b *= max(1.0, float(item.get("special_premium", 1.0)))
 	return max(0.01, b)
@@ -1264,6 +1266,8 @@ func haggle_flex_mean(item, stall):
 	f += float(market_event_fx("haggle", 0.0))
 	if item.get("saved_for_player", false):
 		f *= 0.35
+	if item.get("noticed", false):
+		f *= 0.5   # they know you want it now
 	return clamp(f, 0.03, 0.55)
 
 func haggle_base_ask(item):
@@ -1309,7 +1313,7 @@ func haggle_patience_max(stall):
 		p -= 1
 	if has_perk("silver_tongue"):
 		p += 1
-	return max(1, p)
+	return max(2, p)
 
 func haggle_patience(item, stall):
 	if not item.has("patience"):
@@ -1331,7 +1335,8 @@ func item_flaws(item):
 			out.append(["t:" + str(t.get("id", "")), nm.to_lower(), float(t["mult"]), nm])
 	if item["fault"] and fault_is_known(item):
 		out.append(["fault", "the %s" % ("fault" if item["testable"] else "damage"), fault_multiplier(item["fault_severity"]), fault_label(item)])
-	if item["condition_checked"] and int(item["condition"]) <= 5:
+	var has_damage = item["fault"] and fault_is_known(item) and not item["testable"]
+	if item["condition_checked"] and int(item["condition"]) <= 5 and not has_damage:
 		out.append(["cond", "the wear on it", condition_factor(int(item["condition"])) / max(0.01, condition_factor(7)), "Condition %d/10" % int(item["condition"])])
 	var used = item.get("flaws_used", [])
 	var avail = []
@@ -1377,13 +1382,17 @@ func point_out_flaw(index, key):
 	item["flaws_used"] = used
 	spend_time(1)
 	var vars = {"flaw": f[1], "item": item_display_name(item)}
-	if seller_knew_flaw(item, stall, key):
+	var cap = 0.40 if has_perk("silver_tongue") else 0.30
+	if seller_knew_flaw(item, stall, key) or float(item.get("flaw_leverage", 0.0)) >= cap - 0.01:
 		var line = pers_line(stall, "flaw_knew", vars)
 		item["haggle_note"] = "\"%s\"" % (line if line != "" else "I know. It's in the price.")
-		add_toast("They'd already priced that in.", "info")
+		# Lecturing someone about a flaw they already knew costs goodwill.
+		item["patience"] = max(1, haggle_patience(item, stall) - 1)
+		add_toast("They'd already priced that in, and they didn't love being told.", "info")
 	else:
 		var hit = clamp((1.0 - float(f[2])) * (0.75 if has_perk("silver_tongue") else 0.5), 0.03, 0.40)
-		var lev = 1.0 - (1.0 - float(item.get("flaw_leverage", 0.0))) * (1.0 - hit)
+		var lev = min(cap, 1.0 - (1.0 - float(item.get("flaw_leverage", 0.0))) * (1.0 - hit))
+		hit = 1.0 - (1.0 - lev) / max(0.01, 1.0 - float(item.get("flaw_leverage", 0.0)))
 		item["flaw_leverage"] = lev
 		var new_ask = max(haggle_floor(item, stall), round(float(item["asking"]) * (1.0 - hit)))
 		var was = float(item["asking"])
@@ -1480,6 +1489,16 @@ func haggle_item(index, offer):
 	var asking = float(item["asking"])
 	haggle_base_ask(item)
 	var target_price = clamp(round(float(offer)), 1.0, max(1.0, asking - 1.0))
+	# A deal is a deal: make sure you could actually take it home before you shake on it.
+	if cash < target_price:
+		queue_popup("You haven't got %s on you." % fmt_money(target_price))
+		return
+	if not can_carry(item):
+		queue_popup("You can't carry it (%d/%d). A bigger vehicle carries more." % [carry_used, effective_bag_capacity()])
+		return
+	if not can_store(item):
+		queue_popup("No room at home for it (storage %d/%d)." % [inventory_space_used(), storage_capacity()])
+		return
 	var floor_p = haggle_floor(item, stall)
 	var insult = haggle_insult_below(item, stall)
 	var patience = haggle_patience(item, stall)
@@ -1501,9 +1520,9 @@ func haggle_item(index, offer):
 		if line == "":
 			line = seller_line("accepted", seller)
 		item["haggle_note"] = "\"%s\"" % line
-		add_toast("Deal: %s (was %s)." % [fmt_money(target_price), fmt_money(haggle_base_ask(item))], "success")
+		add_toast("Deal: %s (was %s). It's yours." % [fmt_money(target_price), fmt_money(haggle_base_ask(item))], "success")
 		play_sfx("haggle_ok")
-		show_stall()
+		buy_item(index)
 		return
 	play_sfx("haggle_no")
 	if target_price < insult:
@@ -1553,7 +1572,18 @@ func haggle_item(index, offer):
 		counter = max(floor_p, asking - max(1.0, round(asking * 0.03)))
 	item["asking"] = counter
 	item["haggle_result"] = "countered"
-	var lc = pers_line(stall, "counter", {"price": fmt_money(counter)})
+	var mid = (asking + target_price) * 0.5
+	var lc = ""
+	var pid = str(stall.get("personality", ""))
+	var carr = Lines012.PERSONALITY_LINES.get(pid, {}).get("counter", [])
+	if abs(counter - mid) > asking * 0.12:
+		var filt = []
+		for l in carr:
+			if str(l).findn("split") < 0 and str(l).findn("meet") < 0 and str(l).findn("middle") < 0:
+				filt.append(l)
+		carr = filt
+	if carr.size() > 0:
+		lc = fill_line(unique_line(carr), {"price": fmt_money(counter)})
 	if lc == "":
 		lc = stall_line(stall, "reject")
 		if lc == "":
@@ -1623,6 +1653,25 @@ func hist(item, text):
 		h = h.slice(h.size() - 14)
 	item["hist"] = h
 
+func first_lower(t):
+	var s2 = str(t)
+	if s2.length() > 1 and s2.substr(1, 1) == s2.substr(1, 1).to_upper() and s2.substr(1, 1) != s2.substr(1, 1).to_lower():
+		return s2   # starts with an acronym
+	return s2.substr(0, 1).to_lower() + s2.substr(1) if s2.length() > 0 else s2
+
+func lc(name):
+	# Lower-case a name for use mid-sentence, keeping acronyms (VHS, LP, SLR, 35mm) intact.
+	var out = []
+	for w in str(name).split(" "):
+		var letters = w.strip_edges()
+		if letters.length() > 1 and letters == letters.to_upper() and letters != letters.to_lower():
+			out.append(w)
+		elif letters.length() > 0 and letters.substr(0, 1).is_valid_int():
+			out.append(w)
+		else:
+			out.append(w.to_lower())
+	return " ".join(out)
+
 func a_an(word):
 	var w = str(word)
 	return ("an " if w.length() > 0 and "aeiou".find(w.substr(0, 1).to_lower()) >= 0 else "a ") + w
@@ -1647,9 +1696,10 @@ func pers_line(stall, key, vars = {}):
 	var pid = str(stall.get("personality", ""))
 	var t = Lines012.PERSONALITY_LINES.get(pid, {})
 	var arr = t.get(key, [])
-	if typeof(arr) == TYPE_ARRAY and arr.size() > 0:
-		return fill_line(pick_line(arr), vars)
-	return stall_line(stall, key, vars)
+	if typeof(arr) != TYPE_ARRAY or arr.size() == 0:
+		var p = personality_of(stall)
+		arr = p["lines"].get(key, []) if p != null else []
+	return fill_line(unique_line(arr), vars)
 
 func browse_stall():
 	var stall = stalls[current_stall_index]
@@ -1698,7 +1748,7 @@ func buy_item(index):
 		queue_popup("Not enough cash.")
 		return
 	if not can_carry(item):
-		queue_popup("Your %s is full of today's buys (%d/%d). Selling or scrapping something you bought today frees the space, and it all empties overnight. A bigger vehicle carries more." % [vehicle()["name"].to_lower(), carry_used, effective_bag_capacity()])
+		queue_popup("You can't carry any more of today's buys (%d/%d). Selling or scrapping something you bought today frees the space, and it all empties overnight. A bigger vehicle carries more." % [carry_used, effective_bag_capacity()])
 		return
 	if not can_store(item):
 		queue_popup("No room at home (storage %d/%d). Sell stock, or get bigger premises." % [inventory_space_used(), storage_capacity()])
@@ -1717,7 +1767,7 @@ func buy_item(index):
 		stall["beat_gaz_item"] = item["name"]
 	if int(stall.get("regular_id", -1)) >= 0:
 		world.remember(int(stall["regular_id"]), {"kind": "bought", "item": item["name"], "price": float(item["asking"])})
-	hist(item, "Bought from %s%s for %s%s." % [item["bought_from"], (" (%s)" % str(pn["name"]).to_lower()) if pn != null else "", fmt_money(item["asking"]), (" (asked %s)" % fmt_money(item.get("orig_asking", item["asking"]))) if float(item.get("orig_asking", 0.0)) > float(item["asking"]) + 0.5 else ""])
+	hist(item, "Bought from %s%s for %s%s." % [item["bought_from"], "", fmt_money(item["asking"]), (" (asked %s)" % fmt_money(item.get("orig_asking", item["asking"]))) if float(item.get("orig_asking", 0.0)) > float(item["asking"]) + 0.5 else ""])
 	item["carried_day"] = day
 	inventory.append(item)
 	stall["stock"].remove_at(index)
@@ -2789,6 +2839,7 @@ func resolve_item_sale(item, sale_chance, channel = "listing"):
 			seller_rating = max(0.0, seller_rating - 4.0 * hit)
 		else:
 			seller_rating = max(0.0, seller_rating - 3.0 * hit)
+		hist(item, "Sold for %s, then returned: the buyer %s." % [fmt_money(sale_price), reason])
 		var msg = "RETURNED: %s. The buyer %s. Refunded £%.0f; fees and postage lost." % [item["name"], reason, sale_price]
 		if in_end_day:
 			night_events.append({"kind": "return", "text": "Returned: %s" % item["name"], "sub": "The buyer %s. -£%.0f" % [reason, sale_price], "amount": -(costs["fee"] + costs["postage"] + costs["insurance"] + costs["packaging"])})
@@ -2817,13 +2868,18 @@ func listing_report(item, interest):
 	var views = int(round(rng.randf_range(4.0, 10.0) * (0.7 + 0.35 * days) * clamp(1.35 - (r - 1.0) * 0.4, 0.5, 1.5)))
 	var watchers = int(max(0.0, round(interest * 5.0 + rng.randf_range(-1.2, 0.8))))
 	var key = "fine"
-	if r > 1.22:
+	if r > 1.25 and not item["condition_checked"]:
+		key = "unchecked"
+	elif r > 1.25:
 		key = "too_high"
 	elif float(current_trends.get(item["category"], 1.0)) < 0.9:
 		key = "slow_category"
 	elif watchers >= 2:
 		key = "watchers"
-	var text = fill_line(pick_line(Lines012.NIGHT_LISTING_HINTS.get(key, [""])), {"item": "the " + str(item["name"]).to_lower(), "cat": item["category"], "n": watchers})
+	var hints = Lines012.NIGHT_LISTING_HINTS.get(key, [])
+	if key == "unchecked":
+		hints = ["Buyers are asking about the condition of {item}. Nobody's committing.", "Lots of questions about {item}'s condition, no bites. Have you actually checked it?", "People keep zooming in on the photos of {item} and leaving. Something about it."]
+	var text = fill_line(pick_line(hints), {"item": "the " + lc(item["name"]), "cat": item["category"], "n": watchers})
 	text = text.substr(0, 1).to_upper() + text.substr(1)
 	return {"uid": int(item["uid"]), "name": item["name"], "ident": str(item.get("ident", "")), "price": float(item["listing"]), "days": days, "views": views, "watchers": watchers, "key": key, "text": text}
 
@@ -3543,8 +3599,10 @@ func do_check_condition(where, index):
 	item["condition_price_note"] = condition_reveal_note(item)
 	var found = reveal_traits(item, "condition")
 	var message = "Condition %d/10." % item["condition"]
-	if item["testable"]:
+	if item["testable"] and not item["tested"]:
 		message += " Whether it works stays unknown until you test it."
+	elif item["testable"]:
+		message += " Tested: %s." % ("works" if not item["fault"] else fault_label(item).to_lower())
 	elif item["fault"]:
 		message += " Hidden flaw: %s." % fault_label(item)
 	elif found.size() == 0:
@@ -3864,8 +3922,11 @@ func check_progress_achievements():
 	check_milestone_achievements()
 
 func suggested_price(item):
+	# "Fair": just under what the evidence says it's worth, so it actually sells.
 	var pot = estimate_identified_potential(item)
-	return round((float(pot[0]) + float(pot[1])) / 2.0)
+	if item["basic_researched"]:
+		return round((float(pot[0]) + float(pot[1])) / 2.0)
+	return round(sqrt(max(1.0, float(pot[0])) * max(1.0, float(pot[1]))))
 
 func estimated_profit_at(item, price):
 	var c = selling_costs(item, price)
@@ -5117,8 +5178,8 @@ func stall_greeting(stall):
 	var p = personality_of(stall)
 	if p == null:
 		return ""
-	if r == null or int(r["visits"]) <= 1:
-		return unique_line(p["lines"].get("greet_new", []))
+	if r == null or int(r["visits"]) <= 1 or float(r["rel"]) < 8.0:
+		return unique_line(p["lines"].get("greet_new", []), true)
 	var mem = world.memory_greeting(stall)
 	if mem != "":
 		return mem
@@ -5132,6 +5193,10 @@ func init_rival():
 	var cats = CATEGORIES.duplicate()
 	cats.shuffle()
 	rival = {"name": WorldData.RIVAL["name"], "nickname": WorldData.RIVAL["nickname"], "cats": [cats[0], cats[1], cats[2]], "snatched": 0, "beaten": 0}
+	# He's already trading when you start: a few things on his shop.
+	for i in range(4):
+		var it = generate_item(["Dealer", "House Clearance", "Clueless Seller", "Desperate Seller"][i])
+		world.gaz_took(it, {"seller_full_name": ""}, false)
 
 func plan_rival_route():
 	# Rival visits a subset of stalls through the morning, grabbing the best things in his categories.
@@ -5140,6 +5205,8 @@ func plan_rival_route():
 	var attend = float(fx["rival"])
 	if market_today.get("type", "") == "village_fete":
 		attend *= 0.4
+	if day == 2:
+		attend = 1.0   # he makes a point of introducing himself
 	if staff.has("picker"):
 		attend *= 0.6
 	market_today["rival_here"] = rng.randf() < attend and stalls.size() > 0
@@ -5171,7 +5238,7 @@ func rival_visit(si):
 	var stall = stalls[si]
 	stall["rival_visited"] = true
 	if str(stall.get("beat_gaz_item", "")) != "":
-		add_toast(fill_line(pick_line(Lines012.RIVAL_LINES["you_beat_him"]), {"item": "the " + str(stall["beat_gaz_item"]).to_lower()}), "success")
+		add_toast(fill_line(pick_line(Lines012.RIVAL_LINES["you_beat_him"]), {"item": "the " + lc(stall["beat_gaz_item"])}), "success")
 		rival["beaten"] = int(rival.get("beaten", 0)) + 1
 	if current_time_minutes >= int(stall["packing_minute"]):
 		return
@@ -5179,7 +5246,13 @@ func rival_visit(si):
 	var best = []
 	for j in range(stall["stock"].size()):
 		var it = stall["stock"][j]
-		var score = float(it["true_value"]) * float(current_trends.get(it["category"], 1.0)) / max(1.0, float(it["asking"]))
+		var seen_value = float(it["true_value"])
+		if not rival.get("cats", []).has(it["category"]):
+			# Outside his patch he's guessing from what the thing usually is.
+			if not it.has("gaz_view"):
+				it["gaz_view"] = rng.randf_range(0.4, 1.7)
+			seen_value = typical_value(it) * float(it["gaz_view"])
+		var score = seen_value * float(current_trends.get(it["category"], 1.0)) / max(1.0, float(it["asking"]))
 		if rival.get("cats", []).has(it["category"]):
 			score *= 1.8
 		if it.get("saved_for_player", false):

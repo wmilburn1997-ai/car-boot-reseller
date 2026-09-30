@@ -96,10 +96,25 @@ func market_header():
 	info.add_child(k.chip("%s, closes 12:00" % g.format_time(), k.GOLD, null, "xs", "clock"))
 	info.add_child(k.chip("Pitch fee %s" % g.fmt_money(g.daily_expenses), k.TEXT3, null, "xs", "coin"))
 	if g.market_today.get("rival_here", false):
-		info.add_child(k.chip("%s is about" % g.rival.get("nickname", "The rival"), k.RED, null, "xs", "person"))
+		info.add_child(k.chip(gaz_whereabouts(), k.RED, null, "xs", "person"))
 	tv.add_child(info)
 	h.add_child(tv)
 	return p
+
+func gaz_whereabouts():
+	var nk = g.rival.get("nickname", "Gaz")
+	var last = null
+	var nxt = null
+	for step in g.rival_route:
+		if step["done"]:
+			last = step
+		elif nxt == null:
+			nxt = step
+	if last != null and g.current_time_minutes - int(last["minute"]) <= 25 and int(last["stall"]) < g.stalls.size():
+		return "%s is at %s's stall" % [nk, g.stalls[int(last["stall"])]["seller_display_name"]]
+	if nxt != null and int(nxt["stall"]) < g.stalls.size():
+		return "%s is heading for %s's stall" % [nk, g.stalls[int(nxt["stall"])]["seller_display_name"]]
+	return "%s has been and gone" % nk
 
 func closing_card():
 	var p = k.panel("gold", 16)
@@ -357,7 +372,7 @@ func build_gaz_shop(parent):
 	tt.add_child(k.label(g.pick_line(g.Lines012.RIVAL_LINES["shop_intro"]) if not d.has("shop_intro") else str(d["shop_intro"]), "s", k.TEXT3, true))
 	top.add_child(tt)
 	hv.add_child(top)
-	hv.add_child(k.label("Everything %s bought this week, relisted. He knows %s. Everything else, he's guessing. £4 postage." % [nk, ", ".join(g.rival.get("cats", []))], "s", k.TEXT2, true))
+	hv.add_child(k.label("What %s's picked up lately, relisted. He knows %s. Everything else, he's guessing, and so are you. £4 postage, and every sale counts toward his week, yours included." % [nk, ", ".join(g.rival.get("cats", []))], "s", k.TEXT2, true))
 	v.add_child(head)
 	if not d.has("shop_intro"):
 		d["shop_intro"] = g.pick_line(g.Lines012.RIVAL_LINES["shop_intro"])
@@ -374,7 +389,7 @@ func build_gaz_shop(parent):
 		h.add_child(k.cat_icon(it["category"], 40))
 		var tv = k.vbox(2)
 		k.expand(tv)
-		tv.add_child(k.label(str(it.get("gaz_title", it["name"])), "m", k.TEXT, true))
+		tv.add_child(k.label(str(it.get("gaz_title", it["name"])), "s" if ui.mobile else "m", k.TEXT, true))
 		tv.add_child(k.label("%s · %s%s" % [it["name"], g.item_display_name(it) if str(it.get("ident", "")) != "" else it["category"], "" if g.rival.get("cats", []).has(it["category"]) else "  ·  outside his patch"], "xs", k.TEXT2, true))
 		var pot = g.estimate_identified_potential(it)
 		tv.add_child(k.label("You'd guess %s–%s%s" % [g.fmt_money(pot[0]), g.fmt_money(pot[1]), "  ·  you saw this on %s's table" % str(e.get("from", "")).split(" ")[0] if e.get("seen", false) else ""], "xs", k.TEAL, true))

@@ -151,8 +151,8 @@ func consider_item(stall, i):
 			if not g.haggle_open(item, stall):
 				break
 			g.haggle_item(i, offer)
-			if item["haggle_result"] == "refused" or stall.get("banned_today", false):
-				return
+			if item["haggle_result"] in ["refused", "accepted"] or stall.get("banned_today", false):
+				return   # accepted = bought
 			offer = round((offer + float(item["asking"])) * 0.5)
 	g.buy_item(i)
 

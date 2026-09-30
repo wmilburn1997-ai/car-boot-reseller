@@ -281,9 +281,9 @@ func stall():
 		print("  (%d more unseen — dig)" % (s["stock"].size() - int(s["revealed"])))
 
 func est_text(it):
-	var pc = m.perceived_center(it)
-	var u = m.estimate_uncertainty(it)
-	return "est ~%s ±%d%%" % [money(pc), int(u * 100)]
+	# The same range the game shows the player.
+	var r = m.estimate_identified_potential(it)
+	return "worth £%d–£%d%s" % [int(r[0]), int(r[1]), "" if it["basic_researched"] else " (typical range, unresearched)"]
 
 func item_line(i, it):
 	var tags = []

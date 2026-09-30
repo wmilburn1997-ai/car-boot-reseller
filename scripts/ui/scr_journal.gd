@@ -419,7 +419,9 @@ func build_news(parent):
 		var pv = k.vbox(6)
 		pp.add_child(pv)
 		for i in range(heads.size() - 1, max(-1, heads.size() - 5), -1):
-			pv.add_child(k.label("\"%s\"" % str(heads[i]["text"]), "m", k.GOLD, true))
+			if g.day - int(heads[i].get("day", 0)) > 14:
+				continue
+			pv.add_child(k.label("\"%s\"  (day %d)" % [str(heads[i]["text"]), int(heads[i].get("day", 0))], "m", k.GOLD, true))
 		if lw.size() > 0:
 			pv.add_child(k.label("Boot-sale league, last week: you %s, %s %s. %s" % [g.fmt_money(lw["you"]), g.world.nick(), g.fmt_money(lw["gaz"]), str(lw.get("line", ""))], "s", k.TEXT2, true))
 		v.add_child(pp)

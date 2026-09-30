@@ -80,14 +80,15 @@ func gaz_night():
 			keep.append(e)
 	d["gaz_shop"] = keep
 	if you_saw_best != null:
-		var line = g.fill_line(g.pick_line(L.RIVAL_LINES["flipped_your_skip"]), {"item": "the " + str(you_saw_best["name"]).to_lower(), "price": g.fmt_money(you_saw_best["price"])})
+		var line = g.fill_line(g.pick_line(L.RIVAL_LINES["flipped_your_skip"]), {"item": "the " + g.lc(you_saw_best["name"]), "price": g.fmt_money(you_saw_best["price"])})
 		d["gaz_msgs"].append(line)
 		g.night_events.append({"kind": "missed", "text": "%s flipped one you walked past" % nick(), "sub": line})
 		g.add_journal("%s sold %s for %s. You'd seen it on the table." % [nick(), you_saw_best["item"], g.fmt_money(you_saw_best["price"])], "bad")
 	# His other markets: he keeps pace with you, roughly.
-	var avg = trailing_player_profit(14)
-	if g.market_today.get("rival_here", true) or g.rng.randf() < 0.7:
-		d["week"]["gaz"] = float(d["week"]["gaz"]) + max(8.0, avg * 0.45) * g.rng.randf_range(0.4, 1.5)
+	var avg = trailing_player_profit(28)
+	var other = clamp(avg * 0.5, 10.0, 300.0) * g.rng.randf_range(0.7, 1.3)
+	d["week"]["gaz"] = float(d["week"]["gaz"]) + other
+	d["week"]["gaz_other"] = float(d["week"].get("gaz_other", 0.0)) + other
 
 func trailing_player_profit(days):
 	var total = 0.0
@@ -193,7 +194,7 @@ func memory_greeting(stall):
 		key = "memory_gem"
 	elif str(m.get("kind", "")) == "sold" and float(m.get("sold", 0)) > float(m.get("price", 0)) * 1.2:
 		key = "memory_sold"
-	return g.pers_line(stall, key, {"item": "the " + str(m.get("item", "thing")).to_lower(), "price": g.fmt_money(m.get("price", 0)), "sold": g.fmt_money(m.get("sold", 0))})
+	return g.pers_line(stall, key, {"item": "the " + g.lc(m.get("item", "thing")), "price": g.fmt_money(m.get("price", 0)), "sold": g.fmt_money(m.get("sold", 0))})
 
 # =============================================================================
 # Commissions: "find me a…"
@@ -235,11 +236,11 @@ func roll_commission():
 		c["reg_id"] = int(r["id"])
 		c["from"] = str(r["name"])
 		var arr = L.PERSONALITY_LINES.get(str(r["personality"]), {}).get("commission_ask", [])
-		c["text"] = g.fill_line(g.pick_line(arr), {"item": g.a_an(str(fam["name"]).to_lower())}) if arr.size() > 0 else "Keep an eye out for %s for me?" % g.a_an(str(fam["name"]).to_lower())
+		c["text"] = g.fill_line(g.pick_line(arr), {"item": g.a_an(g.lc(fam["name"]))}) if arr.size() > 0 else "Keep an eye out for %s for me?" % g.a_an(g.lc(fam["name"]))
 	else:
 		var buyer = g.pick_line(L.COMMISSION_BUYERS)
 		c["from"] = buyer
-		c["text"] = g.fill_line(g.pick_line(L.COMMISSION_ASKS), {"buyer": short_from(c), "item": g.a_an(str(fam["name"]).to_lower())})
+		c["text"] = g.fill_line(g.pick_line(L.COMMISSION_ASKS), {"buyer": short_from(c), "item": g.a_an(g.lc(fam["name"]))})
 	active.append(c)
 	g.add_toast("WANTED: a %s. %s pays %.1f× the going rate." % [fam["name"], short_from(c), mult], "info")
 
@@ -254,9 +255,13 @@ func commission_for(item) -> Variant:
 			return c
 	return null
 
+func commission_quote(item, c):
+	# What they'd pay for it as you've described it.
+	return round(g.known_value(item) * float(c["mult"]))
+
 func commission_pay(item, c):
-	# They pay over the odds for the real thing, judged on the item itself (hidden flaws count).
-	return round(g.true_market_value(item) * float(c["mult"]))
+	# They check it when it arrives: anything you didn't know about that makes it worse comes off.
+	return round(min(g.known_value(item), g.true_market_value(item) * 1.1) * float(c["mult"]))
 
 func commission_guess(c):
 	var fam = g.content.family(str(c["fam"]))
@@ -275,6 +280,10 @@ func deliver_commission(index):
 	if item["testable"] and not item["tested"]:
 		g.queue_popup("Test it first: they want to know it works.")
 		return
+	if int(item.get("carried_day", -1)) == g.day:
+		g.queue_popup("They'll collect it tomorrow. Get it home first.")
+		return
+	var quote = commission_quote(item, c)
 	var pay = commission_pay(item, c)
 	item["listed"] = false
 	item["auctioned"] = false
@@ -289,11 +298,12 @@ func deliver_commission(index):
 		if r != null:
 			r["rel"] = min(100.0, float(r["rel"]) + 12.0)
 			var arr = L.PERSONALITY_LINES.get(str(r["personality"]), {}).get("commission_thanks", [])
-			thanks = g.fill_line(g.pick_line(arr), {"item": "the " + str(item["name"]).to_lower()})
+			thanks = g.fill_line(g.pick_line(arr), {"item": "the " + g.lc(item["name"])})
 	g.add_xp(12)
 	g.add_expertise(item["category"], 6)
 	g.add_journal("Found a %s for %s. Paid %s." % [item["name"], short_from(c), g.fmt_money(pay)], "good")
-	g.show_big_popup("COMMISSION DONE", "%s\n\n%s paid %s (%s profit)." % [("\"%s\"" % thanks) if thanks != "" else "They're delighted.", short_from(c), g.fmt_money(pay), g.money_signed(profit)], "sale")
+	var knocked = ("\n\nThey'd been quoted %s, but it wasn't quite as described, so they knocked it down." % g.fmt_money(quote)) if pay < quote - 1.0 else ""
+	g.show_big_popup("COMMISSION DONE", "%s\n\n%s paid %s (%s profit).%s" % [("\"%s\"" % thanks) if thanks != "" else "They're pleased with it.", short_from(c), g.fmt_money(pay), g.money_signed(profit), knocked], "sale" if pay >= quote - 1.0 else "info")
 	g.play_sfx("sale")
 	g.fx_money(pay)
 	g.save_game()
@@ -338,7 +348,7 @@ func check_big_finds():
 		d["last_call_day"] = g.day
 		var offer = round(g.true_market_value(it) * g.rng.randf_range(0.88, 1.05))
 		var caller = g.pick_line(L.BIG_FIND["caller_names"])
-		d["calls"].append({"uid": uid, "offer": offer, "caller": caller, "line": g.fill_line(g.pick_line(L.BIG_FIND["call"]), {"item": "your " + str(it["name"]).to_lower(), "price": g.fmt_money(offer)}), "day": g.day})
+		d["calls"].append({"uid": uid, "offer": offer, "caller": caller, "line": g.fill_line(g.pick_line(L.BIG_FIND["call"]), {"item": "your " + g.lc(it["name"]), "price": g.fmt_money(offer)}), "day": g.day})
 		return
 
 func pending_call() -> Variant:
@@ -421,7 +431,7 @@ func value_item(index):
 	for t in found:
 		var dd = g.trait_def(t)
 		if dd != null:
-			lines.append(g.fill_line(g.pick_line(L.VALUATION["clue"]), {"detail": str(dd["found"]).trim_suffix(".").to_lower()}))
+			lines.append(g.fill_line(g.pick_line(L.VALUATION["clue"]), {"detail": g.first_lower(str(dd["found"]).trim_suffix("."))}))
 	it["condition_checked"] = true
 	if it["testable"]:
 		it["tested"] = true
@@ -493,7 +503,7 @@ func apply_event(id):
 	match id:
 		"tv_crew":
 			var cat = g.CATEGORIES[g.rng.randi_range(0, g.CATEGORIES.size() - 1)]
-			vars["cat"] = cat.to_lower()
+			vars["cat"] = cat
 			fx["hype_cat"] = cat
 			for s in g.stalls:
 				for it in s["stock"]:
@@ -600,7 +610,7 @@ func help_lost_dog():
 		if int(s.get("regular_id", -1)) >= 0 and g.current_time_minutes < int(s["packing_minute"]):
 			cands.append(s)
 	if cands.size() == 0:
-		g.add_toast("You walk the dog round the whole field. A woman from the next village claims him, and gives you a tenner.", "success")
+		g.add_toast("You walk the dog round the whole field. A woman from the next village claims the dog, and gives you a tenner.", "success")
 		g.cash += 10.0
 	else:
 		var s = cands[g.rng.randi_range(0, cands.size() - 1)]

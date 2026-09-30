@@ -808,9 +808,13 @@ func sell_panel(it, index):
 		var ctv = k.vbox(2)
 		k.expand(ctv)
 		ctv.add_child(k.label("%s wants one" % g.world.short_from(com), "m", k.GOLD, true))
-		ctv.add_child(k.label("Pays %.1f× what it's really worth. No fees, no postage. Until day %d." % [float(com["mult"]), int(com["expires"])], "xs", k.TEXT2, true))
+		var quote = g.world.commission_quote(it, com)
+		var tomorrow = int(it.get("carried_day", -1)) == g.day
+		ctv.add_child(k.label("They'd pay about %s (%.1f× value as you know it). No fees. %s" % [g.fmt_money(quote), float(com["mult"]), "They collect tomorrow." if tomorrow else "Until day %d." % int(com["expires"])], "xs", k.TEXT2, true))
 		ch.add_child(ctv)
-		ch.add_child(k.button("Deliver", "gold", func(): g.world.deliver_commission(index), "Hand it over. They judge the real thing: hidden flaws lower the price.", "m", 110, 44))
+		var db = k.button("Deliver", "gold", func(): g.world.deliver_commission(index), "Hand it over. They check it: anything wrong you didn't know about comes off the price.", "m", 110, 44)
+		db.disabled = tomorrow
+		ch.add_child(db)
 		v.add_child(cp)
 	if it["listed"]:
 		var p = k.panel("good", 10)

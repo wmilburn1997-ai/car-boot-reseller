@@ -487,9 +487,9 @@ const VALUATION = {
 
 const MARKET_EVENTS = {
 	"tv_crew": {"title": "Antiques Show in Town", "texts": [
-		"A TV antiques show is filming by the tea hut. Suddenly everyone's {cat} are priceless.",
-		"There's a camera crew and a presenter in a cravat. {cat} are the talk of the field.",
-		"A film crew is here. Sellers are dusting off their {cat} and adding a nought.",
+		"A TV antiques show is filming by the tea hut. Suddenly everyone's {cat} stock is priceless.",
+		"There's a camera crew and a presenter in a cravat. {cat} is the talk of the field.",
+		"A film crew is here, asking about {cat}. Sellers are dusting off their tables and adding a nought.",
 	]},
 	"cloudburst": {"title": "Cloudburst", "texts": [
 		"The heavens open at half ten. Sellers are throwing stock at anyone still standing.",
