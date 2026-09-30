@@ -35,7 +35,8 @@ func tile(it, ctx, selected, on_press, extra = {}):
 	b.add_theme_stylebox_override("hover", k.sbox(bg.lightened(0.05), border.lightened(0.2), 8, 2 if selected else 1, [10, 8, 12, 8]))
 	b.add_theme_stylebox_override("pressed", st)
 	b.add_theme_stylebox_override("focus", k.sbox(Color(0, 0, 0, 0), null, 8, 0, 0))
-	b.custom_minimum_size = Vector2(0, 64 if k.mobile else 58)
+	var has_ident = str(it.get("ident", "")) != ""
+	b.custom_minimum_size = Vector2(0, (80 if k.mobile else 74) if has_ident else (64 if k.mobile else 58))
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var h = k.hbox(10)
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -62,6 +63,12 @@ func tile(it, ctx, selected, on_press, extra = {}):
 	nl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_row.add_child(nl)
 	v.add_child(name_row)
+	if str(it.get("ident", "")) != "":
+		var il = k.label(str(it["ident"]), "xs", k.TEXT2 if not dimmed else k.TEXT3)
+		il.clip_text = true
+		il.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		il.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_child(il)
 	v.add_child(status_row(it, ctx))
 	h.add_child(v)
 	var pv = k.vbox(0)
@@ -265,6 +272,10 @@ func detail(it, ctx, index, stall = null):
 			v.add_child(acts)
 		v.add_child(k.section("Sell"))
 		v.add_child(sell_panel(it, index))
+		var hp = history_panel(it)
+		if hp != null:
+			v.add_child(k.section("Its story so far"))
+			v.add_child(hp)
 	return v
 
 func to_bool_banned(stall):
@@ -290,12 +301,36 @@ func header(it, ctx):
 		chips.add_child(k.chip("Saved for you", k.GOLD, null, "xs", "heart"))
 	if str(it.get("found_in", "")) != "":
 		chips.add_child(k.chip("Found in a %s" % it["found_in"], k.GREEN, null, "xs", "spark"))
+	if str(it.get("ident", "")) != "":
+		tv.add_child(k.label(str(it["ident"]), "m" if not k.mobile else "b", k.TEAL, true))
 	tv.add_child(chips)
 	h.add_child(tv)
 	v.add_child(h)
 	if str(it.get("blurb", "")) != "":
 		v.add_child(k.rich("[i]%s[/i]" % it["blurb"], "s", k.TEXT3))
+	if str(it.get("story", "")) != "" and ctx in ["stall", "clearance"]:
+		v.add_child(k.rich("[color=#d9b45a]\u201c[/color]%s[color=#d9b45a]\u201d[/color]" % str(it["story"]), "s", k.TEXT2))
 	return v
+
+func history_panel(it):
+	var h = it.get("hist", [])
+	if typeof(h) != TYPE_ARRAY or h.size() == 0:
+		return null
+	var p = k.panel("inset", 10)
+	var v = k.vbox(4)
+	p.add_child(v)
+	if str(it.get("story", "")) != "":
+		v.add_child(k.rich("[i]%s[/i]" % str(it["story"]), "xs", k.TEXT3))
+	for e in h:
+		var row = k.hbox(8)
+		var dl = k.label("Day %d" % int(e[0]), "xs", k.TEXT3)
+		dl.custom_minimum_size = Vector2(52, 0)
+		row.add_child(dl)
+		var tl = k.label(str(e[1]), "xs", k.TEXT2, true)
+		k.expand(tl)
+		row.add_child(tl)
+		v.add_child(row)
+	return p
 
 func stall_verdict(it, index, stall):
 	var p = k.panel("inset", 12)

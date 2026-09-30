@@ -174,6 +174,19 @@ func _cmd(cmd):
 				m.show_inventory()
 		"screen":
 			m.call(p[1])
+		"sel":
+			m.selected_stall_uid = int(m.stalls[m.current_stall_index]["stock"][n]["uid"])
+			m.show_stall()
+		"isel":
+			m.selected_inv_uid = int(m.inventory[n]["uid"])
+			m.show_inventory()
+		"size":
+			get_root().size = Vector2i(int(p[1]), int(p[2]))
+			DisplayServer.window_set_size(Vector2i(int(p[1]), int(p[2])))
+			for i in range(6):
+				await process_frame
+			m.ui.adjust_scale()
+			m.ui.rerender() if m.ui.has_method("rerender") else null
 		"shot":
 			for i in range(12):
 				await process_frame

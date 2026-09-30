@@ -100,10 +100,17 @@ func build_day_summary(parent, s):
 	var hv = k.vbox(6)
 	head.add_child(hv)
 	hv.add_child(k.label("NIGHT OF DAY %d" % int(s["day"]), "s", k.TEXT3))
-	var hh = k.hbox(18)
+	var profit = float(st.get("sale_profit", 0.0))
+	var sold_n = int(st.get("items_sold", 0))
+	var hh = k.hbox(22)
 	var a = k.vbox(0)
-	a.add_child(k.label("Cash", "xs", k.TEXT3))
-	a.add_child(k.label(g.money_signed(cash_delta), "hero", k.GREEN if cash_delta >= 0 else k.RED))
+	a.add_child(k.label("Profit on sales", "xs", k.TEXT3))
+	if sold_n > 0:
+		a.add_child(k.label(g.money_signed(profit), "hero", k.GREEN if profit >= 0 else k.RED))
+		a.add_child(k.label("%d sold today" % sold_n, "s", k.TEXT2))
+	else:
+		a.add_child(k.label("No sales", "hero", k.TEXT3))
+		a.add_child(k.label("buyers come overnight", "s", k.TEXT3))
 	hh.add_child(a)
 	var b = k.vbox(0)
 	b.add_child(k.label("Business value", "xs", k.TEXT3))
@@ -111,7 +118,18 @@ func build_day_summary(parent, s):
 	b.add_child(k.label("now %s" % g.fmt_money(s["end_worth"]), "s", k.TEXT2))
 	b.size_flags_vertical = Control.SIZE_SHRINK_END
 	hh.add_child(b)
+	if not ui.mobile:
+		var c = k.vbox(0)
+		c.add_child(k.label("Cash", "xs", k.TEXT3))
+		c.add_child(k.label(g.fmt_money(s["end_cash"]), "xl", k.TEXT))
+		var inv = float(st.get("buy_spend", 0.0))
+		c.add_child(k.label(("%s invested in stock" % g.fmt_money(inv)) if inv > 0 else g.money_signed(cash_delta) + " today", "s", k.TEXT2))
+		c.size_flags_vertical = Control.SIZE_SHRINK_END
+		hh.add_child(c)
 	hv.add_child(hh)
+	if ui.mobile:
+		var inv2 = float(st.get("buy_spend", 0.0))
+		hv.add_child(k.label("Cash %s%s" % [g.fmt_money(s["end_cash"]), ("  ·  %s invested in stock" % g.fmt_money(inv2)) if inv2 > 0 else ""], "s", k.TEXT2))
 	v.add_child(head)
 	if int(s.get("streak", 0)) > 0:
 		var w = k.panel("bad", 12)
@@ -135,6 +153,19 @@ func build_day_summary(parent, s):
 		var kind = str(e.get("kind", "info"))
 		tw.tween_callback(g.play_sfx.bind("coin" if kind == "sale" else ("fail" if kind == "return" else "reveal")))
 		delay += 0.22 if events.size() < 10 else 0.08
+	# Listings that didn't sell, and why
+	var reps = s.get("listings", [])
+	if reps.size() > 0:
+		v.add_child(k.section("Still listed (%d)" % reps.size()))
+		var lb = k.vbox(6)
+		v.add_child(lb)
+		var shown = 0
+		for r in reps:
+			if shown >= 6:
+				lb.add_child(k.label("…and %d more in Stock." % (reps.size() - shown), "s", k.TEXT3))
+				break
+			lb.add_child(listing_card(r))
+			shown += 1
 	# Money
 	var cols = k.grid(1 if ui.mobile else 2, 12, 12)
 	var inp = k.panel("card", 12)
@@ -202,6 +233,30 @@ func build_day_summary(parent, s):
 	outer.add_child(ui.cap_width(cont, 1100))
 	parent.add_child(outer)
 	g.play_sfx("day_good" if cash_delta >= 0 else "day_bad")
+
+func listing_card(r):
+	var p = k.panel("card", 10)
+	var h = k.hbox(10)
+	p.add_child(h)
+	var tv = k.vbox(2)
+	k.expand(tv)
+	var title = str(r.get("ident", "")) if str(r.get("ident", "")) != "" else str(r["name"])
+	tv.add_child(k.label("%s · %s" % [title, g.fmt_money(r["price"])], "m", k.TEXT, true))
+	var col = {"too_high": k.ORANGE, "slow_category": k.TEXT2, "watchers": k.GREEN, "fine": k.TEXT2}.get(str(r["key"]), k.TEXT2)
+	tv.add_child(k.label(str(r["text"]), "s", col, true))
+	tv.add_child(k.label("%d views · %d watching · night %d" % [int(r["views"]), int(r["watchers"]), int(r["days"])], "xs", k.TEXT3))
+	h.add_child(tv)
+	var uid = int(r["uid"])
+	var drop_to = max(1.0, round(float(r["price"]) * 0.9))
+	var btn = k.button("Drop to %s" % g.fmt_money(drop_to), "ghost", null, "Cut the price by 10%.", "s", 0, 40)
+	btn.pressed.connect(func():
+		var np = g.drop_listing_price(uid, 0.9)
+		if np > 0.0:
+			btn.text = "Now %s" % g.fmt_money(np)
+			btn.disabled = true)
+	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(btn)
+	return p
 
 func event_card(e):
 	var kind = str(e.get("kind", "info"))

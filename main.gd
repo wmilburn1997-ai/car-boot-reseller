@@ -16,6 +16,7 @@ const CATEGORIES = ["Clothing","Games","Trading Cards","Vinyl","Cameras","Tools"
 const ContentScript = preload("res://scripts/content.gd")
 const Biz = preload("res://scripts/data/business.gd")
 const Lines012 = preload("res://scripts/data/lines_012.gd")
+const Ident = preload("res://scripts/data/identity.gd")
 const WorldData = preload("res://scripts/data/world.gd")
 const UIRoot = preload("res://scripts/ui/ui_root.gd")
 static var _content_cache = null
@@ -653,7 +654,7 @@ func reset_day_stats():
 		"items_bought": 0, "items_sold": 0, "items_scrapped": 0, "returns": 0, "collection_adds": 0,
 		"rarest_one_in": 1, "condition_checks": 0, "researches_done": 0, "deep_researches_done": 0,
 		"authentications_done": 0, "repairs_done": 0, "profitable_sales": 0, "successful_haggles": 0,
-		"discoveries": 0, "rng_events": []
+		"discoveries": 0, "rng_events": [], "sale_profit": 0.0
 	}
 
 var trend_random = {}
@@ -954,6 +955,8 @@ func make_item_from_family(base, seller, ctx = {}):
 	})
 	roll_item_traits(item, base, profile, rarity["tier"], ctx)
 	cap_condition_for_damage(item)
+	item["ident"] = make_ident(str(base["name"]))
+	item["story"] = pick_line(Ident.SELLER_STORIES.get(str(base["category"]), []))
 	var knowledge = clamp(float(profile["knowledge"]) + float(ctx.get("knowledge_mod", 0.0)), 0.05, 0.98)
 	var seller_value = base_value * seller_known_trait_mult(item, knowledge)
 	var random_ask = rng.randf_range(float(base["ask"][0]), float(base["ask"][1]))
@@ -1534,6 +1537,67 @@ func haggle_item(index, offer):
 	item["haggle_note"] = "\"%s\"" % lc
 	show_stall()
 
+func make_ident(fam_name):
+	var pats = Ident.PATTERNS.get(fam_name, [])
+	if typeof(pats) != TYPE_ARRAY or pats.size() == 0:
+		return ""
+	var out = fill_pools(str(pats[rng.randi_range(0, pats.size() - 1)]), 0)
+	if out.length() > 0 and out.substr(0, 1) != "'":
+		out = out.substr(0, 1).to_upper() + out.substr(1)
+	return out
+
+func fill_pools(t, depth):
+	var out = ""
+	var i = 0
+	while true:
+		var a = t.find("{", i)
+		if a < 0:
+			out += t.substr(i)
+			break
+		var b = t.find("}", a)
+		if b < 0:
+			out += t.substr(i)
+			break
+		out += t.substr(i, a - i)
+		var key = t.substr(a + 1, b - a - 1)
+		var pool = Ident.POOLS.get(key, null)
+		if typeof(pool) == TYPE_ARRAY and pool.size() > 0:
+			var rep = str(pool[rng.randi_range(0, pool.size() - 1)])
+			if rep.find("{") >= 0 and depth < 3:
+				rep = fill_pools(rep, depth + 1)
+			out += rep
+		else:
+			out += key
+		i = b + 1
+	return out
+
+func sale_buyer_phrase(channel):
+	var town = pick_line(Ident.POOLS["town"])
+	match channel:
+		"listing", "instant":
+			return "online to a buyer in %s" % town
+		"auction":
+			return "at auction, to a bidder in %s" % town
+		"shop":
+			return "in the shop, to someone from %s" % town
+		"collector":
+			return "to your collector contact"
+		"trader", "trade":
+			return "to the trade"
+		"bigfind":
+			return "to a specialist buyer"
+	return "to a buyer in %s" % town
+
+func hist(item, text):
+	# The item's biography: a short dated timeline that follows it from the stall to the buyer.
+	var h = item.get("hist", [])
+	if typeof(h) != TYPE_ARRAY:
+		h = []
+	h.append([day, str(text)])
+	if h.size() > 14:
+		h = h.slice(h.size() - 14)
+	item["hist"] = h
+
 func item_display_name(item):
 	# The specific name if the item has one ("Iron Parish – Harvest of Rust"), else its kind.
 	var n = str(item.get("ident", ""))
@@ -1615,6 +1679,8 @@ func buy_item(index):
 		total_haggled_savings += float(item["haggle_savings"])
 	item["bought_from"] = stall.get("seller_full_name", stall["seller_display_name"])
 	item["bought_day"] = day
+	var pn = personality_of(stall)
+	hist(item, "Bought from %s%s for %s%s." % [item["bought_from"], (" (%s)" % str(pn["name"]).to_lower()) if pn != null else "", fmt_money(item["asking"]), (" (asked %s)" % fmt_money(item.get("orig_asking", item["asking"]))) if float(item.get("orig_asking", 0.0)) > float(item["asking"]) + 0.5 else ""])
 	item["carried_day"] = day
 	inventory.append(item)
 	stall["stock"].remove_at(index)
@@ -1728,6 +1794,7 @@ func accept_special_offer():
 	day_stats["items_bought"] += 1
 	item["paid"] = item["asking"]
 	item["carried_day"] = day
+	hist(item, "Side deal from %s for %s." % [pending_special_offer.get("seller_display_name", "a seller"), fmt_money(item["asking"])])
 	inventory.append(item)
 	register_collection(item)
 	add_xp(2)
@@ -2142,6 +2209,7 @@ func test_item(index):
 		result_text = "FAULT: " + fault_label(item)
 	record_rng("Fault chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [item["fault_chance"] * 100.0, item["fault_roll"] * 100.0, result_text])
 	var found = reveal_traits(item, "test")
+	hist(item, "Tested: %s." % ("works" if not item["fault"] else fault_label(item).to_lower()))
 	var after = estimate_identified_potential(item)
 	item["test_note"] = "%s. Your estimate £%d–£%d → £%d–£%d." % [result_text.capitalize() if not item["fault"] else result_text, before[0], before[1], after[0], after[1]]
 	if not bulk_mode:
@@ -2294,6 +2362,7 @@ func repair_item(index):
 		else:
 			notes.append("couldn't fix the %s" % trait_def(t)["name"].to_lower())
 	item["repair_note"] = ", ".join(notes).capitalize()
+	hist(item, "On the bench: %s." % ", ".join(notes))
 	add_xp(3)
 	add_toast("Repair: %s." % ", ".join(notes), "success" if "fixed" in item["repair_note"].to_lower() or "repaired" in item["repair_note"].to_lower() else "warn")
 	refresh_after("inv")
@@ -2486,6 +2555,8 @@ func create_listing(index, price_in):
 	var potential = estimate_identified_potential(item)
 	var price = clamp(round(float(price_val)), 1.0, max(20.0, float(potential[1]) * 3.0))
 	item["on_shop_floor"] = false
+	if not item["listed"] or abs(float(item.get("listing", 0.0)) - price) >= 1.0:
+		hist(item, "Listed online at %s." % fmt_money(price))
 	item["listing"] = price
 	item["listed"] = true
 	item["listed_day"] = day
@@ -2566,6 +2637,7 @@ func record_completed_sale(item, sale_price, costs, channel):
 	day_stats["postage"] += float(costs["postage"]) + float(costs["insurance"]) + float(costs["packaging"])
 	day_stats["items_sold"] += 1
 	var missed = missed_traits_on_sale(item) if channel in ["listing", "instant", "shop"] else []
+	hist(item, "Sold for %s %s." % [fmt_money(sale_price), sale_buyer_phrase(channel)])
 	var missed_names = []
 	for t in missed:
 		missed_names.append(trait_def(t)["name"])
@@ -2573,13 +2645,14 @@ func record_completed_sale(item, sale_price, costs, channel):
 	for t in known_traits(item):
 		if not missed.has(t):
 			known_names.append(trait_def(t)["name"])
-	sold_history.append({"name":item["name"], "price":sale_price, "day":day, "condition":item["condition"], "condition_checked":item["condition_checked"], "paid":item["paid"], "fee":costs["fee"], "postage":costs["postage"], "insurance":costs["insurance"], "packaging":costs["packaging"], "extra_spend":float(item.get("extra_spend", 0.0)), "channel":channel, "category":item["category"], "rarity":item["rarity"], "seller":item.get("seller", ""), "source":item.get("source", "stall"), "traits": known_names, "missed": missed_names, "from": item.get("bought_from", "")})
+	sold_history.append({"name":item["name"], "price":sale_price, "day":day, "condition":item["condition"], "condition_checked":item["condition_checked"], "paid":item["paid"], "fee":costs["fee"], "postage":costs["postage"], "insurance":costs["insurance"], "packaging":costs["packaging"], "extra_spend":float(item.get("extra_spend", 0.0)), "channel":channel, "category":item["category"], "rarity":item["rarity"], "seller":item.get("seller", ""), "source":item.get("source", "stall"), "traits": known_names, "missed": missed_names, "from": item.get("bought_from", ""), "ident": str(item.get("ident", "")), "hist": item.get("hist", []).duplicate(true), "profit": sale_profit, "uid": int(item.get("uid", 0))})
 	add_xp(5 + (5 if sale_profit > 0.0 else 0))
 	if family_stats.has(item["name"]):
 		var fs_sale = family_stats[item["name"]]
 		fs_sale["highest_sold"] = max(float(fs_sale["highest_sold"]), sale_price)
 		fs_sale["lifetime_profit"] = float(fs_sale["lifetime_profit"]) + sale_profit
 	total_lifetime_profit += sale_profit
+	day_stats["sale_profit"] = float(day_stats.get("sale_profit", 0.0)) + sale_profit
 	if sale_profit > 0.0:
 		day_stats["profitable_sales"] += 1
 		unlock_achievement("First Flip")
@@ -2681,12 +2754,42 @@ func resolve_item_sale(item, sale_chance, channel = "listing"):
 	var sale_profit = record_completed_sale(item, sale_price, costs, channel)
 	if in_end_day:
 		var msgs = WorldData.BUYER_MESSAGES.get("happy", [""])
-		night_events.append({"kind": "sale", "text": "Sold: %s for £%.0f" % [item["name"], sale_price], "sub": pick_line(msgs), "amount": sale_price, "profit": sale_profit})
+		night_events.append({"kind": "sale", "text": "Sold: %s for £%.0f" % [item_display_name(item), sale_price], "sub": pick_line(msgs), "amount": sale_price, "profit": sale_profit, "kind_name": item["name"]})
 	else:
 		add_toast("SOLD: %s for £%.0f (profit %s)" % [item["name"], sale_price, money_signed(sale_profit)], "success" if sale_profit >= 0.0 else "warn")
 		fx_money(net)
 	play_sfx("sale")
 	return "sold_removed"
+
+var listing_reports = []
+
+func listing_report(item, interest):
+	# Why hasn't it sold? Views and watchers come from the real buyer interest, so the hint is honest.
+	var days = max(1, day - int(item.get("listed_day", day)) + 1)
+	var r = float(item["listing"]) / max(1.0, market_value(item))
+	var views = int(round(rng.randf_range(4.0, 10.0) * (0.7 + 0.35 * days) * clamp(1.35 - (r - 1.0) * 0.4, 0.5, 1.5)))
+	var watchers = int(max(0.0, round(interest * 5.0 + rng.randf_range(-1.2, 0.8))))
+	var key = "fine"
+	if r > 1.22:
+		key = "too_high"
+	elif float(current_trends.get(item["category"], 1.0)) < 0.9:
+		key = "slow_category"
+	elif watchers >= 2:
+		key = "watchers"
+	var text = fill_line(pick_line(Lines012.NIGHT_LISTING_HINTS.get(key, [""])), {"item": "the " + str(item["name"]).to_lower(), "cat": item["category"], "n": watchers})
+	text = text.substr(0, 1).to_upper() + text.substr(1)
+	return {"uid": int(item["uid"]), "name": item["name"], "ident": str(item.get("ident", "")), "price": float(item["listing"]), "days": days, "views": views, "watchers": watchers, "key": key, "text": text}
+
+func drop_listing_price(uid, factor = 0.9):
+	for item in inventory:
+		if int(item["uid"]) == int(uid) and item["listed"]:
+			var was = float(item["listing"])
+			item["listing"] = max(1.0, round(was * factor))
+			hist(item, "Price dropped to %s." % fmt_money(item["listing"]))
+			add_toast("%s now %s (was %s)." % [item["name"], fmt_money(item["listing"]), fmt_money(was)], "info")
+			save_game()
+			return float(item["listing"])
+	return 0.0
 
 func process_sales():
 	var to_remove = []
@@ -2702,6 +2805,8 @@ func process_sales():
 		var result = resolve_item_sale(item, chance)
 		if result == "sold_removed":
 			to_remove.append(i)
+		elif result == "no_sale" and item["listed"]:
+			listing_reports.append(listing_report(item, interest))
 	for j in range(to_remove.size() - 1, -1, -1):
 		inventory.remove_at(to_remove[j])
 
@@ -2759,6 +2864,8 @@ func buy_mystery_package():
 		item["paid"] = 30.0 / float(count)
 		item["asking"] = item["paid"]
 		item["source"] = "package"
+		item["story"] = "Came in a sealed mystery box."
+		hist(item, "Pulled out of a mystery box.")
 		inventory.append(item)
 		register_collection(item)
 		contents.append(item["name"])
@@ -2889,6 +2996,7 @@ func end_day():
 	in_end_day = true
 	clear_toasts()
 	night_events = []
+	listing_reports = []
 	if pending_special_offer != null:
 		pending_special_offer = null
 	if clearance != null:
@@ -2944,6 +3052,7 @@ func end_day():
 		"challenges_total": daily_challenges.size(),
 		"streak": negative_days_streak,
 		"events": night_events.duplicate(true),
+		"listings": listing_reports.duplicate(true),
 		"pitch": pitch,
 		"running": running,
 	}
@@ -4077,6 +4186,7 @@ func on_trait_found(item, t, method):
 	if kind == "hidden_item":
 		return  # handled by sort_lot
 	var line = "%s: %s" % [item["name"], d["found"]]
+	hist(item, "%s %s (%s%d%%)." % ["Found:" if kind == "good" else "Turned out:", str(d["name"]), "+" if pct >= 0 else "", pct])
 	if kind == "good":
 		add_journal("Found %s on a %s (+%d%%)." % [d["name"], item["name"], pct], "good")
 		if float(t["mult"]) >= 1.6:
@@ -4239,6 +4349,7 @@ func clean_item(index):
 		notes.append("condition up to %d/10" % int(item["condition"]))
 		if item["condition_checked"]:
 			item["condition_price_note"] = condition_reveal_note(item)
+	hist(item, "Cleaned%s." % ((": " + ", ".join(notes)) if notes.size() > 0 else ""))
 	add_toast("Cleaned %s%s" % [item["name"], (": " + ", ".join(notes)) if notes.size() > 0 else ". Looks a bit brighter."], "success" if notes.size() > 0 else "info")
 	play_sfx("confirm")
 	refresh_after("inv")
@@ -4327,6 +4438,8 @@ func sort_lot(index):
 		it["asking"] = 0.0
 		it["source"] = "found"
 		it["found_in"] = item["name"]
+		it["story"] = "Found at the bottom of %s." % item_display_name(item)
+		hist(it, "Found inside the %s." % item["name"])
 		inventory.append(it)
 		register_collection(it)
 		spawned.append(it)
@@ -5065,6 +5178,9 @@ func build_clearance(lead):
 		var it = make_item_from_family(fam, "House Clearance", {"trait_bias": 0.04, "hidden_bonus": 0.12, "rarity_boost": 1.2})
 		it["source"] = "clearance"
 		it["seller"] = "House Clearance"
+		it["story"] = "Belonged to %s." % str(st["owner"])
+		it["provenance"] = str(st["owner"])
+		it["house"] = str(st["title"]).substr(0, 1).to_lower() + str(st["title"]).substr(1)
 		items.append(it)
 		rooms[i % room_count]["items"].append(items.size() - 1)
 	var total = 0.0
@@ -5150,6 +5266,7 @@ func accept_clearance():
 	for it in clearance["items"]:
 		it["paid"] = round(share * 100.0) / 100.0
 		it["asking"] = it["paid"]
+		hist(it, "Cleared from %s for a share of %s." % [str(it.get("house", "a house")), fmt_money(price)])
 		inventory.append(it)
 		register_collection(it)
 	day_stats["items_bought"] += n
