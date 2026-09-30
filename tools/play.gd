@@ -14,7 +14,7 @@ extends SceneTree
 #   end                 end the day, print the night report
 #   bot N [strategy]    the bot plays N whole days for you (careful/tycoon/specialist/...), to reach mid/late game fast
 #   shot path.png       screenshot (needs a real window: run under xvfb without --headless)
-# Shortcuts at a stall: look N, cond N, res N, spec N, haggle N price, buy N, skip N, dig
+# Shortcuts at a stall: look N, cond N, res N, spec N, haggle N price, flaw N key, buy N, skip N, dig
 # Shortcuts at home:    test N, clean N, repair N, deep N, auth N, uv N, sort N, parts N, list N [price], auction N,
 #                       unlist N, scrap N, quick N, coll N, shop N price, icond N, ires N, trade
 var m
@@ -113,6 +113,7 @@ func _cmd(cmd):
 		"res": m.prebuy_research(n); _after_stall(n)
 		"spec": m.specialist_check("stall", n); _after_stall(n)
 		"haggle": m.haggle_item(n, float(p[2])); _after_stall(n)
+		"flaw": m.point_out_flaw(n, p[2]); _after_stall(n)
 		"buy": m.buy_item(n); stall()
 		"skip": m.dismiss_stall_item(n)
 		"dig": m.browse_stall(); stall()
@@ -186,9 +187,20 @@ func _short(v):
 	return s if s.length() < 600 else s.substr(0, 600) + "…"
 
 func _after_stall(n):
-	var st = m.stalls[m.current_stall_index]["stock"]
+	var stl = m.stalls[m.current_stall_index]
+	var st = stl["stock"]
 	if n >= 0 and n < st.size():
 		item_detail(st[n], "stall")
+		var it = st[n]
+		if str(it.get("haggle_note", "")) != "":
+			print("     seller: %s" % it["haggle_note"])
+		if m.haggle_open(it, stl):
+			var fl = []
+			for f in m.item_flaws(it):
+				fl.append("%s=%s" % [f[0], f[1]])
+			print("     haggle: ask %s | patience %d | offends under %s | 80%% ask chance %d%% | flaws: %s" % [money(it["asking"]), m.haggle_patience(it, stl), money(m.haggle_insult_below(it, stl)), int(m.haggle_chance_here(n, float(it["asking"]) * 0.8) * 100), ", ".join(fl)])
+		else:
+			print("     haggle closed (%s)" % str(it.get("haggle_result", "")))
 
 func _after_inv(n):
 	if n >= 0 and n < m.inventory.size():

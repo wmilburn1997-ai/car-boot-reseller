@@ -15,6 +15,7 @@ var save_path = OS.get_environment("CBR_SAVE") if OS.get_environment("CBR_SAVE")
 const CATEGORIES = ["Clothing","Games","Trading Cards","Vinyl","Cameras","Tools","Electronics","Collectables","Jewellery","Books","Home","Musical Instruments","Garden & Outdoor"]
 const ContentScript = preload("res://scripts/content.gd")
 const Biz = preload("res://scripts/data/business.gd")
+const Lines012 = preload("res://scripts/data/lines_012.gd")
 const WorldData = preload("res://scripts/data/world.gd")
 const UIRoot = preload("res://scripts/ui/ui_root.gd")
 static var _content_cache = null
@@ -129,7 +130,7 @@ var tutorial_slides = [
 	{"title": "Welcome to the car boot", "body": "You've got £300, a tote bag and a spare room. Each morning you walk the car boot sale and buy things you think are underpriced. Then you sell them online for more.\n\nSmart buys grow the business. Bad ones sink it: four days in the red and you're bankrupt."},
 	{"title": "Every seller is different", "body": "A Clueless Seller prices almost at random, so bargains sit next to junk. A Dealer knows what things are worth but stocks rarer pieces. A Dodgy Seller is cheap, but fakes and faults are common.\n\nEach stall tells you who you're dealing with."},
 	{"title": "Look before you buy", "body": "INSPECT: a quick glance at condition. Cheap, but it can be wrong.\nCHECK CONDITION (£5): the exact score. Better condition sells for a lot more.\nRESEARCH (£1): recent sold prices, and what they come to AFTER fees and postage.\n\nFees eat cheap stuff. Only buy when the after-fees number clearly beats the asking price. Green means worth a look, red means walk away."},
-	{"title": "One offer, limited time", "body": "You get ONE haggle offer per item, and the chance they accept is shown first. Lowball too hard and they may refuse, or throw you off the stall.\n\nEverything costs time and energy (⚡). Stalls pack up from late morning and the car boot shuts at noon. You can't check everything, so pick your battles."},
+	{"title": "Haggle, but mind their patience", "body": "Make an offer and the seller takes it, counters, or names a final price when their patience runs out. Found a flaw? Point it out: if they hadn't priced it in, the price drops. Offer something insulting and they may refuse to sell it to you at all.\n\nEverything costs time and energy (⚡). Stalls pack up from late morning and the car boot shuts at noon. You can't check everything, so pick your battles."},
 	{"title": "At home: sort, price, sell", "body": "In Inventory, each item shows YOUR estimate of its worth, and it can be wrong. More checks narrow it down. Electronics must be TESTED before selling. Authenticate anything that might be fake.\n\nYou set the price and buyers arrive overnight when you End Day. Price low to sell fast, high to earn more. Faults, fakes and unchecked items can come back as returns, and that hurts your seller rating."},
 	{"title": "Build it up", "body": "Spend profits in the Shop on bigger bags, more storage, repair tools, a sharper eye and lower fees. Levels earn Skill Points. Trends shift weekly, and somewhere out there are 1-in-5,000 Grail finds.\n\nGood luck. Don't go skint."},
 ]
@@ -1218,20 +1219,176 @@ func comps_text(item):
 		text += "£" + str(values[i])
 	return text
 
-func compute_haggle_chance(item, seller, target_price, stall = null):
-	var asking = max(1.0, float(item["asking"]))
-	var discount_pct = clamp((asking - float(target_price)) / asking, 0.0, 0.95)
-	var seller_haggle = float(seller_profiles[seller]["haggle"])
-	var leniency = 1.0 - seller_haggle
-	var base_chance = 0.75 + leniency * 0.20
-	if stall != null:
-		base_chance += stall_haggle_bonus(stall)
-	var penalty = pow(discount_pct, 1.3) * 3.0
-	var trend_mult = float(current_trends.get(item["category"], 1.0))
-	var trend_adjustment = (1.0 - trend_mult) * 0.3
+# --- Negotiation -----------------------------------------------------------------
+# Every seller has a hidden lowest price for each item (their "floor") and a limited
+# patience. Offer at or above the floor and they take it. Below it, they counter and
+# lose a little patience; when patience runs out they name a final price. Very low
+# offers offend. Flaws you've found are arguments: point one out and, if the seller
+# hadn't priced it in, the floor drops.
+const HAGGLE_FLEX = {"Desperate Seller": 0.25, "House Clearance": 0.21, "Clueless Seller": 0.18, "Regular Seller": 0.12, "Collector": 0.07, "Dodgy Seller": 0.17, "Dealer": 0.06}
+const HAGGLE_PATIENCE = {"Desperate Seller": 3, "House Clearance": 3, "Clueless Seller": 3, "Regular Seller": 2, "Collector": 2, "Dodgy Seller": 3, "Dealer": 2}
+const HAGGLE_SPREAD = 0.07
+const INSULT_FRACTION = 0.62   # an offer under this share of the (expected) floor is an insult
+# Sharp sellers notice you pricing something up in front of them and add a bit on.
+const NOTICE_CHANCE = {"Dealer": 0.45, "Collector": 0.40, "Dodgy Seller": 0.25, "Regular Seller": 0.15, "House Clearance": 0.08, "Desperate Seller": 0.05, "Clueless Seller": 0.0}
+
+func haggle_flex_mean(item, stall):
+	var f = float(HAGGLE_FLEX.get(stall["seller"], 0.18))
+	f += stall_haggle_bonus(stall) * 0.7
+	if current_time_minutes >= int(stall.get("packing_minute", 12 * 60)) - 45:
+		f += 0.07   # they want to go home
+	f += (1.0 - float(current_trends.get(item["category"], 1.0))) * 0.25
+	f += float(market_event_fx("haggle", 0.0))
 	if item.get("saved_for_player", false):
-		penalty *= 2.0
-	return clamp(base_chance - penalty + trend_adjustment, 0.03, 0.96)
+		f *= 0.35
+	return clamp(f, 0.03, 0.55)
+
+func haggle_base_ask(item):
+	if float(item.get("orig_asking", 0.0)) <= 0.0:
+		item["orig_asking"] = float(item["asking"])
+	return float(item["orig_asking"])
+
+func haggle_floor(item, stall):
+	# The real lowest price, fixed per item once you start talking.
+	if not item.has("haggle_noise"):
+		item["haggle_noise"] = rng.randf_range(-1.0, 1.0)
+	var flex = clamp(haggle_flex_mean(item, stall) + float(item["haggle_noise"]) * HAGGLE_SPREAD, 0.02, 0.60)
+	var fl = haggle_base_ask(item) * (1.0 - flex) * (1.0 - float(item.get("flaw_leverage", 0.0)))
+	return max(1.0, round(fl))
+
+func haggle_floor_guess(item, stall):
+	# What you can reasonably expect, without knowing this seller's mind: [low, high] of the floor.
+	var base = haggle_base_ask(item) * (1.0 - float(item.get("flaw_leverage", 0.0)))
+	var m = haggle_flex_mean(item, stall)
+	var lo = base * (1.0 - clamp(m + HAGGLE_SPREAD, 0.02, 0.60))
+	var hi = base * (1.0 - clamp(m - HAGGLE_SPREAD, 0.02, 0.60))
+	return [lo, min(hi, float(item["asking"]))]
+
+func compute_haggle_chance(item, seller, target_price, stall = null):
+	# The chance shown to the player: how likely this offer clears the seller's floor, from what you can see.
+	if stall == null:
+		return 0.5
+	if float(target_price) >= float(item["asking"]):
+		return 1.0
+	var g2 = haggle_floor_guess(item, stall)
+	if g2[1] <= g2[0]:
+		return 1.0 if float(target_price) >= g2[0] else 0.0
+	return clamp((float(target_price) - g2[0]) / (g2[1] - g2[0]), 0.0, 1.0)
+
+func haggle_insult_below(item, stall):
+	var g2 = haggle_floor_guess(item, stall)
+	return round((g2[0] + g2[1]) * 0.5 * INSULT_FRACTION)
+
+func haggle_patience_max(stall):
+	var p = int(HAGGLE_PATIENCE.get(stall["seller"], 2))
+	var pers = personality_of(stall)
+	if pers != null and float(pers.get("haggle_mod", 0.0)) < -0.03:
+		p -= 1
+	if has_perk("silver_tongue"):
+		p += 1
+	return max(1, p)
+
+func haggle_patience(item, stall):
+	if not item.has("patience"):
+		item["patience"] = haggle_patience_max(stall)
+	return int(item["patience"])
+
+func haggle_open(item, stall):
+	return not to_bool(item.get("seller_refuses", false)) and not to_bool(stall.get("banned_today", false)) and not to_bool(item.get("haggle_closed", false)) and item["haggle_result"] != "accepted"
+
+func item_flaws(item):
+	# Known problems you can raise with the seller: [key, label, mult].
+	var out = []
+	for t in item.get("traits", []):
+		if t.get("known", false) and float(t["mult"]) < 0.97:
+			var d = trait_def(t)
+			var nm = str(d["name"]) if d != null else "A flaw"
+			out.append(["t:" + str(t.get("id", "")), nm.to_lower(), float(t["mult"]), nm])
+	if item["fault"] and fault_is_known(item):
+		out.append(["fault", "the %s" % ("fault" if item["testable"] else "damage"), fault_multiplier(item["fault_severity"]), fault_label(item)])
+	if item["condition_checked"] and int(item["condition"]) <= 5:
+		out.append(["cond", "the wear on it", condition_factor(int(item["condition"])) / max(0.01, condition_factor(7)), "Condition %d/10" % int(item["condition"])])
+	var used = item.get("flaws_used", [])
+	var avail = []
+	for f in out:
+		if not used.has(f[0]):
+			avail.append(f)
+	return avail
+
+func seller_knew_flaw(item, stall, key):
+	var knowledge = float(seller_profiles.get(stall["seller"], {"knowledge": 0.5})["knowledge"])
+	var pers = personality_of(stall)
+	if pers != null:
+		knowledge += float(pers.get("knowledge_mod", 0.0))
+	if key.begins_with("t:"):
+		for t in item.get("traits", []):
+			if "t:" + str(t.get("id", "")) == key:
+				if t.has("seller_knew"):
+					return to_bool(t["seller_knew"])
+				var d = trait_def(t)
+				return d != null and knowledge > trait_difficulty(d)
+		return false
+	# Faults and condition: the better they know their stuff, the likelier it's already in the price.
+	var h = float(abs(hash([int(item["uid"]), key]))) / 2147483647.0
+	return fmod(h, 1.0) < knowledge * 0.8
+
+func point_out_flaw(index, key):
+	if not valid_stall_index(index):
+		return
+	var stall = stalls[current_stall_index]
+	var item = stall["stock"][index]
+	if not haggle_open(item, stall):
+		return
+	var f = null
+	for x in item_flaws(item):
+		if x[0] == key:
+			f = x
+	if f == null:
+		return
+	haggle_base_ask(item)
+	haggle_floor(item, stall)
+	var used = item.get("flaws_used", [])
+	used.append(key)
+	item["flaws_used"] = used
+	spend_time(1)
+	var vars = {"flaw": f[1], "item": item_display_name(item)}
+	if seller_knew_flaw(item, stall, key):
+		var line = pers_line(stall, "flaw_knew", vars)
+		item["haggle_note"] = "\"%s\"" % (line if line != "" else "I know. It's in the price.")
+		add_toast("They'd already priced that in.", "info")
+	else:
+		var hit = clamp((1.0 - float(f[2])) * (0.75 if has_perk("silver_tongue") else 0.5), 0.03, 0.40)
+		var lev = 1.0 - (1.0 - float(item.get("flaw_leverage", 0.0))) * (1.0 - hit)
+		item["flaw_leverage"] = lev
+		var new_ask = max(haggle_floor(item, stall), round(float(item["asking"]) * (1.0 - hit)))
+		var was = float(item["asking"])
+		item["asking"] = min(was, new_ask)
+		var line2 = pers_line(stall, "flaw_concede", vars)
+		item["haggle_note"] = "\"%s\"" % (line2 if line2 != "" else "Oh. I hadn't seen that. Less, then.")
+		item["haggle_result"] = "countered"
+		add_toast("Price down to %s (was %s)." % [fmt_money(item["asking"]), fmt_money(was)], "success")
+		play_sfx("haggle_ok")
+	show_stall()
+
+func seller_notices(stall, item):
+	# Called when you research or specialist-check an item in front of its seller.
+	if has_perk("poker_face") or item.get("noticed", false) or not haggle_open(item, stall):
+		return
+	var ch = float(NOTICE_CHANCE.get(stall["seller"], 0.1))
+	var pers = personality_of(stall)
+	if pers != null:
+		ch += float(pers.get("knowledge_mod", 0.0)) * 0.8
+	if rng.randf() >= ch:
+		return
+	item["noticed"] = true
+	haggle_base_ask(item)
+	var up = rng.randf_range(0.08, 0.18)
+	var was = float(item["asking"])
+	item["asking"] = max(was + 1.0, round(was * (1.0 + up)))
+	item["orig_asking"] = float(item["asking"])
+	var line = pers_line(stall, "noticed", {"item": item_display_name(item)})
+	item["haggle_note"] = "\"%s\"" % (line if line != "" else "Oh, you like that one? It's gone up.")
+	add_toast("%s saw you checking. Now %s (was %s)." % [stall["seller_display_name"], fmt_money(item["asking"]), fmt_money(was)], "warn")
 
 func valid_stall_index(index):
 	if stalls.size() == 0 or current_stall_index < 0 or current_stall_index >= stalls.size():
@@ -1287,72 +1444,116 @@ func haggle_item(index, offer):
 	var item = stall["stock"][index]
 	var seller = stall["seller"]
 	var seller_display = stall["seller_display_name"]
-	if item["haggle_attempted"]:
+	if not haggle_open(item, stall):
 		return
-	if to_bool(stall.get("banned_today", false)):
-		return
-	if energy < 2:
-		queue_popup("You need 2 energy to haggle.")
+	if energy < 1:
+		queue_popup("You need 1 energy to make an offer.")
 		return
 	var asking = float(item["asking"])
+	haggle_base_ask(item)
 	var target_price = clamp(round(float(offer)), 1.0, max(1.0, asking - 1.0))
-	var discount_pct = clamp((asking - target_price) / asking, 0.0, 0.95)
-	var chance = compute_haggle_chance(item, seller, target_price, stall)
-	energy -= 2
-	spend_time(2)
+	var floor_p = haggle_floor(item, stall)
+	var insult = haggle_insult_below(item, stall)
+	var patience = haggle_patience(item, stall)
+	energy -= 1
+	spend_time(1)
 	item["haggle_attempted"] = true
-	item["counter_offer"] = 0.0
-	var roll = rng.randf()
-	var success = roll < chance
-	record_rng("Haggle chance: %.0f%% | Rolled: %.2f%% | Offer £%.0f (of £%.0f) | Result: %s" % [chance * 100.0, roll * 100.0, target_price, asking, "ACCEPTED" if success else "REJECTED"])
-	if success:
+	item["offers"] = int(item.get("offers", 0)) + 1
+	var goodwill = 1.0 if not has_perk("poker_face") else 0.5
+	var money = {"price": "£%d" % int(target_price)}
+	if target_price >= floor_p:
+		var savings = haggle_base_ask(item) - target_price
 		item["asking"] = target_price
 		item["haggle_result"] = "accepted"
-		item["haggle_savings"] = asking - target_price
-		if discount_pct >= 0.05:
+		item["haggle_savings"] = max(0.0, savings)
+		if savings >= haggle_base_ask(item) * 0.05:
 			day_stats["successful_haggles"] += 1
 		change_rel(stall, 1.0)
-		var line = stall_line(stall, "accept", {"price": "£%d" % int(target_price)})
+		var line = stall_line(stall, "accept", money)
 		if line == "":
 			line = seller_line("accepted", seller)
 		item["haggle_note"] = "\"%s\"" % line
-		add_toast("Offer accepted: £%.0f (was £%.0f)." % [target_price, asking], "success")
+		add_toast("Deal: %s (was %s)." % [fmt_money(target_price), fmt_money(haggle_base_ask(item))], "success")
 		play_sfx("haggle_ok")
 		show_stall()
 		return
 	play_sfx("haggle_no")
-	var escalation_roll = rng.randf()
-	var kicked_out = discount_pct >= 0.35 and escalation_roll < 0.35 and not has_perk("poker_face")
-	var item_banned = (not kicked_out) and escalation_roll < clamp((discount_pct - 0.10) * 2.5, 0.0, 0.6)
-	record_rng("Haggle escalation: refusal chance %.0f%%, ejection %.0f%% | Rolled: %.2f%% | Result: %s" % [clamp((discount_pct - 0.10) * 2.5, 0.0, 0.6) * 100.0, 35.0 if discount_pct >= 0.35 else 0.0, escalation_roll * 100.0, "STALL BAN" if kicked_out else ("ITEM REFUSED" if item_banned else "plain rejection")])
-	var goodwill = (1.0 if not has_perk("poker_face") else 0.5)
-	if kicked_out:
-		stall["banned_today"] = true
-		item["haggle_result"] = "refused"
-		change_rel(stall, -20.0 * goodwill)
+	if target_price < insult:
+		# An insult: patience drains fast, and a proud seller may refuse you the item.
+		patience -= 2
+		change_rel(stall, -4.0 * goodwill)
+		stall["insults"] = int(stall.get("insults", 0)) + 1
 		var l1 = stall_line(stall, "lowball")
-		item["haggle_note"] = "\"%s\"" % (l1 if l1 != "" else seller_line("kicked", seller))
-		add_toast("%s has thrown you off the stall for today." % seller_display, "error")
-	elif item_banned:
-		item["seller_refuses"] = true
-		item["haggle_result"] = "refused"
-		change_rel(stall, -8.0 * goodwill)
-		var l2 = stall_line(stall, "lowball")
-		item["haggle_note"] = "\"%s\"" % (l2 if l2 != "" else seller_line("refused", seller))
-		add_toast("They won't sell you this one now.", "error")
-	else:
+		if patience <= 0:
+			item["patience"] = 0
+			if int(stall["insults"]) >= 3 and not has_perk("poker_face"):
+				stall["banned_today"] = true
+				change_rel(stall, -12.0)
+				item["haggle_note"] = "\"%s\"" % seller_line("kicked", seller)
+				add_toast("%s has had enough of you for today." % seller_display, "error")
+			else:
+				item["seller_refuses"] = true
+				item["haggle_result"] = "refused"
+				item["haggle_note"] = "\"%s\"" % (l1 if l1 != "" else seller_line("refused", seller))
+				add_toast("Too low. They won't sell you this one now.", "error")
+			show_stall()
+			return
+		item["patience"] = patience
+		item["haggle_note"] = "\"%s\"" % (l1 if l1 != "" else seller_line("rejected", seller))
 		item["haggle_result"] = "rejected"
-		change_rel(stall, -1.0 * goodwill)
-		var l3 = stall_line(stall, "reject")
-		item["haggle_note"] = "\"%s\"" % (l3 if l3 != "" else seller_line("rejected", seller))
-		if has_perk("silver_tongue"):
-			var counter = round(lerp(target_price, asking, rng.randf_range(0.35, 0.7)))
-			if counter < asking:
-				item["counter_offer"] = counter
-				item["asking"] = counter
-				item["haggle_note"] += "  They come back with £%d." % int(counter)
-				item["haggle_result"] = "countered"
+		add_toast("That offended them. Careful.", "warn")
+		show_stall()
+		return
+	patience -= 1
+	item["patience"] = max(0, patience)
+	change_rel(stall, -0.5 * goodwill)
+	if patience <= 0:
+		# Final answer: somewhere just above their floor.
+		var final_p = min(asking, max(floor_p, round(floor_p * rng.randf_range(1.0, 1.06))))
+		item["asking"] = final_p
+		item["haggle_closed"] = true
+		item["haggle_result"] = "final"
+		var lf = pers_line(stall, "final", {"price": fmt_money(final_p)})
+		item["haggle_note"] = "\"%s\"" % (lf if lf != "" else "%s. Final offer." % fmt_money(final_p))
+		show_stall()
+		return
+	# Counter: meet you part of the way, never below their floor.
+	var give = rng.randf_range(0.30, 0.50)
+	var counter = max(floor_p, round(asking - (asking - target_price) * give))
+	counter = min(counter, asking)
+	if counter >= asking:
+		counter = max(floor_p, asking - max(1.0, round(asking * 0.03)))
+	item["asking"] = counter
+	item["haggle_result"] = "countered"
+	var lc = pers_line(stall, "counter", {"price": fmt_money(counter)})
+	if lc == "":
+		lc = stall_line(stall, "reject")
+		if lc == "":
+			lc = seller_line("rejected", seller)
+		lc += " %s?" % fmt_money(counter)
+	item["haggle_note"] = "\"%s\"" % lc
 	show_stall()
+
+func item_display_name(item):
+	# The specific name if the item has one ("Iron Parish – Harvest of Rust"), else its kind.
+	var n = str(item.get("ident", ""))
+	return n if n != "" else str(item["name"])
+
+func market_event_fx(key, default):
+	# Today's odd thing at the market can tweak a rule.
+	var ev = market_today.get("event", {})
+	if typeof(ev) != TYPE_DICTIONARY:
+		return default
+	return ev.get("fx", {}).get(key, default)
+
+func pers_line(stall, key, vars = {}):
+	# Lines from the 0.12 dialogue set, falling back to the base personality lines.
+	var pid = str(stall.get("personality", ""))
+	var t = Lines012.PERSONALITY_LINES.get(pid, {})
+	var arr = t.get(key, [])
+	if typeof(arr) == TYPE_ARRAY and arr.size() > 0:
+		return fill_line(pick_line(arr), vars)
+	return stall_line(stall, key, vars)
 
 func browse_stall():
 	var stall = stalls[current_stall_index]
@@ -3215,6 +3416,8 @@ func do_research(where, index):
 	reveal_traits(item, "research")
 	item["basic_comps"] = make_comps(item, false)
 	item["locked_gamble_hint"] = gamble_hint_chance(item)
+	if where == "stall" and current_stall_index >= 0 and current_stall_index < stalls.size():
+		seller_notices(stalls[current_stall_index], item)
 	play_sfx("reveal")
 	refresh_after(where)
 
@@ -3799,7 +4002,9 @@ func seller_known_trait_mult(item, knowledge):
 		var d = trait_def(t)
 		if d == null:
 			continue
-		if knowledge * rng.randf_range(0.6, 1.3) > trait_difficulty(d):
+		var knew = knowledge * rng.randf_range(0.6, 1.3) > trait_difficulty(d)
+		t["seller_knew"] = knew
+		if knew:
 			m *= float(t["mult"])
 	return m
 
@@ -3953,6 +4158,8 @@ func specialist_check(where, index):
 	item["expert_checked"] = true
 	add_expertise(item["category"], 2)
 	var found = reveal_traits(item, "expert")
+	if where == "stall" and current_stall_index >= 0 and current_stall_index < stalls.size():
+		seller_notices(stalls[current_stall_index], item)
 	var beyond = 0
 	for t in item.get("traits", []):
 		var d = trait_def(t)

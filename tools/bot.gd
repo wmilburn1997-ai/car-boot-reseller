@@ -142,13 +142,18 @@ func consider_item(stall, i):
 		expected_net = est_net(item, g.perceived_center(item) * 0.95)
 		if expected_net < asking * (margin - 0.1):
 			return
-	if not item["haggle_attempted"]:
-		var pct = 0.70 if strategy == "haggler" else 0.85
-		var offer = round(asking * pct)
-		if (strategy == "haggler" or g.haggle_chance_here(i, offer) >= 0.6) and asking >= 8:
+	if asking >= 8 and g.haggle_open(item, stall):
+		for f in g.item_flaws(item):
+			g.point_out_flaw(i, f[0])
+		var pct = 0.65 if strategy == "haggler" else 0.8
+		var offer = max(round(float(item["asking"]) * pct), g.haggle_insult_below(item, stall) + 1.0)
+		for round_i in range(3 if strategy == "haggler" else 2):
+			if not g.haggle_open(item, stall):
+				break
 			g.haggle_item(i, offer)
 			if item["haggle_result"] == "refused" or stall.get("banned_today", false):
 				return
+			offer = round((offer + float(item["asking"])) * 0.5)
 	g.buy_item(i)
 
 func comps_median(item):

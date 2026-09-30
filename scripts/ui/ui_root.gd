@@ -1027,7 +1027,7 @@ func handle_key(ev):
 # --- first-time coaching -----------------------------------------------------------
 const COACH = {
 	"market": "This is the morning's car boot. Every stall is a person: some are regulars who'll remember you. Stalls pack up from late morning and the field shuts at noon, so pick your route.",
-	"stall": "Pick something off the table. Research shows what it really sells for after fees. Inspect is quick but can be wrong. You only get one offer per item.",
+	"stall": "Pick something off the table. Research shows what it really sells for after fees. Inspect is quick but can be wrong. Haggle as much as their patience allows.",
 	"clue": "A purple ? is a clue: something about this item isn't what it seems. It could be good or bad. Checks, expertise and workshop kit identify it; anything you miss, a buyer will spot.",
 	"stock": "Everything you own. Your estimate can be wrong until you check things properly. Electricals must be tested. Set a price and list it: buyers come overnight when you end the day.",
 	"business": "Save up for bigger premises, a better vehicle and workshop kit. Each one changes what you can do, but premises and vehicles cost rent or fuel every night.",

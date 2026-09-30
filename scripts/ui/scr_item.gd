@@ -92,6 +92,9 @@ func tile(it, ctx, selected, on_press, extra = {}):
 		elif it["haggle_result"] == "countered":
 			sub = "counter"
 			sub_color = k.ORANGE
+		elif it["haggle_result"] == "final":
+			sub = "final price"
+			sub_color = k.ORANGE
 	elif ctx == "clearance":
 		price_text = ""
 	else:
@@ -250,9 +253,11 @@ func detail(it, ctx, index, stall = null):
 	if ctx == "stall":
 		v.add_child(k.section("Check it over"))
 		v.add_child(stall_actions(it, index))
-		if not it["haggle_attempted"] and it["haggle_result"] != "refused" and not to_bool_banned(stall):
+		if stall != null and g.haggle_open(it, stall):
 			v.add_child(k.section("Make an offer"))
 			v.add_child(haggle_panel(it, index, stall))
+		elif str(it.get("haggle_result", "")) == "final":
+			v.add_child(k.label("Final price. Take it or leave it.", "s", k.ORANGE))
 	elif ctx == "inv":
 		var acts = inv_actions(it, index)
 		if acts.get_child_count() > 0:
@@ -303,7 +308,9 @@ func stall_verdict(it, index, stall):
 	if it["haggle_result"] == "accepted":
 		left.add_child(k.label("haggled down %s" % g.fmt_money(it["haggle_savings"]), "xs", k.GREEN))
 	elif it["haggle_result"] == "countered":
-		left.add_child(k.label("their counter-offer", "xs", k.ORANGE))
+		left.add_child(k.label("their counter · was %s" % g.fmt_money(it.get("orig_asking", asking)), "xs", k.ORANGE))
+	elif it["haggle_result"] == "final":
+		left.add_child(k.label("final price · was %s" % g.fmt_money(it.get("orig_asking", asking)), "xs", k.ORANGE))
 	h.add_child(left)
 	var right = k.vbox(2)
 	k.expand(right)
@@ -617,9 +624,19 @@ func haggle_panel(it, index, stall):
 	var v = k.vbox(8)
 	var asking = float(it["asking"])
 	var uid = int(it["uid"])
-	if not offer_values.has(uid):
-		offer_values[uid] = max(1.0, round(asking * 0.85))
+	if not offer_values.has(uid) or float(offer_values[uid]) >= asking:
+		offer_values[uid] = max(1.0, round(asking * 0.8))
 	var offer = clamp(float(offer_values[uid]), 1.0, max(1.0, asking - 1.0))
+	# Seller's patience, shown as pips.
+	var mood = k.hbox(6)
+	var pat = g.haggle_patience(it, stall)
+	var pmax = max(pat, g.haggle_patience_max(stall))
+	mood.add_child(k.label("PATIENCE", "xs", k.TEXT3))
+	mood.add_child(k.dots(pat, pmax, k.GOLD, "heart"))
+	mood.add_child(k.spacer(0, 0, true))
+	var insult = g.haggle_insult_below(it, stall)
+	mood.add_child(k.label("under %s offends" % g.fmt_money(insult), "xs", k.TEXT3))
+	v.add_child(mood)
 	var row = k.hbox(6)
 	var chance_l = k.label("", "m", k.PURPLE)
 	var edit = LineEdit.new()
@@ -631,7 +648,14 @@ func haggle_panel(it, index, stall):
 	var update = func():
 		var val = clamp(g._parse_price(edit.text), 1.0, max(1.0, asking - 1.0))
 		offer_values[uid] = val
-		chance_l.text = "%d%% they'll accept" % int(round(g.haggle_chance_here(index, val) * 100.0))
+		var ch = g.haggle_chance_here(index, val)
+		var word = "Sure thing" if ch >= 0.95 else ("Likely" if ch >= 0.65 else ("Maybe" if ch >= 0.35 else ("Unlikely" if ch > 0.02 else "No chance")))
+		if val < insult:
+			chance_l.text = "Insulting. They may refuse you"
+			chance_l.add_theme_color_override("font_color", k.RED)
+		else:
+			chance_l.text = "%s · %d%%" % [word, int(round(ch * 100.0))]
+			chance_l.add_theme_color_override("font_color", k.GREEN if ch >= 0.65 else (k.PURPLE if ch >= 0.35 else k.ORANGE))
 	var step = max(1.0, round(asking * 0.05))
 	row.add_child(k.button("-", "ghost", func():
 		edit.text = str(int(max(1.0, g._parse_price(edit.text) - step)))
@@ -643,18 +667,26 @@ func haggle_panel(it, index, stall):
 		update.call(), "", "l", 44))
 	var offer_b = k.button("Offer", "action", func():
 		update.call()
-		g.haggle_item(index, float(offer_values[uid])), "Make ONE offer. The %% is the chance they accept. Lowball too hard and they may refuse, or throw you off the stall.", "m", 90)
-	offer_b.disabled = g.energy < 2
+		g.haggle_item(index, float(offer_values[uid])), "Make an offer. They'll take it, counter, or name a final price when their patience runs out. Very low offers offend.", "m", 90)
+	offer_b.disabled = g.energy < 1
 	row.add_child(k.spacer(4, 0))
 	row.add_child(offer_b)
 	edit.text_changed.connect(func(_t): update.call())
 	v.add_child(row)
 	update.call()
-	var ch = k.hbox(8)
-	ch.add_child(chance_l)
-	ch.add_child(k.spacer(0, 0, true))
-	ch.add_child(k.label("one offer · 2 energy", "xs", k.TEXT3))
-	v.add_child(ch)
+	var ch_row = k.hbox(8)
+	ch_row.add_child(chance_l)
+	ch_row.add_child(k.spacer(0, 0, true))
+	ch_row.add_child(k.label("1 energy per offer", "xs", k.TEXT3))
+	v.add_child(ch_row)
+	var flaws = g.item_flaws(it)
+	if flaws.size() > 0:
+		var fl = k.flow(6, 6)
+		fl.add_child(k.label("Point out:", "xs", k.TEXT2))
+		for f in flaws:
+			var key = f[0]
+			fl.add_child(k.button(str(f[3]), "ghost", func(): g.point_out_flaw(index, key), "Raise this with the seller. If they hadn't priced it in, the price comes down.", "s"))
+		v.add_child(fl)
 	return v
 
 func buy_button(it, index, stall, big = true):

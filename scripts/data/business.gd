@@ -72,9 +72,9 @@ const STAFF = {
 # Perks: one skill point per level. Mechanical, not +x% filler where possible.
 const PERKS = [
 	{"id":"early_bird","branch":"Buying","name":"Early Bird","cost":1,"requires":"","desc":"Arrive at 6:30 instead of 7:00: half an hour before most rivals."},
-	{"id":"silver_tongue","branch":"Buying","name":"Silver Tongue","cost":1,"requires":"","desc":"When a seller rejects your offer, they come back with a counter-offer you can take."},
+	{"id":"silver_tongue","branch":"Buying","name":"Silver Tongue","cost":1,"requires":"","desc":"Sellers give you one more round before their final price, and flaws you point out knock half as much again off."},
 	{"id":"regulars_rate","branch":"Buying","name":"Regular's Rate","cost":2,"requires":"silver_tongue","desc":"Sellers who count you as a regular knock 10% off everything on their table."},
-	{"id":"poker_face","branch":"Buying","name":"Poker Face","cost":1,"requires":"","desc":"Lowball offers never get you thrown off a stall, and cost half the goodwill."},
+	{"id":"poker_face","branch":"Buying","name":"Poker Face","cost":1,"requires":"","desc":"Sellers never notice you pricing things up in front of them, lowballs never get you thrown off, and cost half the goodwill."},
 	{"id":"charmer","branch":"Buying","name":"Charmer","cost":2,"requires":"poker_face","desc":"Regulars warm to you twice as fast."},
 	{"id":"keen_eye","branch":"Knowing","name":"Keen Eye","cost":1,"requires":"","desc":"+12% Inspect reliability in every category."},
 	{"id":"hunch","branch":"Knowing","name":"Hunch","cost":2,"requires":"keen_eye","desc":"Inspecting tells you whether there's anything hidden about an item, good or bad."},
