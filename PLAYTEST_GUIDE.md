@@ -1,4 +1,4 @@
-# Car Boot Reseller: Playtest Guide (build 0.11.0, "The Business Update")
+# Car Boot Reseller: Playtest Guide (build 0.12.0, "The Living Market")
 
 Thanks for playing! This is an early build. We're mostly interested in **how it feels**: where you got confused, what felt unfair, what felt satisfying, and when you wanted to stop.
 
@@ -9,7 +9,7 @@ You start with £300, two hands and a spare room. Every morning you walk a Briti
 - **Inspect** is a quick look. It's cheap, but it can be wrong.
 - **Check condition** costs £5 and gives you the exact score and any hidden wear.
 - **Research** shows what similar items actually sold for, and what you'd clear after fees and postage.
-- You get **one** offer per item. The sellers are people, and many of them are regulars who'll remember you.
+- **Haggle** until the seller's patience runs out, and point out any flaws you've found. The sellers are people, and regulars remember what you bought from them.
 
 Items hide details, good and bad: a first pressing, a hallmark under the tarnish, a missing battery door, a signature that turns out to be printed, a gem buried in a box of junk. **Purple "?" clues** mean something's there. Checks, your expertise and your workshop kit tell you what it is, and anything you miss, a buyer will spot.
 
@@ -18,6 +18,13 @@ At home you test, clean, repair, research, price and list. Buyers turn up overni
 Grow from a box room to a garage, a lock-up, a high-street shop and a warehouse. Buy a van and take on house clearances.
 
 Stay in the red for four nights and you're bankrupt, unless your stock could plausibly cover it.
+
+## New in 0.12, worth trying
+- Haggle properly: counter, point out flaws, and see how different sellers react.
+- Open an item's "story so far" after you've owned it a while.
+- Browse **Gaz's Gems** (Market → Round the edges) and try to out-buy him.
+- Fill a **Wanted** request. Take something to the **Valuation Tent**.
+- Later on: pick **signature** categories (Expertise), bid at the **Saleroom**, consign something, and hire a Runner.
 
 ## What to try
 
@@ -44,5 +51,4 @@ In the game, go to *More > Playtest notes* and press **Copy bug report info**. P
 ## Things we already know
 
 - Balance is still being tuned, especially the late game (shop and warehouse).
-- Individual items have category icons rather than their own artwork.
 - A few hidden-detail descriptions are shared across similar items and can read a little samey.

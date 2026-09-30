@@ -1,4 +1,4 @@
-# Dev notes: 0.11.0
+# Dev notes: 0.12.0
 
 See `notes/DESIGN_0.11.md` for the design and `CHANGELOG.md` for the player-facing summary.
 
@@ -15,6 +15,17 @@ See `notes/DESIGN_0.11.md` for the design and `CHANGELOG.md` for the player-faci
   - `tools/check_data.gd` validates the family and trait schema and coverage.
   - `tools/check_world.gd` validates `world.gd`.
 
+## 0.12 additions
+- **Modules.** `scripts/sys_world.gd` (`g.world`) and `scripts/sys_trade.gd` (`g.trade`) hold the 0.12 rules. Their state lives in `main.w2`, one dictionary saved as `"w2"`. `init_new_run()` clears it.
+- **Negotiation** (`haggle_*` in main.gd):
+  - The floor is `orig_asking × (1 − flex)`, where flex comes from the archetype, personality, relationship, time to packing up, trend and event, plus per-item noise of ±0.07.
+  - The chance shown to the player comes from the *expected* floor range, never the real one.
+  - Flaw leverage is capped at 30% (40% with Silver Tongue).
+- **Identity.** `make_ident()` fills `identity.gd` patterns. `hist(item, text)` appends to the item's timeline. `sold_history` entries keep `ident`, `hist` and `profit`.
+- **Signatures.** Non-signature XP is capped at 400, halfway through Specialist. Dropping a signature resets it to 220 (fortnightly).
+- **Determinism.** `day_rng(day, stream)` seeds the night, weekly churn and saleroom; the live RNG state is saved.
+- **Goals have ids.** `OLD_GOAL_IDS` maps 0.11 progress across.
+
 ## The value model (0.11)
 
 - **`true_value`** is the family roll × rarity × the product of every trait multiplier.
@@ -28,7 +39,19 @@ See `notes/DESIGN_0.11.md` for the design and `CHANGELOG.md` for the player-faci
 - **Traits:** `roll_item_traits()` rolls 0–3 of them (plus a hidden item for lots), good vs bad weighted by rarity, condition and seller. Mean multiplier ≈ 1.10 (arithmetic), 0.96 (geometric): `tools/trait_stats.gd`.
 - **Sellers** price in only the traits their knowledge beats (`seller_known_trait_mult`).
 
-## Balance snapshot
+## Balance snapshot (0.12)
+
+| Bot | Days | Median business value | Bankrupt |
+|---|---|---|---|
+| careful | 60 | ~£3.7k | 0 of 16 |
+| tycoon | 200 | ~£23k | 0 of 8 |
+| careful | 200 | ~£21k | 0 of 8 |
+
+- **Late game:** at 200 days a tycoon bot has won 6–20 Saleroom lots, 30–60 consignments and 6–18 commissions.
+- **Gaz:** the weekly record sits around 40–60% for the player.
+- **Signatures:** 2–3 categories reach Authority; everything else stays at Specialist.
+
+## Balance snapshot (0.11)
 
 | Bot (60 days) | Median business value | Bankrupt |
 |---|---|---|
@@ -58,7 +81,15 @@ See the git history ("Balance round 2") and the balance review summary in the fi
 - `tools/save_test.gd` covers round-trips, 0.10 migration, clearance mid-job and duplication regressions.
 - `tools/shots_inv.sh` / `tools/shot.gd` take scripted screenshots.
 
-## Next steps
+## Next steps (after 0.12)
+1. **Collection wing:** keep pieces rather than selling them. Completed signature sets earn loans and prestige, and count toward King. This is the missing late-game money sink.
+2. **Runner settings:** a budget, a venue and a storage limit you choose.
+3. **Estates:** a temporary yard for the haul, and more large leads.
+4. **Commissions:** signature collectors phone in rarer commissions.
+5. **Early game:** the first four days can still feel slow when you're full by 08:20.
+6. **Item text:** make identities aware of traits, so a "glass" rod doesn't turn out to be split-cane.
+
+## Next steps (0.11 list)
 
 1. **Items:** per-item artwork (or procedural pixel thumbnails per family).
 2. **Relationships** with regulars could drive quests: "find me a…" requests paying a premium.

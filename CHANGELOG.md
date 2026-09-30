@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.12.0: "The Living Market" (from 0.11.2)
+
+### Deals are conversations
+- **Haggling is now a negotiation, not one dice roll.**
+  - Every seller has a hidden lowest price and a limited patience (hearts).
+  - Offer and they take it, counter, or name a final price when patience runs out.
+- **Point out flaws you've found.** If the seller hadn't priced that flaw in, the price comes down. If they had, they're annoyed.
+- **Very low offers offend.** You're told the line in advance; cross it and they may refuse to sell you the item. Bans are only for repeated insults.
+- **Sharp sellers notice you researching** in front of them and add a bit on. The Poker Face perk counters this.
+- **Shaking on a deal buys the item.** Cash, carry space and storage are checked before you offer.
+
+### Every item is a thing
+- **306 hand-drawn pixel sprites,** one for every item family.
+- **Specific, fictional identities.** Not "Heavy Metal LP" but "Iron Parish – 'Harvest of Rust' (1984)". There are 925 word pools behind them.
+- **Provenance.** Sellers tell you where things came from, and house-clearance finds remember whose house they came from.
+- **"Its story so far":** a timeline follows each item, including where you bought it, what you found, what you fixed, who bought it and any returns.
+- **The Best flips scrapbook** (Journal) keeps your top deals with their whole stories.
+
+### A world that notices you
+- **Gaz is a real rival.**
+  - His online shop, **Gaz's Gems**, lists what he buys. He prices his own categories properly and guesses everything else, so you can raid it if you know more than he does.
+  - There's a **weekly scoreboard**.
+  - He texts you when he flips something you walked past.
+  - The market header shows which stall he's at.
+- **Regulars remember what really happened.** "Heard you sold the micrometer set for £62. I had £18." No more invented memories, and no two sellers say the same line on the same morning.
+- **Wanted commissions.** Regulars and buyers ask for specific things and pay 1.25–1.6× value. They show a quote before you hand the item over.
+- **Big finds get a proper payoff.** A specialist phones with an offer, and the local paper runs the headline.
+- **The Valuation Tent** (weekly). Percival Dunmore reveals everything about one item, with a slow count-up.
+- **One odd thing per market day,** from 11 events:
+  - a TV crew hyping a category; a cloudburst at 10:30; a nine-year-old's no-haggle stall;
+  - a late clearance van; dealers with torches at dawn; a lost dog whose owner will remember you;
+  - the hospice stall; trading standards; a brass band; a scorcher; a retiring dealer's last boot.
+
+### Bigger games for bigger businesses
+- **Signatures.** Only the categories you commit to (2, or 3 with the shop) go past Specialist. Runs now specialise differently.
+- **The Saleroom,** a weekly trade auction: sealed maximum bids, a 15% premium, and a catalogue you read with your own expertise.
+- **Consign your finds to the Saleroom.** The room bids on what you've established, so research and authentication pay.
+- **Estate sales.** Large houses (Luton van) go to sealed bids against Gaz and a dealer, and each has a headline piece.
+- **Bubbles.** A category gets whispered about, booms, then crashes.
+- **The Runner** (from the Lock-up) works a second market overnight in your signatures.
+- **29 goals** with a £35k waypoint. Premises and vans now count properly towards business value, so investing no longer pushes Car Boot King away.
+
+### Honest numbers
+- **Value ranges are calibrated,** and comps follow what you know about condition and faults.
+- **The night report** leads with profit and explains why unsold listings aren't moving (views, watchers, a hint), with one-tap price drops.
+- **Condition always agrees with damage,** and test results agree with what testing reveals.
+- **Saves store the random state,** so reloading can't reroll a night or a market.
+
+### Balance and exploits
+- **Shop floor:** walk-in customers haggle, and the Shop Keeper's boost is ×1.5 instead of ×2.
+- **Collectors** only take your signature categories and pay slightly less.
+- **Auction bidders** discount upside you haven't found yourself.
+- **"Saved for you" items** are priced fairly, and regulars you ignore cool off.
+- **Carry on foot is 8.** When you're nearly broke, the gate man waves you in free.
+
+### UI
+- Toasts sit under the HUD on phones, away from the buy buttons.
+- Every screen was checked at 360 px wide (`tools/width_check.gd`).
+- New tutorial.
+- A warning before you use your last workshop slot.
+- Stock opens on a tab that has something in it.
+
+### Saves
+- 0.11 saves load. Signatures are assigned from your two strongest categories, goals map across by id, and new state starts fresh. This is tested with a real 0.11.2 day-71 save (`tools/load_old_test.gd`).
+
+
 ## 0.11.2
 
 - **Carry space fix:** carry space now counts what's actually in your car from today's buys. Scrapping or selling something you bought today frees its space straight away. Before, the space stayed used until the next day. The "car full" message explains this too.
