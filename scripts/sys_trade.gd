@@ -26,8 +26,8 @@ func st():
 # The Saleroom
 # =============================================================================
 const SALE_WEEKDAY = 5   # day % 7
-const PREMIUM = 0.20
-const DEALER_NAMES = ["Harcourt & Lyle", "Mrs Ferrand (Ferrand Antiques)", "Two lads from Leeds", "A phone bidder", "A dealer from Ludlow", "The man in the tweed cap", "Pemberton-Hayes (Gaz)", "An online bidder", "A collector from Harrogate"]
+const PREMIUM = 0.15
+const DEALER_NAMES = ["Harcourt & Lyle", "Mrs Ferrand (Ferrand Antiques)", "Two lads from Leeds", "A phone bidder", "A dealer from Ludlow", "The man in the tweed cap", "An online bidder", "A collector from Harrogate"]
 
 func saleroom_unlocked():
 	return g.player_level >= 6 or g.premises_level >= 1
@@ -49,7 +49,7 @@ func ensure_catalogue():
 		var fam = pick_lot_family()
 		if fam == null:
 			continue
-		var it = g.make_item_from_family(fam, "Dealer", {"rarity_boost": 2.2, "trait_bias": 0.03})
+		var it = g.make_item_from_family(fam, "Dealer", {"rarity_boost": 2.2, "trait_bias": 0.08})
 		it["source"] = "saleroom"
 		# The auctioneer's catalogue: condition and anything obvious are disclosed.
 		it["condition_checked"] = true
@@ -62,8 +62,8 @@ func ensure_catalogue():
 		est[0] = max(10.0, est[0])
 		est[1] = max(est[0] + 10.0, est[1])
 		# The room: dealers who know what the auctioneer knows, and sometimes one who knows more.
-		var room = auction_view * g.rng.randf_range(0.72, 1.08)
-		if g.rng.randf() < 0.3:
+		var room = auction_view * g.rng.randf_range(0.62, 1.0)
+		if g.rng.randf() < 0.15:
 			room = max(room, g.true_market_value(it) * g.rng.randf_range(0.8, 0.98))
 		var reserve = est[0] * 0.8
 		sr["lots"].append({"lot": i + 1, "item": it, "est": est, "room": room, "reserve": reserve, "bid": 0.0, "bidder": DEALER_NAMES[g.rng.randi_range(0, DEALER_NAMES.size() - 1)]})
@@ -89,6 +89,9 @@ func pick_lot_family():
 
 func your_read(it):
 	var t = g.expertise_tier(it["category"])
+	if int(it.get("read_tier", -1)) >= t and it["basic_researched"]:
+		return
+	it["read_tier"] = t
 	var methods = []
 	if t >= 1:
 		methods.append("eye")
@@ -103,6 +106,8 @@ func your_read(it):
 			if not it["authentic"]:
 				it["identified_mult"] = float(it["identified_mult"]) * 0.10
 	g.reveal_traits_quiet(it, methods)
+	if t < 1 and not it["basic_researched"]:
+		return   # a novice just sees a listing
 	it["basic_researched"] = true
 	it["basic_comps"] = g.make_comps(it, t >= 3)
 	if t >= 3:
@@ -112,7 +117,12 @@ func set_bid(lot_no, amount):
 	var sr = st()["saleroom"]
 	for lot in sr["lots"]:
 		if int(lot["lot"]) == int(lot_no):
+			var was = float(lot["bid"])
 			lot["bid"] = max(0.0, round(float(amount)))
+			# Bids must be covered: the saleroom checks your funds and your space.
+			if bids_total() > g.cash or g.inventory_space_used() + bids_space() > g.storage_capacity():
+				lot["bid"] = was
+				g.queue_popup("The saleroom wants your bids covered: %s in cash (with premium) and room for everything you might win." % g.fmt_money(bids_total() - was * (1.0 + PREMIUM) + float(amount) * (1.0 + PREMIUM)))
 	g.save_game()
 
 func bids_total():
@@ -130,6 +140,8 @@ func bids_space():
 
 func resolve_saleroom():
 	# The hammer falls overnight on sale day.
+	if g.day % 7 == SALE_WEEKDAY:
+		sell_consignments()
 	var sr = st()["saleroom"]
 	if int(sr["day"]) != g.day or sr["lots"].size() == 0:
 		return
@@ -251,10 +263,10 @@ func estate_rivals(clr):
 	var saved_seed = g.rng.seed
 	var saved_state = g.rng.state
 	g.rng.seed = int(clr["lead"]["seed"]) + 17
-	var dealer = DEALER_NAMES[g.rng.randi_range(0, DEALER_NAMES.size() - 3)]
+	var dealer = DEALER_NAMES[g.rng.randi_range(0, DEALER_NAMES.size() - 1)]
 	var rivals = [
-		{"name": str(g.rival.get("nickname", "Gaz")), "bid": round(total * g.rng.randf_range(0.42, 0.82) / 5.0) * 5.0},
-		{"name": dealer, "bid": round(total * g.rng.randf_range(0.38, 0.78) / 5.0) * 5.0},
+		{"name": str(g.rival.get("nickname", "Gaz")), "bid": round(total * g.rng.randf_range(0.35, 0.7) / 5.0) * 5.0},
+		{"name": dealer, "bid": round(total * g.rng.randf_range(0.32, 0.66) / 5.0) * 5.0},
 	]
 	g.rng.seed = saved_seed
 	g.rng.state = saved_state
@@ -299,3 +311,104 @@ func submit_estate_bid(amount):
 		g.clearance = null
 		g.save_game()
 		g.show_market()
+
+# =============================================================================
+# The Runner: a second market, worked in your signatures
+# =============================================================================
+const RUNNER_VENUES = ["Bishop's Lydeard boot sale", "the Tuesday flea market in Frome", "Kempton Park", "a church-hall sale in Ludlow", "the Sunday boot at Wetherby", "the showground at Newark", "a village fete near Thirsk", "the Malvern flea market"]
+
+func runner_night():
+	if g.signatures.size() == 0:
+		g.night_events.append({"kind": "info", "text": "Your runner stayed home", "sub": "Give him a signature category to buy in (Expertise)."})
+		return
+	var budget = clamp(g.cash * 0.1, 0.0, 400.0)
+	if budget < 30.0:
+		return
+	var venue = g.pick_line(RUNNER_VENUES)
+	var bought = []
+	var spent = 0.0
+	var tries = 0
+	while tries < 14 and bought.size() < 4:
+		tries += 1
+		var arch = ["House Clearance", "Clueless Seller", "Desperate Seller", "Regular Seller", "Dealer"][g.rng.randi_range(0, 4)]
+		var it = g.generate_item(arch, {"cats": g.signatures})
+		if not g.signatures.has(it["category"]):
+			continue
+		# He judges it the way you would, a bit less sharply.
+		var tier = g.expertise_tier(it["category"])
+		var guess = g.true_market_value(it) * g.rng.randf_range(0.55 + 0.08 * tier, 1.45 - 0.08 * tier)
+		var price = float(it["asking"]) * g.rng.randf_range(0.8, 0.95)
+		if guess < price * 1.5 or spent + price > budget or not g.can_store(it):
+			continue
+		spent += price
+		g.cash -= price
+		g.day_stats["buy_spend"] += price
+		it["paid"] = price
+		it["asking"] = price
+		it["bought_day"] = g.day
+		it["source"] = "runner"
+		it["story"] = "Your runner found it at %s." % venue
+		g.hist(it, "Picked up by your runner at %s for %s." % [venue, g.fmt_money(price)])
+		g.inventory.append(it)
+		g.register_collection(it)
+		bought.append(it["name"])
+	if bought.size() > 0:
+		g.night_events.append({"kind": "info", "text": "Your runner came back from %s" % venue, "sub": "Spent %s on: %s." % [g.fmt_money(spent), ", ".join(bought)]})
+	else:
+		g.night_events.append({"kind": "info", "text": "Your runner came back empty-handed", "sub": "Nothing worth having at %s." % venue})
+
+# =============================================================================
+# Consigning your own finds to the Saleroom
+# =============================================================================
+const CONSIGN_COMMISSION = 0.12
+
+func next_sale_day():
+	var d = g.day
+	while d % 7 != SALE_WEEKDAY:
+		d += 1
+	return d
+
+func can_consign(it):
+	return saleroom_unlocked() and not it["listed"] and not it["auctioned"] and not it.get("on_shop_floor", false) and not it.get("consigned", false) and it["auth_status"] != "Confirmed Counterfeit" and g.perceived_center(it) >= 60.0 and (not it["testable"] or it["tested"])
+
+func consign(index):
+	if index < 0 or index >= g.inventory.size():
+		return
+	var it = g.inventory[index]
+	if not can_consign(it):
+		return
+	it["consigned"] = true
+	it["consign_day"] = next_sale_day()
+	g.hist(it, "Consigned to the saleroom for day %d." % int(it["consign_day"]))
+	g.add_toast("Consigned. It goes under the hammer on day %d. 12%% commission, no postage." % int(it["consign_day"]), "info")
+	g.save_game()
+	g.refresh_after("inv")
+
+func withdraw_consignment(index):
+	if index < 0 or index >= g.inventory.size():
+		return
+	var it = g.inventory[index]
+	it["consigned"] = false
+	g.save_game()
+	g.refresh_after("inv")
+
+func sell_consignments():
+	# Your lots sell in the same sale. The room pays for what it can see: your research is the catalogue essay.
+	var keep = []
+	for i in range(g.inventory.size()):
+		var it = g.inventory[i]
+		if not it.get("consigned", false) or int(it.get("consign_day", -1)) > g.day:
+			keep.append(it)
+			continue
+		var unk_good = 1.0
+		for t in it.get("traits", []):
+			if not t.get("known", false) and float(t["mult"]) > 1.0:
+				unk_good *= float(t["mult"])
+		var essay = 1.0 + (0.05 if it["deep_researched"] else 0.0) + (0.04 if it.get("hist", []).size() >= 4 else 0.0) + (0.05 if it["auth_status"] == "Confirmed Genuine" else 0.0)
+		var hammer = round(g.true_market_value(it) / sqrt(unk_good) * g.rng.randf_range(0.72, 1.12) * essay)
+		var net = hammer * (1.0 - CONSIGN_COMMISSION)
+		g.cash += net
+		it["consigned"] = false
+		var profit = g.record_completed_sale(it, hammer, {"fee": hammer * CONSIGN_COMMISSION, "postage": 0.0, "insurance": 0.0, "packaging": 0.0}, "saleroom")
+		g.night_events.append({"kind": "sale", "text": "Saleroom: %s sold for %s" % [g.item_display_name(it), g.fmt_money(hammer)], "sub": "Hammer price, less 12%% commission.", "amount": hammer, "profit": profit})
+	g.inventory = keep

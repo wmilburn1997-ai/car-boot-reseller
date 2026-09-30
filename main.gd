@@ -462,6 +462,9 @@ func apply_save_data(parsed):
 		migrated_notes.append("Expertise now has Signatures: only the categories you commit to go beyond Specialist. %s" % (("Your strongest, %s, %s been made your signature%s." % [" and ".join(signatures), "has" if signatures.size() == 1 else "have", "" if signatures.size() == 1 else "s"]) if signatures.size() > 0 else "Choose yours from the Expertise screen when you're ready."))
 		if strong.size() > signatures.size():
 			migrated_notes.append("%s %s now capped at Specialist. You keep the knowledge; make one a signature any time a slot frees up." % [", ".join(strong.slice(signatures.size())), "is" if strong.size() - signatures.size() == 1 else "are"])
+	for c in CATEGORIES:
+		if not is_signature(c) and expertise_xp(c) > float(EXPERTISE_TIERS[3]):
+			expertise[c] = float(EXPERTISE_TIERS[3])
 	for n in migrated_notes:
 		pending_notices.append(n)
 	if version < 3:
@@ -2690,7 +2693,7 @@ func create_listing(index, price_in):
 	if item["testable"] and not item["tested"]:
 		queue_popup("Test it first: buyers want to know it works.")
 		return
-	if item["auctioned"]:
+	if item["auctioned"] or item.get("consigned", false):
 		return
 	if not item["listed"] and active_listing_count() >= listing_cap():
 		queue_popup("You're at your listing limit (%d). Bigger premises or a Light-Box Studio let you list more." % listing_cap())
@@ -3479,6 +3482,7 @@ var business_goals = [
 	{"id": "authority", "text": "Become an Authority", "xp": 130},
 	{"id": "warehouse", "text": "Move into a warehouse", "xp": 150},
 	{"id": "gaz10", "text": "Beat Gaz in ten weeks", "xp": 150},
+	{"id": "worth35k", "text": "Reach £35,000 business value", "xp": 180},
 	{"id": "king", "text": "Reach £60,000 business value: Car Boot King", "xp": 250},
 ]
 # 0.11 goal order, for migrating old saves' progress.
@@ -3562,6 +3566,8 @@ func goal_met(index):
 			return premises_level >= 4
 		"gaz10":
 			return int(d["record"]["wins"]) >= 10
+		"worth35k":
+			return worth >= 35000.0
 		"king":
 			return worth >= 60000.0
 	return false
@@ -4224,6 +4230,7 @@ func drop_signature(cat):
 		return
 	signatures.erase(cat)
 	signature_changed_day = day
+	expertise[cat] = min(expertise_xp(cat), float(EXPERTISE_TIERS[2]))   # back to the start of Specialist
 	add_journal("Stepped back from %s. Your knowledge stays, capped at Specialist." % cat, "info")
 	save_game()
 	refresh_current()
@@ -4263,6 +4270,8 @@ func add_expertise(cat, amount):
 	var before = expertise_tier(cat)
 	var raw_before = raw_expertise_tier(cat)
 	expertise[cat] = expertise_xp(cat) + float(amount)
+	if not is_signature(cat):
+		expertise[cat] = min(expertise_xp(cat), float(EXPERTISE_TIERS[3]))   # past Specialist only as a signature
 	var after = expertise_tier(cat)
 	if not is_signature(cat) and raw_before < 3 and raw_expertise_tier(cat) >= 3 and not signature_nagged.has(cat):
 		signature_nagged[cat] = true
@@ -5110,6 +5119,8 @@ func put_on_shop_floor(index, price):
 	show_inventory()
 
 func process_staff():
+	if staff.has("runner"):
+		trade.runner_night()
 	if staff.has("assistant"):
 		var did = []
 		var tested = 0
@@ -5403,7 +5414,7 @@ func plan_rival_route():
 var rival_route = []
 
 func advance_rival():
-	if rival_route.size() == 0 or stalls.size() == 0:
+	if rival_route.size() == 0 or stalls.size() == 0 or clearance != null:
 		return
 	for step in rival_route:
 		if step["done"] or current_time_minutes < int(step["minute"]):
@@ -5488,7 +5499,7 @@ func add_clearance_lead(source, from_name = ""):
 	return lead
 
 func clearance_item_count(size):
-	return {"small": [10, 14], "medium": [16, 22], "large": [24, 32]}.get(size, [12, 16])
+	return {"small": [10, 14], "medium": [16, 22], "large": [30, 40]}.get(size, [12, 16])
 
 func build_clearance(lead):
 	# Deterministic per lead: generate the whole house now.
@@ -5516,7 +5527,15 @@ func build_clearance(lead):
 		if cands.size() == 0:
 			continue
 		var fam = cands[rng.randi_range(0, cands.size() - 1)]
-		var it = make_item_from_family(fam, "House Clearance", {"trait_bias": 0.04 if lead["size"] != "large" else 0.07, "hidden_bonus": 0.12, "rarity_boost": 1.2 if lead["size"] != "large" else 2.2})
+		if lead["size"] == "large":
+			# A proper estate: better things, and more of them worth having.
+			var better = []
+			for f in cands:
+				if float(f["value"][1]) >= 120.0:
+					better.append(f)
+			if better.size() > 0 and rng.randf() < 0.85:
+				fam = better[rng.randi_range(0, better.size() - 1)]
+		var it = make_item_from_family(fam, "House Clearance", {"trait_bias": 0.04 if lead["size"] != "large" else 0.08, "hidden_bonus": 0.12, "rarity_boost": 1.2 if lead["size"] != "large" else 3.0})
 		it["source"] = "clearance"
 		it["seller"] = "House Clearance"
 		it["story"] = "Belonged to %s." % str(st["owner"])
@@ -5524,6 +5543,22 @@ func build_clearance(lead):
 		it["house"] = str(st["title"]).substr(0, 1).to_lower() + str(st["title"]).substr(1)
 		items.append(it)
 		rooms[i % room_count]["items"].append(items.size() - 1)
+	if lead["size"] == "large":
+		# Every estate has one headline piece: the thing the family didn't know about.
+		var heads = []
+		for f in item_families:
+			if float(f["value"][1]) >= 200.0 and st["cats"].has(f["category"]):
+				heads.append(f)
+		if heads.size() > 0:
+			var hf = heads[rng.randi_range(0, heads.size() - 1)]
+			var hi = make_item_from_family(hf, "House Clearance", {"trait_bias": 0.25, "rarity_boost": 40.0})
+			hi["source"] = "clearance"
+			hi["seller"] = "House Clearance"
+			hi["story"] = "Belonged to %s." % str(st["owner"])
+			hi["provenance"] = str(st["owner"])
+			hi["house"] = str(st["title"]).substr(0, 1).to_lower() + str(st["title"]).substr(1)
+			items.append(hi)
+			rooms[rng.randi_range(0, room_count - 1)]["items"].append(items.size() - 1)
 	var total = 0.0
 	for it in items:
 		total += true_market_value(it)
@@ -5735,7 +5770,7 @@ func trade_buyer_candidates():
 	var out = []
 	for i in range(inventory.size()):
 		var it = inventory[i]
-		if it["listed"] or it["auctioned"] or it.get("on_shop_floor", false):
+		if it["listed"] or it["auctioned"] or it.get("on_shop_floor", false) or it.get("consigned", false):
 			continue
 		if it["auth_status"] in ["Confirmed Counterfeit", "Suspected Counterfeit"]:
 			continue

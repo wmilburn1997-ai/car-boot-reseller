@@ -40,7 +40,7 @@ func try_clearance():
 		est += est_net(it, c)
 	if g.trade.is_estate(g.clearance):
 		# Sealed bid: a bit over half of what you think you'd clear after fees.
-		var bid = round(est * 0.55)
+		var bid = round(est * 0.72)
 		if bid >= 100 and g.cash > bid + 100 and g.inventory_space_used() + g.clearance_space_needed() <= g.storage_capacity():
 			g.trade.submit_estate_bid(bid)
 			stats["clearances"] += 1
@@ -215,7 +215,10 @@ func play_home():
 		if idx >= g.inventory.size():
 			continue
 		var item = g.inventory[idx]
-		if item["listed"] or item["auctioned"] or item.get("on_shop_floor", false):
+		if item["listed"] or item["auctioned"] or item.get("on_shop_floor", false) or item.get("consigned", false):
+			continue
+		if strategy in ["tycoon", "careful", "specialist"] and g.trade.can_consign(item) and g.perceived_center(item) >= 250.0 and item["basic_researched"]:
+			g.trade.consign(idx)
 			continue
 		if g.is_unsorted_lot(item) and g.energy >= 6 and strategy != "naive":
 			g.sort_lot(idx)
@@ -275,6 +278,8 @@ func spend_upgrades():
 	if strategy in ["reckless", "naive", "gambler"]:
 		return
 	choose_signatures()
+	if not g.staff.has("runner") and g.staff_allowed("runner") and g.cash > 2500 and g.signatures.size() > 0:
+		g.toggle_staff("runner")
 	var cash = g.cash
 	var reserve = 150.0 if strategy != "tycoon" else 100.0
 	var used = g.inventory_space_used()

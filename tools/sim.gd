@@ -77,7 +77,7 @@ func run_one(seed, days):
 		"equip": g.equipment.keys(), "clearances": bot.stats["clearances"], "discoveries": disc, "missed": missed,
 		"max_tier": g.max_expertise_tier(), "goals": g.goals_done, "curve": curve,
 		"gaz_record": g.world.st()["record"], "commissions_done": _count_channel(g, "commission"), "bigfind": _count_channel(g, "bigfind"),
-		"saleroom": int(g.world.st().get("saleroom_wins", 0)), "sigs": g.signatures, "tiers": _tiers(g)}
+		"saleroom": int(g.world.st().get("saleroom_wins", 0)), "consigned": _count_channel(g, "saleroom"), "runner": g.staff.has("runner"), "estates": int(g.world.st().get("estates_won", 0)), "cash_end": snapped(g.cash, 1), "sigs": g.signatures, "tiers": _tiers(g)}
 
 func _tiers(g):
 	var out = []

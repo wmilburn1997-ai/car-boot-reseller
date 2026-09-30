@@ -45,7 +45,7 @@ func tile(it, ctx, selected, on_press, extra = {}):
 	h.offset_right = -12
 	h.offset_top = 6
 	h.offset_bottom = -6
-	var ic = k.cat_icon(it["category"], 38 if k.mobile else 36)
+	var ic = k.item_icon(it["name"], it["category"], 40 if k.mobile else 40)
 	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	if dimmed:
 		ic.modulate = Color(1, 1, 1, 0.45)
@@ -288,7 +288,7 @@ func to_bool_banned(stall):
 func header(it, ctx):
 	var v = k.vbox(6)
 	var h = k.hbox(12)
-	var ic = k.cat_icon(it["category"], 56 if not k.mobile else 40)
+	var ic = k.item_icon(it["name"], it["category"], 64 if not k.mobile else 48)
 	h.add_child(ic)
 	var tv = k.vbox(4)
 	k.expand(tv)
@@ -799,6 +799,16 @@ func sell_panel(it, index):
 		v.add_child(k.label("It's a fake. You can't sell it honestly, but you can scrap it for parts.", "s", k.RED, true))
 		v.add_child(k.button("Scrap for parts", "danger", func(): g.scrap_item(index), "", "m"))
 		return v
+	if it.get("consigned", false):
+		var cpp = k.panel("gold", 10)
+		var chh = k.hbox(10)
+		cpp.add_child(chh)
+		var cl = k.label("Consigned to the Saleroom: under the hammer on day %d." % int(it.get("consign_day", 0)), "m", k.GOLD, true)
+		k.expand(cl)
+		chh.add_child(cl)
+		chh.add_child(k.button("Withdraw", "ghost", func(): g.trade.withdraw_consignment(index), "", "s"))
+		v.add_child(cpp)
+		return v
 	var com = g.world.commission_for(it)
 	if com != null:
 		var cp = k.panel("gold", 10)
@@ -916,6 +926,8 @@ func sell_panel(it, index):
 		main_row.add_child(sb)
 	v.add_child(main_row)
 	var alt = k.flow(6, 6)
+	if g.trade.can_consign(it):
+		alt.add_child(k.button("Consign to the Saleroom", "gold", func(): g.trade.consign(index), "It goes under the hammer on day %d. 12%% commission, no fees or postage. The room pays for what it can see, so research and authentication help." % g.trade.next_sale_day(), "s"))
 	if g.auctions_unlocked():
 		var ab = k.button("Auction (3 days)", "special", func(): g.start_auction(index), "Let bidders decide. Rare and trending things can spark a bidding war; common things can go cheap.", "s")
 		ab.disabled = not can_sell or cap_full

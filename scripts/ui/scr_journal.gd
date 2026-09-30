@@ -381,7 +381,7 @@ func flips(v):
 		var pv = k.vbox(4)
 		p.add_child(pv)
 		var h = k.hbox(10)
-		h.add_child(k.cat_icon(str(e.get("category", "Home")), 36))
+		h.add_child(k.item_icon(str(e.get("name", "")), str(e.get("category", "Home")), 40))
 		var tv = k.vbox(1)
 		k.expand(tv)
 		var title = str(e.get("ident", "")) if str(e.get("ident", "")) != "" else str(e["name"])

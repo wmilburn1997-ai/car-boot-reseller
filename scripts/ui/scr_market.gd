@@ -325,7 +325,7 @@ func lot_card(lot):
 	var pv = k.vbox(6)
 	p.add_child(pv)
 	var h = k.hbox(12)
-	h.add_child(k.cat_icon(it["category"], 44))
+	h.add_child(k.item_icon(it["name"], it["category"], 48))
 	var tv = k.vbox(2)
 	k.expand(tv)
 	tv.add_child(k.label("Lot %d · %s" % [int(lot["lot"]), it["name"]], "m", k.TEXT, true))
@@ -494,17 +494,18 @@ func build_gaz_shop(parent):
 	for i in range(shop.size()):
 		var e = shop[i]
 		var it = e["item"]
+		g.trade.your_read(it)
 		var idx = i
 		var p = k.panel("card", 12)
 		var h = k.hbox(12)
 		p.add_child(h)
-		h.add_child(k.cat_icon(it["category"], 40))
+		h.add_child(k.item_icon(it["name"], it["category"], 48))
 		var tv = k.vbox(2)
 		k.expand(tv)
 		tv.add_child(k.label(str(it.get("gaz_title", it["name"])), "s" if ui.mobile else "m", k.TEXT, true))
 		tv.add_child(k.label("%s · %s%s" % [it["name"], g.item_display_name(it) if str(it.get("ident", "")) != "" else it["category"], "" if g.rival.get("cats", []).has(it["category"]) else "  ·  outside his patch"], "xs", k.TEXT2, true))
 		var pot = g.estimate_identified_potential(it)
-		tv.add_child(k.label("You'd guess %s–%s%s" % [g.fmt_money(pot[0]), g.fmt_money(pot[1]), "  ·  you saw this on %s's table" % str(e.get("from", "")).split(" ")[0] if e.get("seen", false) else ""], "xs", k.TEAL, true))
+		tv.add_child(k.label("Your read (%s): %s–%s%s" % [g.EXPERTISE_TIER_NAMES[g.expertise_tier(it["category"])], g.fmt_money(pot[0]), g.fmt_money(pot[1]), "  ·  you saw this on %s's table" % str(e.get("from", "")).split(" ")[0] if e.get("seen", false) else ""], "xs", k.TEAL, true))
 		h.add_child(tv)
 		var pv = k.vbox(4)
 		pv.add_child(k.label(g.fmt_money(e["price"]), "l", k.GOLD, false, HORIZONTAL_ALIGNMENT_RIGHT))
@@ -791,7 +792,7 @@ func special_offer_modal():
 	v.add_child(k.label("%s: %s" % [offer["seller_display_name"], offer["title"]], "m", k.TEXT, true))
 	v.add_child(k.label(str(offer["flavor"]).replace("\"", ""), "s", k.TEXT2, true))
 	var h = k.hbox(10)
-	h.add_child(k.cat_icon(it["category"], 44))
+	h.add_child(k.item_icon(it["name"], it["category"], 48))
 	var tv = k.vbox(2)
 	k.expand(tv)
 	tv.add_child(k.label(it["name"], "l", k.TEXT, true))

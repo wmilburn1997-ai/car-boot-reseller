@@ -85,8 +85,8 @@ func gaz_night():
 		g.night_events.append({"kind": "missed", "text": "%s flipped one you walked past" % nick(), "sub": line})
 		g.add_journal("%s sold %s for %s. You'd seen it on the table." % [nick(), you_saw_best["item"], g.fmt_money(you_saw_best["price"])], "bad")
 	# His other markets: he keeps pace with you, roughly.
-	var avg = trailing_player_profit(28)
-	var other = clamp(avg * 0.5, 10.0, 300.0) * g.rng.randf_range(0.7, 1.3)
+	# His other markets: he's getting better at this too, on his own schedule.
+	var other = (14.0 + float(g.day) * 0.75) * g.rng.randf_range(0.6, 1.4)
 	d["week"]["gaz"] = float(d["week"]["gaz"]) + other
 	d["week"]["gaz_other"] = float(d["week"].get("gaz_other", 0.0)) + other
 
@@ -112,13 +112,13 @@ func week_rollover():
 	if you >= gaz:
 		d["record"]["wins"] = int(d["record"]["wins"]) + 1
 		d["record"]["streak"] = max(1, int(d["record"]["streak"]) + 1)
-		line = g.pick_line(L.RIVAL_LINES["week_win"])
+		line = g.unique_line(L.RIVAL_LINES["week_win"])
 		g.add_journal("You beat %s this week: %s to %s." % [nick(), g.fmt_money(you), g.fmt_money(gaz)], "good")
 		g.add_xp(15)
 	else:
 		d["record"]["losses"] = int(d["record"]["losses"]) + 1
 		d["record"]["streak"] = min(-1, int(d["record"]["streak"]) - 1)
-		line = g.fill_line(g.pick_line(L.RIVAL_LINES["week_loss"]), {"amount": g.fmt_money(diff)})
+		line = g.fill_line(g.unique_line(L.RIVAL_LINES["week_loss"]), {"amount": g.fmt_money(diff)})
 		g.add_journal("%s beat you this week: %s to %s." % [nick(), g.fmt_money(gaz), g.fmt_money(you)], "bad")
 	d["last_week"] = {"you": you, "gaz": gaz, "line": line, "won": you >= gaz, "day": g.day}
 	g.night_events.append({"kind": "info" if you >= gaz else "bad", "text": ("You beat %s this week" if you >= gaz else "%s won the week") % nick(), "sub": "%s  (You %s · %s %s)" % [line, g.fmt_money(you), nick(), g.fmt_money(gaz)]})
@@ -223,7 +223,7 @@ func roll_commission():
 	for c in active:
 		if c["fam"] == fam["name"]:
 			return
-	var mult = snapped(g.rng.randf_range(1.35, 1.8), 0.05)
+	var mult = snapped(g.rng.randf_range(1.25, 1.6), 0.05)
 	var c = {"id": int(d["next_cid"]), "fam": fam["name"], "cat": fam["category"], "mult": mult, "expires": g.day + g.rng.randi_range(6, 11), "reg_id": -1, "from": ""}
 	d["next_cid"] = int(d["next_cid"]) + 1
 	# A regular who likes you, or a buyer from further afield.
@@ -238,11 +238,23 @@ func roll_commission():
 		var arr = L.PERSONALITY_LINES.get(str(r["personality"]), {}).get("commission_ask", [])
 		c["text"] = g.fill_line(g.pick_line(arr), {"item": g.a_an(g.lc(fam["name"]))}) if arr.size() > 0 else "Keep an eye out for %s for me?" % g.a_an(g.lc(fam["name"]))
 	else:
-		var buyer = g.pick_line(L.COMMISSION_BUYERS)
+		var buyer = pick_buyer(str(fam["category"]))
 		c["from"] = buyer
 		c["text"] = g.fill_line(g.pick_line(L.COMMISSION_ASKS), {"buyer": short_from(c), "item": g.a_an(g.lc(fam["name"]))})
 	active.append(c)
 	g.add_toast("WANTED: a %s. %s pays %.1f× the going rate." % [fam["name"], short_from(c), mult], "info")
+
+# Which commission buyers plausibly want what (by COMMISSION_BUYERS order).
+const BUYER_CATS = [["Collectables", "Games"], ["Home", "Garden & Outdoor"], ["Home", "Clothing", "Collectables", "Books"], ["Jewellery"], ["Musical Instruments"], ["Cameras"], ["Home", "Collectables", "Vinyl"], ["Games", "Electronics", "Trading Cards"], ["Clothing", "Jewellery"], ["Tools", "Electronics"]]
+
+func pick_buyer(cat):
+	var ok = []
+	for i in range(L.COMMISSION_BUYERS.size()):
+		if i < BUYER_CATS.size() and BUYER_CATS[i].has(cat):
+			ok.append(L.COMMISSION_BUYERS[i])
+	if ok.size() > 0:
+		return ok[g.rng.randi_range(0, ok.size() - 1)]
+	return "A %s collector in %s" % [cat.to_lower(), g.pick_line(g.Ident.POOLS["town"])]
 
 func short_from(c):
 	var f = str(c.get("from", "A buyer"))
@@ -542,10 +554,15 @@ func apply_event(id):
 			st2["no_haggle"] = true
 			st2["charity"] = true
 			st2["greeting"] = "Everything's a pound or two, love. It all goes to the hospice."
-			while st2["stock"].size() > 8:
-				st2["stock"].pop_back()
+			# Donations are mostly bric-a-brac: nothing on this table is worth much, and it's all a pound or two.
+			var cheap = []
 			for it in st2["stock"]:
-				it["asking"] = float(g.rng.randi_range(1, 3)) if float(it["true_value"]) < 40.0 else max(3.0, round(float(it["asking"]) * 0.5))
+				if float(it["true_value"]) < 30.0 and cheap.size() < 8:
+					cheap.append(it)
+			st2["stock"] = cheap
+			st2["revealed"] = min(int(st2["revealed"]), cheap.size())
+			for it in cheap:
+				it["asking"] = float(g.rng.randi_range(1, 3))
 		"trading_standards":
 			var keep = []
 			for s in g.stalls:

@@ -55,7 +55,12 @@ func sorted_indices():
 			idx.sort_custom(func(a, b): return int(inv[a].get("days_owned", 0)) > int(inv[b].get("days_owned", 0)))
 	return idx
 
+var tab_chosen = false
+
 func build(parent):
+	# Open on a tab that has something in it, unless the player picked one.
+	if not tab_chosen and sorted_indices().size() == 0 and g.inventory.size() > 0:
+		tab = "selling" if tab == "todo" else "all"
 	var list = k.vbox(8)
 	list.add_child(summary())
 	ui.coach(list, "stock")
@@ -144,6 +149,7 @@ func tabs_row():
 		var id = t[0]
 		var b = k.button("%s  %d" % [t[1], counts[id]], "tab_on" if tab == id else "ghost", func():
 			tab = id
+			tab_chosen = true
 			limit = 40
 			g.selected_inv_uid = -1
 			ui.sheet_open = false

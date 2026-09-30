@@ -261,7 +261,7 @@ func staff_card():
 	h.add_child(k.glyph("person", k.TEAL, 18))
 	h.add_child(k.label("Staff", "l", k.TEXT))
 	v.add_child(h)
-	for id in ["assistant", "shopkeeper", "picker"]:
+	for id in ["assistant", "runner", "shopkeeper", "picker"]:
 		var s = g.Biz.STAFF[id]
 		var hired = g.staff.has(id)
 		var allowed = g.staff_allowed(id)

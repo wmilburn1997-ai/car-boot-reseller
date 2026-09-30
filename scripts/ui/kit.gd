@@ -388,6 +388,22 @@ func tex_rect(tex, size = 24):
 	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return t
 
+const ItemArt = preload("res://scripts/data/item_art.gd")
+var _item_tex = {}
+
+func item_icon(name, category, size = 32):
+	# The item family's own pixel sprite; falls back to the category icon.
+	var path = ItemArt.ITEM_ART.get(str(name), "")
+	if path != "":
+		if not _item_tex.has(path):
+			_item_tex[path] = load(path) if ResourceLoader.exists(path) else null
+		var tex = _item_tex[path]
+		if tex != null:
+			var t = tex_rect(tex, size)
+			t.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			return t
+	return cat_icon(category, size)
+
 func cat_icon(category, size = 28):
 	var tex = g.ui.category_icon(category)
 	if tex != null:

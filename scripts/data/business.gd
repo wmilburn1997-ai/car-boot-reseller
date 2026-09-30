@@ -66,6 +66,7 @@ const ACCOUNTS = [
 const STAFF = {
 	"assistant": {"name":"Assistant","wage":10.0,"needs":2,"desc":"Works your stock overnight: tests untested electricals, cleans grimy items (if you have a Cleaning Station) and trims 10% off listings that have sat for a week."},
 	"shopkeeper": {"name":"Shop Keeper","wage":14.0,"needs":3,"desc":"Keeps the shop open all day: half as many walk-in customers again on the shop floor."},
+	"runner": {"name":"Runner","wage":28.0,"needs":2,"desc":"Works a second car boot across the county for you, buying only in your signature categories with a budget of up to a tenth of your cash (max £400). Knows what you know, give or take. What he brings back turns up in your stock overnight."},
 	"picker": {"name":"Picker","wage":15.0,"needs":4,"desc":"Works the car boot for you before you arrive: reveals extra items at every stall and keeps the rival honest."},
 }
 
