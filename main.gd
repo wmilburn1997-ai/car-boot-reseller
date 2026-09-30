@@ -461,8 +461,8 @@ func apply_save_data(parsed):
 		if strong.size() > signatures.size():
 			migrated_notes.append("%s %s now capped at Specialist. You keep the knowledge; make one a signature any time a slot frees up." % [", ".join(strong.slice(signatures.size())), "is" if strong.size() - signatures.size() == 1 else "are"])
 	for c in CATEGORIES:
-		if not is_signature(c) and expertise_xp(c) > float(EXPERTISE_TIERS[3]):
-			expertise[c] = float(EXPERTISE_TIERS[3])
+		if not is_signature(c) and expertise_xp(c) > NON_SIGNATURE_XP_CAP:
+			expertise[c] = NON_SIGNATURE_XP_CAP
 	for n in migrated_notes:
 		pending_notices.append(n)
 	if version < 3:
@@ -1423,7 +1423,9 @@ func point_out_flaw(index, key):
 		var lev = min(cap, 1.0 - (1.0 - float(item.get("flaw_leverage", 0.0))) * (1.0 - hit))
 		hit = 1.0 - (1.0 - lev) / max(0.01, 1.0 - float(item.get("flaw_leverage", 0.0)))
 		item["flaw_leverage"] = lev
-		var new_ask = max(haggle_floor(item, stall), round(float(item["asking"]) * (1.0 - hit)))
+		var new_ask = max(haggle_floor(item, stall), max(round(float(item["asking"]) * (1.0 - hit)), round(haggle_base_ask(item) * (1.0 - lev))))
+		if item.get("flaws_used", []).size() >= 2:
+			item["patience"] = max(1, haggle_patience(item, stall) - 1)   # nobody likes a list of complaints
 		var was = float(item["asking"])
 		item["asking"] = min(was, new_ask)
 		var line2 = pers_line(stall, "flaw_concede", vars)
@@ -2293,7 +2295,7 @@ func deep_research(index):
 			else:
 				t["clue"] = true
 		var n = found.size() + extra
-		reason = "Nothing new turned up: you know exactly what you've got." if n == 0 else "%d new detail%s identified." % [n, "" if n == 1 else "s"]
+		reason = ("Nothing new turned up: you know exactly what you've got." if not item_has_open_clue(item) else "Nothing new in the books. Whatever's odd about it needs a specialist's eye.") if n == 0 else "%d new detail%s identified." % [n, "" if n == 1 else "s"]
 	else:
 		# Legacy (0.10) items keep their old behaviour.
 		var knowledge = float(category_knowledge.get(item["category"], 5))
@@ -2346,7 +2348,11 @@ func test_item(index):
 		result_text = "FAULT: " + fault_label(item)
 	record_rng("Fault chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [item["fault_chance"] * 100.0, item["fault_roll"] * 100.0, result_text])
 	var found = reveal_traits(item, "test")
-	hist(item, "Tested: %s." % ("works" if not item["fault"] else fault_label(item).to_lower()))
+	for t in found:
+		var td = trait_def(t)
+		if td != null and float(t["mult"]) <= 0.6 and str(td["kind"]) != "good":
+			result_text = "FAULT: " + str(td["name"])
+	hist(item, "Tested: %s." % ("works" if result_text == "WORKING" else result_text.to_lower()))
 	var after = estimate_identified_potential(item)
 	item["test_note"] = "%s. Your estimate £%d–£%d → £%d–£%d." % [result_text.capitalize() if not item["fault"] else result_text, before[0], before[1], after[0], after[1]]
 	if not bulk_mode:
@@ -2924,9 +2930,10 @@ func listing_report(item, interest):
 	var views = int(round(rng.randf_range(4.0, 10.0) * (0.7 + 0.35 * days) * clamp(1.35 - (r - 1.0) * 0.4, 0.5, 1.5)))
 	var watchers = int(max(0.0, round(interest * 5.0 + rng.randf_range(-1.2, 0.8))))
 	var key = "fine"
-	if r > 1.25 and not item["condition_checked"]:
+	var hidden_worse = market_value(item) < known_value(item) * 0.8
+	if r > 1.35 and (not item["condition_checked"] or hidden_worse):
 		key = "unchecked"
-	elif r > 1.25:
+	elif r > 1.35:
 		key = "too_high"
 	elif float(current_trends.get(item["category"], 1.0)) < 0.9:
 		key = "slow_category"
@@ -2934,7 +2941,7 @@ func listing_report(item, interest):
 		key = "watchers"
 	var hints = Lines012.NIGHT_LISTING_HINTS.get(key, [])
 	if key == "unchecked":
-		hints = ["Buyers are asking about the condition of {item}. Nobody's committing.", "Lots of questions about {item}'s condition, no bites. Have you actually checked it?", "People keep zooming in on the photos of {item} and leaving. Something about it."]
+		hints = ["Buyers are asking questions about {item}. Nobody's committing.", "Lots of views on {item}, no bites. Hard to say why.", "People keep zooming in on the photos of {item} and leaving."]
 	var text = fill_line(pick_line(hints), {"item": "the " + lc(item["name"]), "cat": item["category"], "n": watchers})
 	text = text.substr(0, 1).to_upper() + text.substr(1)
 	return {"uid": int(item["uid"]), "name": item["name"], "ident": str(item.get("ident", "")), "price": float(item["listing"]), "days": days, "views": views, "watchers": watchers, "key": key, "text": text}
@@ -4035,7 +4042,7 @@ func suggested_price(item):
 	# "Fair": just under what the evidence says it's worth, so it actually sells.
 	var pot = estimate_identified_potential(item)
 	if item["basic_researched"]:
-		return round((float(pot[0]) + float(pot[1])) / 2.0)
+		return round((float(pot[0]) + float(pot[1])) / 2.0 * 0.95)
 	return round(sqrt(max(1.0, float(pot[0])) * max(1.0, float(pot[1]))))
 
 func estimated_profit_at(item, price):
@@ -4184,6 +4191,7 @@ func expertise_xp(cat):
 
 # Signatures: only the categories you commit to can go past Specialist.
 var signatures = []
+const NON_SIGNATURE_XP_CAP = 400.0   # halfway through Specialist: a new signature still has to earn Expert
 var signature_changed_day = -99
 var signature_nagged = {}
 
@@ -4220,7 +4228,7 @@ func set_signature(cat):
 	add_journal("Made %s a signature. This is what you're known for now." % cat, "level")
 	var after = expertise_tier(cat)
 	if after > before:
-		show_big_popup("%s: YOUR SIGNATURE" % cat.to_upper(), "Everything you've learned counts now: you're a %s %s.\n\n%s" % [cat, EXPERTISE_TIER_NAMES[after], tier_unlock_text(cat, after)], "level")
+		show_big_popup("%s: YOUR SIGNATURE" % cat.to_upper(), "Everything you've learned counts now: you're %s %s.\n\n%s" % [a_an(cat), EXPERTISE_TIER_NAMES[after], tier_unlock_text(cat, after)], "level")
 	else:
 		add_toast("%s is now a signature. It can go all the way to Authority." % cat, "success")
 	save_game()
@@ -4275,9 +4283,9 @@ func add_expertise(cat, amount):
 	var raw_before = raw_expertise_tier(cat)
 	expertise[cat] = expertise_xp(cat) + float(amount)
 	if not is_signature(cat):
-		expertise[cat] = min(expertise_xp(cat), float(EXPERTISE_TIERS[3]))   # past Specialist only as a signature
+		expertise[cat] = min(expertise_xp(cat), NON_SIGNATURE_XP_CAP)   # past Specialist only as a signature
 	var after = expertise_tier(cat)
-	if not is_signature(cat) and raw_before < 3 and raw_expertise_tier(cat) >= 3 and not signature_nagged.has(cat):
+	if not is_signature(cat) and expertise_xp(cat) >= NON_SIGNATURE_XP_CAP and not signature_nagged.has(cat):
 		signature_nagged[cat] = true
 		if signatures.size() < signature_slots():
 			if not sim_mode and ui != null:
@@ -4286,7 +4294,7 @@ func add_expertise(cat, amount):
 			add_journal("Your %s knowledge has hit the Specialist ceiling. Only signatures go further." % cat, "info")
 	if after > before:
 		for t in range(before + 1, after + 1):
-			add_journal("Became a %s %s." % [cat, EXPERTISE_TIER_NAMES[t]], "level")
+			add_journal("Became %s %s." % [a_an(cat), EXPERTISE_TIER_NAMES[t]], "level")
 			show_big_popup("%s %s" % [cat.to_upper(), EXPERTISE_TIER_NAMES[t].to_upper()], tier_unlock_text(cat, t), "level")
 			if t >= 3:
 				unlock_achievement("Specialist")
@@ -4494,7 +4502,7 @@ func on_trait_found(item, t, method):
 	var line = "%s: %s" % [item["name"], d["found"]]
 	hist(item, "%s %s (%s%d%%)." % ["Found:" if kind == "good" else "Turned out:", str(d["name"]), "+" if pct >= 0 else "", pct])
 	if kind == "good":
-		add_journal("Found %s on a %s (+%d%%)." % [d["name"], item["name"], pct], "good")
+		add_journal("Found %s on %s (+%d%%)." % [d["name"], a_an(item["name"]), pct], "good")
 		if float(t["mult"]) >= 1.6:
 			show_discovery(item, t)
 		else:
@@ -4563,7 +4571,7 @@ func specialist_check(where, index):
 	if item == null:
 		return
 	if expertise_tier(item["category"]) < 2:
-		queue_popup("You need to be a %s Specialist (tier 2) for that." % item["category"])
+		queue_popup("You need to be %s Specialist (tier 2) for that." % a_an(item["category"]))
 		return
 	if item.get("expert_checked", false):
 		return
@@ -4666,12 +4674,12 @@ func fix_trait(item, t):
 	if d == null or t.get("fixed", false):
 		return
 	var old_m = max(0.01, float(t["mult"]))
-	var new_m = float(d.get("fix_mult", 0.95))
+	var new_m = max(old_m, float(d.get("fix_mult", 0.95)))
 	item["true_value"] = float(item["true_value"]) * new_m / old_m
 	t["mult"] = new_m
 	t["fixed"] = true
 	fixed_count += 1
-	add_journal("Fixed %s on a %s." % [d["name"], item["name"]], "good")
+	add_journal("Fixed %s on %s." % [d["name"], a_an(item["name"])], "good")
 
 func known_fixable(item, fix_kind):
 	var out = []
@@ -4750,7 +4758,7 @@ func sort_lot(index):
 		inventory.append(it)
 		register_collection(it)
 		spawned.append(it)
-		add_journal("Sorted a %s and found a %s inside." % [item["name"], it["name"]], "good")
+		add_journal("Sorted %s and found %s inside." % [a_an(item["name"]), a_an(it["name"])], "good")
 		if not sim_mode:
 			show_big_popup("FOUND INSIDE THE LOT", "%s\n\n%s\n\nIt's been added to your stock." % [d["found"], it["name"]], "rare")
 			play_sfx("rare")
@@ -4898,6 +4906,8 @@ func pitch_fee():
 	fee += float(market_today.get("entry_fee", 0.0))
 	if market_today.get("clearance", false):
 		fee = 0.0
+	if cash < 40.0 and not market_today.get("clearance", false):
+		fee = 0.0   # skint: the gate man knows you, and waves you through
 	return fee * cost_mult()
 
 func can_buy_premises():
@@ -4913,7 +4923,7 @@ func buy_premises():
 	cash -= float(nxt["cost"])
 	day_stats["business_spend"] = float(day_stats.get("business_spend", 0.0)) + float(nxt["cost"])
 	premises_level += 1
-	add_journal("Moved the business into a %s." % nxt["name"], "level")
+	add_journal("Moved the business into %s." % a_an(nxt["name"]), "level")
 	show_big_popup("NEW PREMISES", "%s\n\n%s\n\nStorage %d  •  Workshop slots %d  •  Listings %d  •  Rent £%.0f/day" % [nxt["name"], nxt["desc"], nxt["storage"], nxt["slots"], nxt["listings"], nxt["rent"]], "level")
 	play_sfx("level")
 	check_goals()
@@ -4930,7 +4940,7 @@ func buy_vehicle():
 	cash -= float(nxt["cost"])
 	day_stats["business_spend"] = float(day_stats.get("business_spend", 0.0)) + float(nxt["cost"])
 	vehicle_level += 1
-	add_journal("Bought a %s." % nxt["name"], "level")
+	add_journal("Bought %s." % a_an(nxt["name"]), "level")
 	var extra = ""
 	if nxt.has("unlocks"):
 		extra = "\n\nUnlocks: " + ", ".join(nxt["unlocks"])
@@ -5008,8 +5018,8 @@ func buy_account():
 		return
 	cash -= float(nxt["cost"])
 	fee_level += 1
-	add_journal("Upgraded to a %s (fees %.1f%%)." % [nxt["name"], float(nxt["fee"]) * 100.0], "level")
-	add_toast("Now a %s: selling fees %.1f%%." % [nxt["name"], float(nxt["fee"]) * 100.0], "success")
+	add_journal("Upgraded to %s (fees %.1f%%)." % [a_an(nxt["name"]), float(nxt["fee"]) * 100.0], "level")
+	add_toast("Now %s: selling fees %.1f%%." % [a_an(nxt["name"]), float(nxt["fee"]) * 100.0], "success")
 	play_sfx("level")
 	save_game()
 	show_business()
@@ -5025,11 +5035,11 @@ func toggle_staff(id):
 		add_toast("%s let go. No more wages." % Biz.STAFF[id]["name"], "info")
 	else:
 		if not staff_allowed(id):
-			queue_popup("You need bigger premises to take on a %s." % Biz.STAFF[id]["name"])
+			queue_popup("You need bigger premises to take on %s." % a_an(Biz.STAFF[id]["name"]))
 			return
 		staff[id] = true
-		add_journal("Hired a %s." % Biz.STAFF[id]["name"], "level")
-		add_toast("Hired a %s (£%.0f/day)." % [Biz.STAFF[id]["name"], float(Biz.STAFF[id]["wage"])], "success")
+		add_journal("Hired %s." % a_an(Biz.STAFF[id]["name"]), "level")
+		add_toast("Hired %s (£%.0f/day)." % [a_an(Biz.STAFF[id]["name"]), float(Biz.STAFF[id]["wage"])], "success")
 	save_game()
 	show_business()
 
@@ -5334,8 +5344,8 @@ func change_rel(stall, amount):
 	r["rel"] = clamp(float(r["rel"]) + amount, -50.0, 100.0)
 	var after = rel_tier(float(r["rel"]))
 	if after > before:
-		add_toast("%s now counts you as a %s." % [r["first"], rel_name(float(r["rel"])).to_lower()], "success")
-		add_journal("%s now counts you as a %s." % [r["name"], rel_name(float(r["rel"])).to_lower()], "good")
+		add_toast("%s now counts you as %s." % [r["first"], a_an(rel_name(float(r["rel"])).to_lower())], "success")
+		add_journal("%s now counts you as %s." % [r["name"], a_an(rel_name(float(r["rel"])).to_lower())], "good")
 		if after >= 3:
 			unlock_achievement("Friendly Face")
 
@@ -5482,6 +5492,8 @@ func rival_visit(si):
 	stall["revealed"] = clamp(int(stall["revealed"]) - revealed_removed, 0, new_stock.size())
 	if si == current_stall_index:
 		add_toast(fill_line(pick_line(WorldData.RIVAL["lines"]["snatch"]), {"item": took[took.size() - 1]}), "warn")
+	elif stall.get("visited", false):
+		add_toast("%s just bought the %s from %s's stall." % [rival.get("nickname", "Gaz"), took[took.size() - 1], stall["seller_display_name"]], "warn")
 
 # --- clearances ----------------------------------------------------------
 

@@ -100,7 +100,7 @@ func market_header():
 	var info = k.flow(8, 4)
 	info.add_child(k.chip("Day %d" % g.day, k.TEXT2, null, "xs", "cal"))
 	info.add_child(k.chip("%s, closes 12:00" % g.format_time(), k.GOLD, null, "xs", "clock"))
-	info.add_child(k.chip("Pitch fee %s" % g.fmt_money(g.daily_expenses), k.TEXT3, null, "xs", "coin"))
+	info.add_child(k.chip("Pitch fee %s" % g.fmt_money(g.daily_expenses) if g.daily_expenses > 0 else "Waved in free today", k.TEXT3 if g.daily_expenses > 0 else k.GREEN, null, "xs", "coin"))
 	if g.market_today.get("rival_here", false):
 		info.add_child(k.chip(gaz_whereabouts(), k.RED, null, "xs", "person"))
 	var bl = g.trade.bubble_label()

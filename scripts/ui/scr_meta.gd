@@ -24,7 +24,7 @@ func build_title(parent):
 	center.add_child(v)
 	if ResourceLoader.exists("res://banner.png"):
 		var tr = k.tex_rect(load("res://banner.png"), 0)
-		tr.custom_minimum_size = Vector2(0, 280 if not ui.mobile else 160)
+		tr.custom_minimum_size = Vector2(0, (280 if ui.logical.y >= 860 else 200) if not ui.mobile else 160)
 		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		v.add_child(tr)
 	else:

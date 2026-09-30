@@ -926,6 +926,8 @@ func sell_panel(it, index):
 		main_row.add_child(sb)
 	v.add_child(main_row)
 	var alt = k.flow(6, 6)
+	if g.trade.saleroom_unlocked() and not it["basic_researched"] and g.perceived_center(it) >= 60.0 and not it["listed"]:
+		alt.add_child(k.label("Research it to consign it: the saleroom needs a description.", "xs", k.TEXT3, true))
 	if g.trade.can_consign(it):
 		alt.add_child(k.button("Consign to the Saleroom", "gold", func(): g.trade.consign(index), "It goes under the hammer on day %d. 12%% commission, no fees or postage. The room pays for what it can see, so research and authentication help." % g.trade.next_sale_day(), "s"))
 	if g.auctions_unlocked():

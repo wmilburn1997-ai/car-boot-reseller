@@ -324,6 +324,9 @@ func runner_night():
 	var budget = clamp(g.cash * 0.1, 0.0, 400.0)
 	if budget < 30.0:
 		return
+	if g.inventory_space_used() > g.storage_capacity() * 0.8:
+		g.night_events.append({"kind": "info", "text": "Your runner stayed home", "sub": "Storage is over 80% full. He'll go again when there's room."})
+		return
 	var venue = g.pick_line(RUNNER_VENUES)
 	var bought = []
 	var spent = 0.0
@@ -335,8 +338,9 @@ func runner_night():
 		if not g.signatures.has(it["category"]):
 			continue
 		# He judges it the way you would, a bit less sharply.
-		var tier = g.expertise_tier(it["category"])
-		var guess = g.true_market_value(it) * g.rng.randf_range(0.55 + 0.08 * tier, 1.45 - 0.08 * tier)
+		# He judges it the way you would, with what you'd be able to see.
+		your_read(it)
+		var guess = g.perceived_center(it) * g.rng.randf_range(0.85, 1.15)
 		var price = float(it["asking"]) * g.rng.randf_range(0.8, 0.95)
 		if guess < price * 1.5 or spent + price > budget or not g.can_store(it):
 			continue
@@ -368,8 +372,18 @@ func next_sale_day():
 		d += 1
 	return d
 
+func consign_cap():
+	return 4 + (2 if g.premises_level >= 3 else 0)
+
+func consigned_count():
+	var n = 0
+	for x in g.inventory:
+		if x.get("consigned", false):
+			n += 1
+	return n
+
 func can_consign(it):
-	return saleroom_unlocked() and not it["listed"] and not it["auctioned"] and not it.get("on_shop_floor", false) and not it.get("consigned", false) and it["auth_status"] != "Confirmed Counterfeit" and g.perceived_center(it) >= 60.0 and (not it["testable"] or it["tested"])
+	return saleroom_unlocked() and it["basic_researched"] and consigned_count() < consign_cap() and not it["listed"] and not it["auctioned"] and not it.get("on_shop_floor", false) and not it.get("consigned", false) and it["auth_status"] != "Confirmed Counterfeit" and g.perceived_center(it) >= 60.0 and (not it["testable"] or it["tested"])
 
 func consign(index):
 	if index < 0 or index >= g.inventory.size():
@@ -404,8 +418,11 @@ func sell_consignments():
 		for t in it.get("traits", []):
 			if not t.get("known", false) and float(t["mult"]) > 1.0:
 				unk_good *= float(t["mult"])
-		var essay = 1.0 + (0.05 if it["deep_researched"] else 0.0) + (0.04 if it.get("hist", []).size() >= 4 else 0.0) + (0.05 if it["auth_status"] == "Confirmed Genuine" else 0.0)
-		var hammer = round(g.true_market_value(it) / sqrt(unk_good) * g.rng.randf_range(0.72, 1.12) * essay)
+		var essay = 1.0 + (0.06 if it["deep_researched"] else 0.0) + (0.04 if it.get("hist", []).size() >= 4 else 0.0) + (0.06 if it["auth_status"] == "Confirmed Genuine" else 0.0)
+		# The room bids on the catalogue description (what you've established), and inspects on viewing day:
+		# anything worse than described comes off.
+		var described = g.known_value(it) * (1.0 if it["condition_checked"] else 0.85)
+		var hammer = round(min(described * essay, g.true_market_value(it) / sqrt(unk_good) * 1.1) * g.rng.randf_range(0.72, 1.08))
 		var net = hammer * (1.0 - CONSIGN_COMMISSION)
 		g.cash += net
 		it["consigned"] = false

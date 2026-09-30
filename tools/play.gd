@@ -45,7 +45,7 @@ func _run(line, slot_path):
 		m.on_title_screen = false
 		m.has_save = true
 		m.ui.meta.continue_game()
-	seen_log = m.activity_log.size()
+	_mark_log()
 	for raw in line.split(";"):
 		var cmd = raw.strip_edges()
 		if cmd == "":
@@ -56,12 +56,28 @@ func _run(line, slot_path):
 	m.save_game()
 	quit()
 
+var last_line = ""
+
+func _mark_log():
+	seen_log = m.activity_log.size()
+	last_line = str(m.activity_log[seen_log - 1]) if seen_log > 0 else ""
+
 func _flush_log():
+	# The activity log is capped (old lines drop off the front), so find the last line we printed.
 	var n = m.activity_log.size()
-	# activity_log is capped at 150, so fall back to "last few" if it wrapped
-	var start = seen_log if seen_log <= n else max(0, n - 6)
+	var start = n
+	if last_line == "":
+		start = seen_log if seen_log <= n else max(0, n - 6)
+	else:
+		for i in range(n - 1, -1, -1):
+			if str(m.activity_log[i]) == last_line:
+				start = i + 1
+				break
+			start = 0 if i == 0 else start
 	for i in range(start, n):
 		print("  · " + str(m.activity_log[i]).substr(str(m.activity_log[i]).find("  ") + 2))
+	if n > 0:
+		last_line = str(m.activity_log[n - 1])
 	seen_log = n
 	while m.ui.popup_open:
 		m.ui._close_popup()
@@ -92,7 +108,7 @@ func _cmd(cmd):
 			m.init_new_run()
 			m.has_save = true
 			m.on_title_screen = false
-			seen_log = m.activity_log.size()
+			_mark_log()
 			status()
 			market()
 		"st": status()
@@ -152,7 +168,7 @@ func _cmd(cmd):
 				m.end_day()
 				b.spend_upgrades()
 			m.sim_mode = was
-			seen_log = m.activity_log.size()
+			_mark_log()
 			status()
 		"end":
 			m.end_day()
@@ -194,9 +210,11 @@ func _cmd(cmd):
 		"value": m.world.value_item(n)
 		"sel":
 			m.selected_stall_uid = int(m.stalls[m.current_stall_index]["stock"][n]["uid"])
+			m.ui.sheet_open = true
 			m.show_stall()
 		"isel":
 			m.selected_inv_uid = int(m.inventory[n]["uid"])
+			m.ui.sheet_open = true
 			m.show_inventory()
 		"size":
 			get_root().size = Vector2i(int(p[1]), int(p[2]))

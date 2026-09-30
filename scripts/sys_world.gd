@@ -109,20 +109,29 @@ func week_rollover():
 	var gaz = float(w["gaz"])
 	var diff = abs(you - gaz)
 	var line = ""
+	var raw = ""
 	if you >= gaz:
 		d["record"]["wins"] = int(d["record"]["wins"]) + 1
 		d["record"]["streak"] = max(1, int(d["record"]["streak"]) + 1)
-		line = g.unique_line(L.RIVAL_LINES["week_win"])
+		line = pick_not(L.RIVAL_LINES["week_win"], str(d.get("last_week", {}).get("line", "")))
 		g.add_journal("You beat %s this week: %s to %s." % [nick(), g.fmt_money(you), g.fmt_money(gaz)], "good")
 		g.add_xp(15)
 	else:
 		d["record"]["losses"] = int(d["record"]["losses"]) + 1
 		d["record"]["streak"] = min(-1, int(d["record"]["streak"]) - 1)
-		line = g.fill_line(g.unique_line(L.RIVAL_LINES["week_loss"]), {"amount": g.fmt_money(diff)})
+		raw = pick_not(L.RIVAL_LINES["week_loss"], str(d.get("last_week", {}).get("raw", "")))
+		line = g.fill_line(raw, {"amount": g.fmt_money(diff)})
 		g.add_journal("%s beat you this week: %s to %s." % [nick(), g.fmt_money(gaz), g.fmt_money(you)], "bad")
-	d["last_week"] = {"you": you, "gaz": gaz, "line": line, "won": you >= gaz, "day": g.day}
+	d["last_week"] = {"you": you, "gaz": gaz, "line": line, "raw": raw, "won": you >= gaz, "day": g.day}
 	g.night_events.append({"kind": "info" if you >= gaz else "bad", "text": ("You beat %s this week" if you >= gaz else "%s won the week") % nick(), "sub": "%s  (You %s · %s %s)" % [line, g.fmt_money(you), nick(), g.fmt_money(gaz)]})
 	d["week"] = {"you": 0.0, "gaz": 0.0, "start": g.day + 1}
+
+func pick_not(arr, avoid):
+	var c = []
+	for l in arr:
+		if str(l) != avoid:
+			c.append(l)
+	return g.pick_line(c if c.size() > 0 else arr)
 
 func buy_from_gaz(idx):
 	var d = st()
@@ -220,6 +229,21 @@ func roll_commission():
 	if cands.size() == 0:
 		return
 	var fam = cands[g.rng.randi_range(0, cands.size() - 1)]
+	var friends = []
+	for r in g.regulars:
+		if float(r["rel"]) >= 15.0 and int(r["visits"]) > 0:
+			friends.append(r)
+	var asker = null
+	if friends.size() > 0 and g.rng.randf() < 0.5:
+		asker = friends[g.rng.randi_range(0, friends.size() - 1)]
+		var mine = []
+		for f in cands:
+			if asker.get("cats", []).has(f["category"]):
+				mine.append(f)
+		if mine.size() > 0:
+			fam = mine[g.rng.randi_range(0, mine.size() - 1)]
+		else:
+			asker = null
 	for c in active:
 		if c["fam"] == fam["name"]:
 			return
@@ -227,12 +251,8 @@ func roll_commission():
 	var c = {"id": int(d["next_cid"]), "fam": fam["name"], "cat": fam["category"], "mult": mult, "expires": g.day + g.rng.randi_range(6, 11), "reg_id": -1, "from": ""}
 	d["next_cid"] = int(d["next_cid"]) + 1
 	# A regular who likes you, or a buyer from further afield.
-	var friends = []
-	for r in g.regulars:
-		if float(r["rel"]) >= 15.0 and int(r["visits"]) > 0:
-			friends.append(r)
-	if friends.size() > 0 and g.rng.randf() < 0.5:
-		var r = friends[g.rng.randi_range(0, friends.size() - 1)]
+	if asker != null:
+		var r = asker
 		c["reg_id"] = int(r["id"])
 		c["from"] = str(r["name"])
 		var arr = L.PERSONALITY_LINES.get(str(r["personality"]), {}).get("commission_ask", [])
@@ -242,7 +262,7 @@ func roll_commission():
 		c["from"] = buyer
 		c["text"] = g.fill_line(g.pick_line(L.COMMISSION_ASKS), {"buyer": short_from(c), "item": g.a_an(g.lc(fam["name"]))})
 	active.append(c)
-	g.add_toast("WANTED: a %s. %s pays %.1f× the going rate." % [fam["name"], short_from(c), mult], "info")
+	g.add_journal("WANTED: %s. %s pays %.1f× the going rate." % [g.a_an(fam["name"]), short_from(c), mult], "info")
 
 # Which commission buyers plausibly want what (by COMMISSION_BUYERS order).
 const BUYER_CATS = [["Collectables", "Games"], ["Home", "Garden & Outdoor"], ["Home", "Clothing", "Collectables", "Books"], ["Jewellery"], ["Musical Instruments"], ["Cameras"], ["Home", "Collectables", "Vinyl"], ["Games", "Electronics", "Trading Cards"], ["Clothing", "Jewellery"], ["Tools", "Electronics"]]
@@ -313,7 +333,7 @@ func deliver_commission(index):
 			thanks = g.fill_line(g.pick_line(arr), {"item": "the " + g.lc(item["name"])})
 	g.add_xp(12)
 	g.add_expertise(item["category"], 6)
-	g.add_journal("Found a %s for %s. Paid %s." % [item["name"], short_from(c), g.fmt_money(pay)], "good")
+	g.add_journal("Found %s for %s. Paid %s." % [g.a_an(item["name"]), short_from(c), g.fmt_money(pay)], "good")
 	var knocked = ("\n\nThey'd been quoted %s, but it wasn't quite as described, so they knocked it down." % g.fmt_money(quote)) if pay < quote - 1.0 else ""
 	g.show_big_popup("COMMISSION DONE", "%s\n\n%s paid %s (%s profit).%s" % [("\"%s\"" % thanks) if thanks != "" else "They're pleased with it.", short_from(c), g.fmt_money(pay), g.money_signed(profit), knocked], "sale" if pay >= quote - 1.0 else "info")
 	g.play_sfx("sale")
@@ -326,7 +346,7 @@ func expire_commissions():
 	var keep = []
 	for c in d["commissions"]:
 		if int(c["expires"]) < g.day:
-			g.add_journal("%s found a %s elsewhere." % [short_from(c), c["fam"]], "info")
+			g.add_journal("%s found %s elsewhere." % [short_from(c), g.a_an(c["fam"])], "info")
 		else:
 			keep.append(c)
 	d["commissions"] = keep
@@ -337,7 +357,7 @@ func expire_commissions():
 func check_big_finds():
 	# After you've done your homework on something special, a specialist rings.
 	var d = st()
-	if g.day - int(d.get("last_call_day", -99)) < 7:
+	if g.day - int(d.get("last_call_day", -99)) < 10:
 		return
 	for it in g.inventory:
 		if not it["basic_researched"]:
