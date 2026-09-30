@@ -270,7 +270,7 @@ func event_card(e):
 	var col = {"sale": k.GREEN, "return": k.RED, "missed": k.PURPLE, "bad": k.RED, "info": k.TEXT2}.get(kind, k.TEXT2)
 	if kind == "sale" and float(e.get("profit", 0.0)) < 0.0:
 		col = k.TEXT2
-	var gg = k.glyph(gl, col, 20)
+	var gg = k.item_icon(str(e["kind_name"]), "Home", 36) if e.has("kind_name") else k.glyph(gl, col, 20)
 	gg.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	h.add_child(gg)
 	var tv = k.vbox(2)
@@ -451,13 +451,10 @@ func toggle_row(name, on, cb):
 # Tutorial
 # ---------------------------------------------------------------------------
 const SLIDES = [
-	{"glyph": "stall", "title": "Welcome to the car boot", "body": "You've got £300, two hands and a spare room. Every morning you walk the car boot and buy things you think are worth more than the asking price. Then you sell them online.\n\nFour nights in the red with nothing you could sell to cover it, and you're finished."},
-	{"glyph": "person", "title": "Know your sellers", "body": "Clueless sellers price at random. Dealers know what things are worth. Dodgy sellers are cheap for a reason.\n\nMany of them are regulars. Treat them well and they'll warm to you: better haggles, things put aside for you, tip-offs about house clearances."},
-	{"glyph": "glass", "title": "Look before you buy", "body": "INSPECT is a quick glance, and it can be wrong. CHECK CONDITION gives the exact score and hidden damage. RESEARCH shows recent sold prices and your margin after fees.\n\nFees and postage eat cheap stuff. Only buy when there's a real gap."},
-	{"glyph": "q", "title": "Everything has a story", "body": "Items hide details: a first pressing, a hallmark under the tarnish, a missing battery door, a signature that's printed, a gem buried in a box of junk.\n\nPurple clues tell you something's there. Checks, expertise and workshop kit identify it. Anything you miss, a buyer will spot, for better or worse."},
-	{"glyph": "star", "title": "Become an expert", "body": "Selling and researching in a category builds your expertise. Enthusiasts see subtle tells. Specialists get a hands-on check at the stall (read the run-out, check the labels, loupe the hallmarks). Experts get a collector contact.\n\nPick a few categories you love."},
-	{"glyph": "tag", "title": "Sell overnight", "body": "At home, test electricals, fix what you can and set a price. Buyers turn up overnight when you end the day. Price low to sell fast, high to earn more.\n\nUnchecked faults and fakes come back as returns, and that hurts your seller rating."},
-	{"glyph": "shop", "title": "Build the business", "body": "Save up for a garage, then a lock-up, a shop and one day a warehouse. Fit out your workshop, get a van and do house clearances. Hire staff.\n\nGood luck. Don't go skint."},
+	{"glyph": "stall", "title": "Welcome to the car boot", "body": "You've got £300, a bag for life and a spare room. Every morning you walk a British car boot looking for things worth more than the asking price. Every evening, buyers look at what you've listed.\n\nSomewhere in these fields there's a first pressing, a signed guitar and a hallmark under the tarnish. Most of it is junk. Your job is telling the difference."},
+	{"glyph": "q", "title": "Every item hides something", "body": "INSPECT is a quick glance. CHECK CONDITION gives the real score. RESEARCH shows what these actually sell for, after fees.\n\nPurple clues mean there's more to find: a mark, a variant, a fault. Checks and expertise reveal it. Anything you miss, a buyer will spot."},
+	{"glyph": "person", "title": "Sellers are people", "body": "Make an offer and they'll take it, counter, or name a final price when their patience runs out. Found a flaw? Point it out. Research in front of a sharp dealer and the price might go up.\n\nRegulars remember what you bought from them. And Gaz, your rival, buys what you walk past."},
+	{"glyph": "tag", "title": "Sell, then grow", "body": "At home: test, clean, repair, price, list. Buyers come overnight, and the night report tells you why things aren't selling.\n\nGrow from a box room to a warehouse. Pick signature categories to master, chase Wanted requests, bid at the Saleroom. Just don't stay in the red for four nights."},
 ]
 
 func build_tutorial(parent):

@@ -401,7 +401,9 @@ func build_news(parent):
 	head.add_child(hv)
 	var hh = k.hbox(10)
 	hh.add_child(k.glyph("news", k.TEAL, 24))
-	hh.add_child(k.label("Market news · week %d · %s" % [g.current_week, g.get_season_name()], "xl", k.TEXT))
+	var nl = k.label("Market news · week %d · %s" % [g.current_week, g.get_season_name()], "l" if ui.mobile else "xl", k.TEXT, ui.mobile)
+	k.expand(nl)
+	hh.add_child(nl)
 	hv.add_child(hh)
 	if g.week_news.size() > 0:
 		var up = str(g.week_news.get("dir", "up")) == "up"

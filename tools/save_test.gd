@@ -168,5 +168,31 @@ func _run():
 	f.check_goals()
 	check(f.goals_done > 0, "old save fast-forwards met goals")
 	f.queue_free()
+	await process_frame
+	# 0.12 state: survives save/load, and a new game starts clean.
+	var g1 = load("res://Main.tscn").instantiate()
+	get_root().add_child(g1)
+	await process_frame
+	g1.start_new_game()
+	g1.expertise["Vinyl"] = 300.0
+	g1.set_signature("Vinyl")
+	g1.world.st()["record"]["wins"] = 3
+	g1.world.st()["commissions"].append({"id": 99, "fam": "Punk LP", "cat": "Vinyl", "mult": 1.5, "expires": 50, "reg_id": -1, "from": "Test"})
+	var shop_n = g1.world.st()["gaz_shop"].size()
+	g1.save_game()
+	g1.queue_free()
+	await process_frame
+	var g2 = load("res://Main.tscn").instantiate()
+	get_root().add_child(g2)
+	await process_frame
+	check(g2.signatures == ["Vinyl"], "signatures saved")
+	check(int(g2.world.st()["record"]["wins"]) == 3, "Gaz record saved")
+	check(g2.world.st()["commissions"].size() >= 1, "commissions saved")
+	check(g2.world.st()["gaz_shop"].size() == shop_n and shop_n > 0, "Gaz's shop saved (%d)" % shop_n)
+	g2.start_new_game()
+	check(g2.signatures.size() == 0, "new game clears signatures")
+	check(int(g2.world.st()["record"]["wins"]) == 0 and g2.world.st()["commissions"].size() == 0, "new game clears world state")
+	check(g2.world.st()["gaz_shop"].size() == 4, "new game restocks Gaz's shop")
+	g2.queue_free()
 	print("SAVE TESTS: %d failures" % fails)
 	quit()

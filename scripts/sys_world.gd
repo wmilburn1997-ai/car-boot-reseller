@@ -391,7 +391,7 @@ func answer_call(accept):
 			g.cash += float(c["offer"])
 			var profit = g.record_completed_sale(it, float(c["offer"]), {"fee": 0.0, "postage": 0.0, "insurance": 0.0, "packaging": 0.0}, "bigfind")
 			g.inventory.remove_at(i)
-			g.show_big_popup("SOLD TO A SPECIALIST", "%s\n\n%s paid %s. That's %s profit." % [g.item_display_name(it), str(c["caller"]).split(",")[0], g.fmt_money(c["offer"]), g.money_signed(profit)], "rare")
+			g.show_big_popup("SOLD TO A SPECIALIST", "%s\n\n%s paid %s. That's %s profit." % [g.item_display_name(it), str(c["caller"]).split(",")[0], g.fmt_money(c["offer"]), g.money_signed(profit)], "rare", {"item_name": it["name"], "icon": it["category"], "big": g.fmt_money(c["offer"])})
 			g.play_sfx("rare")
 			g.fx_money(float(c["offer"]))
 			break
@@ -471,7 +471,7 @@ func value_item(index):
 	lines.append(g.fill_line(g.pick_line(L.VALUATION[verdict]), {"item": name, "value": g.fmt_money(value)}))
 	g.hist(it, "Valued by Percival Dunmore at the tent: %s." % g.fmt_money(value))
 	g.add_journal("Percival valued %s at %s." % [name, g.fmt_money(value)], "good" if verdict == "high" else "info")
-	g.show_big_popup("THE VALUATION TENT", "\n\n".join(lines), "rare" if verdict == "high" else ("bad" if verdict in ["fake", "low"] else "info"))
+	g.show_big_popup("THE VALUATION TENT", "\n\n".join(lines), "rare" if verdict == "high" else ("bad" if verdict in ["fake", "low"] else "info"), {"item_name": it["name"], "icon": it["category"], "big": g.fmt_money(value), "count_up": value})
 	g.play_sfx("rare" if verdict == "high" else "reveal")
 	g.save_game()
 	g.show_market()

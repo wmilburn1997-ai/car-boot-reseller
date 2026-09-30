@@ -389,8 +389,9 @@ func category_card(c):
 	var th = k.hbox(8)
 	th.add_child(k.label(c, "m", k.TEXT))
 	th.add_child(k.chip(g.EXPERTISE_TIER_NAMES[t], k.tier_color(t)))
-	if g.is_signature(c):
-		th.add_child(k.chip("SIGNATURE", k.GOLD, null, "xs", "star"))
+	var sigchip = k.chip("SIGNATURE", k.GOLD, null, "xs", "star") if g.is_signature(c) else null
+	if sigchip != null and not ui.mobile:
+		th.add_child(sigchip)
 	th.add_child(k.spacer(0, 0, true))
 	var found = 0
 	var total = 0
@@ -399,8 +400,17 @@ func category_card(c):
 			total += 1
 			if g.discoveries_log.has(tid):
 				found += 1
-	th.add_child(k.label("%d/%d discoveries" % [found, total], "xs", k.PURPLE))
-	v.add_child(th)
+	var dl = k.label("%d/%d discoveries" % [found, total], "xs", k.PURPLE)
+	if ui.mobile:
+		v.add_child(th)
+		var dr = k.hbox(8)
+		if sigchip != null:
+			dr.add_child(sigchip)
+		dr.add_child(dl)
+		v.add_child(dr)
+	else:
+		th.add_child(dl)
+		v.add_child(th)
 	var pr = g.expertise_progress(c)
 	var capped = not g.is_signature(c) and g.raw_expertise_tier(c) >= 2
 	if capped:

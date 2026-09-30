@@ -84,7 +84,10 @@ func market_header():
 	k.expand(tv)
 	var mtype = str(g.market_today.get("type", "regular"))
 	var tr = k.flow(8, 4)
-	tr.add_child(k.label(str(g.market_today.get("venue", "The Car Boot")), "xl", k.TEXT))
+	var vl = k.label(str(g.market_today.get("venue", "The Car Boot")), "l" if ui.mobile else "xl", k.TEXT, ui.mobile)
+	if ui.mobile:
+		vl.custom_minimum_size = Vector2(200, 0)
+	tr.add_child(vl)
 	if mtype != "regular":
 		tr.add_child(k.chip(g.market_name(mtype), k.GOLD, null, "s", "star"))
 	tv.add_child(tr)
@@ -117,9 +120,9 @@ func gaz_whereabouts():
 		elif nxt == null:
 			nxt = step
 	if last != null and g.current_time_minutes - int(last["minute"]) <= 25 and int(last["stall"]) < g.stalls.size():
-		return "%s is at %s's stall" % [nk, g.stalls[int(last["stall"])]["seller_display_name"]]
+		return "%s at %s's" % [nk, g.stalls[int(last["stall"])]["seller_display_name"]]
 	if nxt != null and int(nxt["stall"]) < g.stalls.size():
-		return "%s is heading for %s's stall" % [nk, g.stalls[int(nxt["stall"])]["seller_display_name"]]
+		return "%s → %s's stall" % [nk, g.stalls[int(nxt["stall"])]["seller_display_name"]]
 	return "%s has been and gone" % nk
 
 func closing_card():
@@ -268,7 +271,7 @@ func event_card():
 	if fx.get("lost_dog", false) and not fx.get("dog_done", false):
 		var b = k.button("Find the owner", "special", func(): g.world.help_lost_dog(), "Walk the dog round the field. 15 minutes, 5 energy.", "s")
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		h.add_child(b)
+		(tv if ui.mobile else h).add_child(b)
 	return p
 
 func saleroom_card():
@@ -291,7 +294,7 @@ func saleroom_card():
 	h.add_child(tv)
 	var b = k.button("Catalogue", "gold", func(): g.show_saleroom(), "", "s")
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	h.add_child(b)
+	(tv if ui.mobile else h).add_child(b)
 	return p
 
 func build_saleroom(parent):
@@ -390,13 +393,13 @@ func valuation_card():
 	k.expand(tv)
 	tv.add_child(k.label("THE VALUATION TENT", "s", k.GOLD))
 	tv.add_child(k.label("Percival Dunmore values one item per visitor. He spots everything: marks, fakes, the lot.", "m", k.TEXT, true))
-	tv.add_child(k.label("20 minutes · 5 energy · one item a week", "xs", k.TEXT3))
+	tv.add_child(k.label("20 minutes · 5 energy · one item a week", "xs", k.TEXT3, true))
 	h.add_child(tv)
 	var can = g.world.can_value() and g.inventory.size() > 0
 	var b = k.button("Bring something" if g.world.can_value() else "Done this week", "gold" if can else "ghost", func(): valuation_picker(), "", "s")
 	b.disabled = not can
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	h.add_child(b)
+	(tv if ui.mobile else h).add_child(b)
 	return p
 
 func valuation_picker():

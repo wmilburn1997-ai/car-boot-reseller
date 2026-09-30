@@ -246,15 +246,16 @@ func position_toasts():
 	if toast_box == null:
 		return
 	if mobile:
+		# Top of the screen, under the HUD: never over the buy buttons or the tab bar.
 		toast_box.anchor_left = 0.0
 		toast_box.anchor_right = 1.0
-		toast_box.anchor_top = 1.0
-		toast_box.anchor_bottom = 1.0
-		toast_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		toast_box.anchor_top = 0.0
+		toast_box.anchor_bottom = 0.0
+		toast_box.grow_vertical = Control.GROW_DIRECTION_END
 		toast_box.offset_left = 10
 		toast_box.offset_right = -10
-		toast_box.offset_top = -86
-		toast_box.offset_bottom = -86
+		toast_box.offset_top = 72
+		toast_box.offset_bottom = 72
 	else:
 		toast_box.anchor_left = 1.0
 		toast_box.anchor_right = 1.0
@@ -868,7 +869,7 @@ func toast(text, kind = "info"):
 	p.add_child(h)
 	p.gui_input.connect(_toast_input.bind(p))
 	toast_box.add_child(p)
-	var maxn = 2 if mobile else 3
+	var maxn = 1 if mobile else 3
 	while toast_box.get_child_count() > maxn:
 		var old = toast_box.get_child(0)
 		toast_box.remove_child(old)
@@ -959,7 +960,18 @@ func _next_popup():
 	p.add_child(v)
 	var glyph_for = {"level": "star", "achievement": "trophy", "rare": "spark", "grail": "spark", "bad": "cross", "info": "spark"}
 	var extra = entry[3] if entry.size() > 3 else {}
-	if extra.has("icon"):
+	if extra.has("item_name"):
+		var ic2 = k.item_icon(extra["item_name"], extra.get("icon", "Home"), 96)
+		ic2.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		ic2.pivot_offset = Vector2(48, 48)
+		ic2.scale = Vector2(0.2, 0.2)
+		ic2.rotation = -0.3
+		v.add_child(ic2)
+		var itw = ic2.create_tween()
+		itw.set_parallel(true)
+		itw.tween_property(ic2, "scale", Vector2(1, 1), 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.1)
+		itw.tween_property(ic2, "rotation", 0.0, 0.45).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT).set_delay(0.1)
+	elif extra.has("icon"):
 		var ic = k.cat_icon(extra["icon"], 72)
 		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		v.add_child(ic)
@@ -971,6 +983,11 @@ func _next_popup():
 	if extra.has("big"):
 		var bl = k.label(str(extra["big"]), "hero", k.GREEN, false, HORIZONTAL_ALIGNMENT_CENTER)
 		v.add_child(bl)
+		if extra.has("count_up"):
+			# Percival takes his time: the number climbs.
+			var target = float(extra["count_up"])
+			var ctw = bl.create_tween()
+			ctw.tween_method(func(x): bl.text = g.fmt_money(round(x)), 0.0, target, 1.6).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
 		bl.pivot_offset = Vector2(100, 20)
 		var btw = bl.create_tween()
 		btw.set_loops(3)

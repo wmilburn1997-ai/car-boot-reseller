@@ -7,7 +7,7 @@ var rng = RandomNumberGenerator.new()
 var run_seed = 0
 var forced_run_seed = -1   # tools set this for reproducible runs
 
-const GAME_VERSION = "0.11.0-playtest"
+const GAME_VERSION = "0.12.0-playtest"
 const STARTING_CASH = 300.0
 const SAVE_PATH = "user://savegame.json"
 # Tools can point the game at another save file (CBR_SAVE=user://x.json) so parallel test runs don't collide.
@@ -133,12 +133,10 @@ var special_event_profiles = {
 var tutorial_seen = false
 var tutorial_slide_index = 0
 var tutorial_slides = [
-	{"title": "Welcome to the car boot", "body": "You've got £300, a tote bag and a spare room. Each morning you walk the car boot sale and buy things you think are underpriced. Then you sell them online for more.\n\nSmart buys grow the business. Bad ones sink it: four days in the red and you're bankrupt."},
-	{"title": "Every seller is different", "body": "A Clueless Seller prices almost at random, so bargains sit next to junk. A Dealer knows what things are worth but stocks rarer pieces. A Dodgy Seller is cheap, but fakes and faults are common.\n\nEach stall tells you who you're dealing with."},
-	{"title": "Look before you buy", "body": "INSPECT: a quick glance at condition. Cheap, but it can be wrong.\nCHECK CONDITION (£5): the exact score. Better condition sells for a lot more.\nRESEARCH (£1): recent sold prices, and what they come to AFTER fees and postage.\n\nFees eat cheap stuff. Only buy when the after-fees number clearly beats the asking price. Green means worth a look, red means walk away."},
-	{"title": "Haggle, but mind their patience", "body": "Make an offer and the seller takes it, counters, or names a final price when their patience runs out. Found a flaw? Point it out: if they hadn't priced it in, the price drops. Offer something insulting and they may refuse to sell it to you at all.\n\nEverything costs time and energy (⚡). Stalls pack up from late morning and the car boot shuts at noon. You can't check everything, so pick your battles."},
-	{"title": "At home: sort, price, sell", "body": "In Inventory, each item shows YOUR estimate of its worth, and it can be wrong. More checks narrow it down. Electronics must be TESTED before selling. Authenticate anything that might be fake.\n\nYou set the price and buyers arrive overnight when you End Day. Price low to sell fast, high to earn more. Faults, fakes and unchecked items can come back as returns, and that hurts your seller rating."},
-	{"title": "Build it up", "body": "Spend profits in the Shop on bigger bags, more storage, repair tools, a sharper eye and lower fees. Levels earn Skill Points. Trends shift weekly, and somewhere out there are 1-in-5,000 Grail finds.\n\nGood luck. Don't go skint."},
+	{"title": "Welcome to the car boot", "body": "You've got £300, a bag for life and a spare room. Every morning you walk a British car boot sale looking for things worth more than the asking price. Every evening, buyers look at what you've listed.\n\nSomewhere in these fields there's a first pressing, a signed guitar and a hallmark under the tarnish. Most of it is junk. Your job is telling the difference."},
+	{"title": "Every item hides something", "body": "INSPECT is a quick glance. CHECK CONDITION gives the real score. RESEARCH shows what these actually sell for, after fees.\n\nPurple \"?\" clues mean there's more to find: a mark, a variant, a fault. Checks and expertise reveal it. Anything you miss, a buyer will spot."},
+	{"title": "Sellers are people", "body": "Make an offer and they'll take it, counter, or name a final price when their patience runs out. Found a flaw? Point it out. Research in front of a sharp dealer and the price might go up.\n\nRegulars remember you. Gaz, your rival, is out there too, buying what you walk past."},
+	{"title": "Sell, then grow", "body": "At home: test, clean, repair, price, list. Buyers arrive overnight, and the night report tells you why things aren't selling.\n\nPut profit into a garage, a van, a shop. Pick signature categories to master, chase Wanted requests, bid at the Saleroom. Just don't let cash stay in the red for four nights."},
 ]
 
 func fixer_max_uses():
@@ -3816,6 +3814,12 @@ func generate_day_seeded():
 	rng = live
 
 func init_new_run():
+	# 0.12 state lives outside the old reset list: clear it first so a new game starts clean.
+	w2 = {}
+	signatures = []
+	signature_changed_day = -99
+	signature_nagged = {}
+	lines_used_today = {}
 	# Resets every piece of run state. Settings and tutorial_seen survive.
 	if forced_run_seed >= 0:
 		run_seed = forced_run_seed
@@ -4506,7 +4510,8 @@ func show_discovery(item, t):
 	if sim_mode or d == null:
 		return
 	play_sfx("rare")
-	show_big_popup("DISCOVERY: %s" % d["name"].to_upper(), "%s\n\n%s" % [item["name"], d["found"]], "rare", {"icon": item["category"], "big": "+%d%%" % trait_value_pct(t)})
+	var r = estimate_identified_potential(item)
+	show_big_popup("DISCOVERY: %s" % d["name"].to_upper(), "[b]%s[/b]\n%s\n\n%s\n\n[color=#7fd6c8]Worth %s–%s now, as far as you know.[/color]" % [item["name"], item_display_name(item) if str(item.get("ident", "")) != "" else "", d["found"], fmt_money(r[0]), fmt_money(r[1])], "rare", {"icon": item["category"], "item_name": item["name"], "big": "+%d%%" % trait_value_pct(t)})
 
 func missed_traits_on_sale(item):
 	# Called when an item sells: good traits you never found are revealed as missed.
@@ -4944,7 +4949,7 @@ func equipment_next_cost(id):
 		return -1.0
 	return float(def["levels"][lvl]["cost"])
 
-func buy_equipment(id):
+func buy_equipment(id, confirmed = false):
 	if not Biz.EQUIPMENT.has(id):
 		return
 	var def = Biz.EQUIPMENT[id]
@@ -4957,6 +4962,9 @@ func buy_equipment(id):
 	var cost = float(def["levels"][lvl]["cost"])
 	if cash < cost:
 		queue_popup("You need £%s." % fmt_int(cost))
+		return
+	if lvl == 0 and workshop_slots() - workshop_slots_used() == 1 and not confirmed and not sim_mode and ui != null:
+		ui.big_popup("YOUR LAST WORKSHOP SLOT", "The %s would take your last free slot. Nothing else fits until you move somewhere bigger.\n\n%s" % [def["levels"][0]["name"], def["levels"][0]["desc"]], "info", {"buttons": [["Install it", func(): buy_equipment(id, true), "primary"], ["Not yet", func(): pass, "ghost"]]})
 		return
 	cash -= cost
 	day_stats["business_spend"] = float(day_stats.get("business_spend", 0.0)) + cost
