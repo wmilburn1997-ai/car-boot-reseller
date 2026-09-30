@@ -44,6 +44,7 @@ func _run(line, slot_path):
 			return
 		m.on_title_screen = false
 		m.has_save = true
+		m.ui.meta.continue_game()
 	seen_log = m.activity_log.size()
 	for raw in line.split(";"):
 		var cmd = raw.strip_edges()
@@ -174,6 +175,23 @@ func _cmd(cmd):
 				m.show_inventory()
 		"screen":
 			m.call(p[1])
+		"world":
+			var d = m.world.st()
+			print("  week: you %s gaz %s | record %s" % [money(d["week"]["you"]), money(d["week"]["gaz"]), str(d["record"])])
+			print("  last week: %s" % str(d.get("last_week", {})))
+			print("  event today: %s" % str(m.market_today.get("event", {})))
+			print("  valuation today: %s" % str(m.world.valuation_today()))
+			for cm in d["commissions"]:
+				print("  WANTED %s (%s) x%.2f until %d from %s: %s" % [cm["fam"], cm["cat"], cm["mult"], cm["expires"], cm["from"], cm.get("text", "")])
+			for i in range(d["gaz_shop"].size()):
+				var e = d["gaz_shop"][i]
+				print("  GAZ[%d] %s | %s | price %s paid %s true %s seen %s" % [i, e["item"].get("gaz_title", ""), e["item"]["name"], money(e["price"]), money(e["paid"]), money(m.true_market_value(e["item"])), str(e["seen"])])
+			for h in d["headlines"]:
+				print("  HEADLINE %s" % h["text"])
+			print("  calls: %s" % str(d["calls"]))
+		"gazbuy": m.world.buy_from_gaz(n)
+		"deliver": m.world.deliver_commission(n)
+		"value": m.world.value_item(n)
 		"sel":
 			m.selected_stall_uid = int(m.stalls[m.current_stall_index]["stock"][n]["uid"])
 			m.show_stall()

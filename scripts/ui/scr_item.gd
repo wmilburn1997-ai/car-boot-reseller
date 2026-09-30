@@ -169,6 +169,8 @@ func status_row(it, ctx):
 	var entries = []   # [priority (lower first), node]
 	if it["rarity"] != "Common":
 		entries.append([1, k.label("%s 1/%d" % [it["rarity"].to_upper(), int(it["one_in"])], "xs", k.rarity_color(it["rarity"]))])
+	if g.world.commission_for(it) != null:
+		entries.append([0, k.label("WANTED", "xs", k.GOLD)])
 	var good = 0
 	var bad = 0
 	var clue = 0
@@ -265,6 +267,8 @@ func detail(it, ctx, index, stall = null):
 			v.add_child(haggle_panel(it, index, stall))
 		elif str(it.get("haggle_result", "")) == "final":
 			v.add_child(k.label("Final price. Take it or leave it.", "s", k.ORANGE))
+		elif stall != null and g.to_bool(stall.get("no_haggle", false)):
+			v.add_child(k.label("Fixed prices on this stall. No haggling.", "s", k.TEXT3))
 	elif ctx == "inv":
 		var acts = inv_actions(it, index)
 		if acts.get_child_count() > 0:
@@ -795,6 +799,19 @@ func sell_panel(it, index):
 		v.add_child(k.label("It's a fake. You can't sell it honestly, but you can scrap it for parts.", "s", k.RED, true))
 		v.add_child(k.button("Scrap for parts", "danger", func(): g.scrap_item(index), "", "m"))
 		return v
+	var com = g.world.commission_for(it)
+	if com != null:
+		var cp = k.panel("gold", 10)
+		var ch = k.hbox(10)
+		cp.add_child(ch)
+		ch.add_child(k.glyph("heart", k.GOLD, 20))
+		var ctv = k.vbox(2)
+		k.expand(ctv)
+		ctv.add_child(k.label("%s wants one" % g.world.short_from(com), "m", k.GOLD, true))
+		ctv.add_child(k.label("Pays %.1f× what it's really worth. No fees, no postage. Until day %d." % [float(com["mult"]), int(com["expires"])], "xs", k.TEXT2, true))
+		ch.add_child(ctv)
+		ch.add_child(k.button("Deliver", "gold", func(): g.world.deliver_commission(index), "Hand it over. They judge the real thing: hidden flaws lower the price.", "m", 110, 44))
+		v.add_child(cp)
 	if it["listed"]:
 		var p = k.panel("good", 10)
 		var h = k.hbox(10)

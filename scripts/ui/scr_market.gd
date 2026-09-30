@@ -33,9 +33,18 @@ func build_market(parent):
 	if g.current_time_minutes >= 12 * 60:
 		v.add_child(closing_card())
 	else:
+		var ev = event_card()
+		if ev != null:
+			v.add_child(ev)
+		var vt = valuation_card()
+		if vt != null:
+			v.add_child(vt)
 		var leads = leads_card()
 		if leads != null:
 			v.add_child(leads)
+		var wc = wanted_card()
+		if wc != null:
+			v.add_child(wc)
 		v.add_child(k.section("%d stalls today" % g.stalls.size()))
 		var cols = 1 if ui.mobile else (3 if ui.logical.x < 1500 else 4)
 		var gr = k.grid(cols, 10, 10)
@@ -45,6 +54,9 @@ func build_market(parent):
 			gr.add_child(c)
 		v.add_child(gr)
 	var extras = k.grid(1 if ui.mobile else 3, 10, 10)
+	var gz = gaz_card()
+	if gz != null:
+		extras.add_child(gz)
 	var mb = mystery_card()
 	if mb != null:
 		extras.add_child(mb)
@@ -202,6 +214,180 @@ func leads_card():
 		row.add_child(b)
 		v.add_child(row)
 	return p
+
+func event_card():
+	var ev = g.market_today.get("event", {})
+	if typeof(ev) != TYPE_DICTIONARY or ev.size() == 0:
+		return null
+	var p = k.panel("purple", 10 if ui.mobile else 14)
+	var h = k.hbox(12)
+	p.add_child(h)
+	var gl = k.glyph("spark", k.PURPLE, 20 if ui.mobile else 28)
+	gl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	h.add_child(gl)
+	var tv = k.vbox(4)
+	k.expand(tv)
+	tv.add_child(k.label(str(ev.get("title", "")).to_upper(), "s", k.PURPLE))
+	tv.add_child(k.label(str(ev.get("text", "")), "s" if ui.mobile else "m", k.TEXT, true))
+	var fx = ev.get("fx", {})
+	var note = ""
+	if fx.has("hype_cat"):
+		note = "%s are selling for more this week, and every seller here knows it." % str(fx["hype_cat"])
+	elif fx.has("late_van") and not fx.get("late_done", false):
+		note = "Word is there's a clearance van due about %s." % g.minute_to_clock(int(fx["late_van"]))
+	elif fx.has("after") and float(fx.get("haggle", 0.0)) > 0.0:
+		note = "After %s, sellers will take a lot less." % g.minute_to_clock(int(fx["after"]))
+	elif float(fx.get("haggle", 0.0)) > 0.0:
+		note = "Sellers are softer than usual today."
+	elif float(fx.get("haggle", 0.0)) < 0.0:
+		note = "Busy field: sellers are holding their prices."
+	if note != "":
+		tv.add_child(k.label(note, "xs", k.TEXT2, true))
+	h.add_child(tv)
+	if fx.get("lost_dog", false) and not fx.get("dog_done", false):
+		var b = k.button("Find the owner", "special", func(): g.world.help_lost_dog(), "Walk the dog round the field. 15 minutes, 5 energy.", "s")
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(b)
+	return p
+
+func valuation_card():
+	if not g.world.valuation_today():
+		return null
+	var p = k.panel("gold", 14)
+	var h = k.hbox(12)
+	p.add_child(h)
+	var gl = k.glyph("eye", k.GOLD, 28)
+	gl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	h.add_child(gl)
+	var tv = k.vbox(4)
+	k.expand(tv)
+	tv.add_child(k.label("THE VALUATION TENT", "s", k.GOLD))
+	tv.add_child(k.label("Percival Dunmore values one item per visitor. He spots everything: marks, fakes, the lot.", "m", k.TEXT, true))
+	tv.add_child(k.label("20 minutes · 5 energy · one item a week", "xs", k.TEXT3))
+	h.add_child(tv)
+	var can = g.world.can_value() and g.inventory.size() > 0
+	var b = k.button("Bring something" if g.world.can_value() else "Done this week", "gold" if can else "ghost", func(): valuation_picker(), "", "s")
+	b.disabled = not can
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(b)
+	return p
+
+func valuation_picker():
+	var list = k.vbox(8)
+	list.add_child(k.label("Which one will you show him?", "m", k.TEXT2, true))
+	for i in range(g.inventory.size()):
+		var it = g.inventory[i]
+		var idx = i
+		list.add_child(ui.item.tile(it, "inv", false, func():
+			ui.close_sheet()
+			g.world.value_item(idx)))
+	ui.open_sheet("The Valuation Tent", list, null, func(): pass)
+
+func wanted_card():
+	var cs = g.world.st()["commissions"]
+	if cs.size() == 0:
+		return null
+	var p = k.panel("card", 12)
+	var v = k.vbox(8)
+	p.add_child(v)
+	var h = k.hbox(8)
+	h.add_child(k.glyph("heart", k.GOLD, 18))
+	h.add_child(k.label("Wanted", "m", k.GOLD))
+	h.add_child(k.spacer(0, 0, true))
+	h.add_child(k.label("they pay over the odds", "xs", k.TEXT3))
+	v.add_child(h)
+	for c in cs:
+		var row = k.hbox(10)
+		var tv = k.vbox(1)
+		k.expand(tv)
+		var owned = false
+		for it in g.inventory:
+			if str(it["name"]) == str(c["fam"]):
+				owned = true
+		tv.add_child(k.label("%s  (%s)%s" % [c["fam"], c["cat"], "  ·  you have one!" if owned else ""], "b" if ui.mobile else "m", k.GREEN if owned else k.TEXT, true))
+		if not ui.mobile:
+			tv.add_child(k.label("\"%s\"" % str(c.get("text", "")), "xs", k.TEXT2, true))
+		tv.add_child(k.label("%s · pays %.1f× · until day %d" % [g.world.short_from(c), float(c["mult"]), int(c["expires"])], "xs", k.TEXT3, true))
+		row.add_child(tv)
+		v.add_child(row)
+	return p
+
+func gaz_card():
+	var d = g.world.st()
+	if g.day < 2:
+		return null
+	var nk = g.world.nick()
+	var p = k.panel("card", 12)
+	var v = k.vbox(6)
+	p.add_child(v)
+	var h = k.hbox(8)
+	h.add_child(k.glyph("person", k.RED, 18))
+	h.add_child(k.label("%s's Gems" % nk, "m", k.TEXT))
+	h.add_child(k.spacer(0, 0, true))
+	var rec = d["record"]
+	h.add_child(k.label("weeks %d–%d" % [int(rec["wins"]), int(rec["losses"])], "xs", k.TEXT3))
+	v.add_child(h)
+	var w = d["week"]
+	var you = float(w["you"])
+	var gz = float(w["gaz"])
+	var bar = k.hbox(6)
+	bar.add_child(k.label("This week: you %s" % g.fmt_money(you), "s", k.GREEN if you >= gz else k.TEXT2))
+	bar.add_child(k.label("·", "s", k.TEXT3))
+	bar.add_child(k.label("%s %s" % [nk, g.fmt_money(gz)], "s", k.RED if gz > you else k.TEXT2))
+	v.add_child(bar)
+	var n = d["gaz_shop"].size()
+	v.add_child(k.label("His online shop has %d listing%s. He misprices anything outside %s." % [n, "" if n == 1 else "s", ", ".join(g.rival.get("cats", []))], "xs", k.TEXT3, true))
+	var b = k.button("Browse his listings", "ghost", func(): g.show_gaz_shop(), "", "s")
+	b.disabled = n == 0
+	v.add_child(b)
+	return p
+
+func build_gaz_shop(parent):
+	var d = g.world.st()
+	var nk = g.world.nick()
+	var v = k.vbox(10)
+	var head = k.panel("card2", 14)
+	var hv = k.vbox(6)
+	head.add_child(hv)
+	var top = k.hbox(8)
+	top.add_child(k.icon_button("left", func(): ui.show_market(), "Back", "ghost", 38))
+	var tt = k.vbox(2)
+	k.expand(tt)
+	tt.add_child(k.label("%s's Gems" % nk, "xl", k.TEXT))
+	tt.add_child(k.label(g.pick_line(g.Lines012.RIVAL_LINES["shop_intro"]) if not d.has("shop_intro") else str(d["shop_intro"]), "s", k.TEXT3, true))
+	top.add_child(tt)
+	hv.add_child(top)
+	hv.add_child(k.label("Everything %s bought this week, relisted. He knows %s. Everything else, he's guessing. £4 postage." % [nk, ", ".join(g.rival.get("cats", []))], "s", k.TEXT2, true))
+	v.add_child(head)
+	if not d.has("shop_intro"):
+		d["shop_intro"] = g.pick_line(g.Lines012.RIVAL_LINES["shop_intro"])
+	var shop = d["gaz_shop"]
+	if shop.size() == 0:
+		v.add_child(k.label("Nothing listed right now.", "m", k.TEXT3))
+	for i in range(shop.size()):
+		var e = shop[i]
+		var it = e["item"]
+		var idx = i
+		var p = k.panel("card", 12)
+		var h = k.hbox(12)
+		p.add_child(h)
+		h.add_child(k.cat_icon(it["category"], 40))
+		var tv = k.vbox(2)
+		k.expand(tv)
+		tv.add_child(k.label(str(it.get("gaz_title", it["name"])), "m", k.TEXT, true))
+		tv.add_child(k.label("%s · %s%s" % [it["name"], g.item_display_name(it) if str(it.get("ident", "")) != "" else it["category"], "" if g.rival.get("cats", []).has(it["category"]) else "  ·  outside his patch"], "xs", k.TEXT2, true))
+		var pot = g.estimate_identified_potential(it)
+		tv.add_child(k.label("You'd guess %s–%s%s" % [g.fmt_money(pot[0]), g.fmt_money(pot[1]), "  ·  you saw this on %s's table" % str(e.get("from", "")).split(" ")[0] if e.get("seen", false) else ""], "xs", k.TEAL, true))
+		h.add_child(tv)
+		var pv = k.vbox(4)
+		pv.add_child(k.label(g.fmt_money(e["price"]), "l", k.GOLD, false, HORIZONTAL_ALIGNMENT_RIGHT))
+		var bb = k.button("Buy", "action", func(): g.world.buy_from_gaz(idx), "Buy it off him. %s + £4 postage." % g.fmt_money(e["price"]), "s", 80)
+		bb.disabled = g.cash < float(e["price"]) + 4.0 or not g.can_store(it)
+		pv.add_child(bb)
+		h.add_child(pv)
+		v.add_child(p)
+	v.add_child(k.spacer(0, 20))
+	parent.add_child(ui.keyed_scroll("gazshop", ui.cap_width(v, 1100)))
 
 func mystery_card():
 	if g.mystery_packages_left <= 0:

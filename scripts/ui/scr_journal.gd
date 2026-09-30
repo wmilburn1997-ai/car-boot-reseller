@@ -19,7 +19,7 @@ func build(parent, want_tab = ""):
 		tab = want_tab
 	var v = k.vbox(12)
 	var tabs = k.hbox(6)
-	var names = [["story", "Story"], ["discoveries", "Discoveries"], ["collection", "Collection"], ["achievements", "Achievements"], ["sales", "Sales"]]
+	var names = [["story", "Story"], ["flips", "Best flips"], ["discoveries", "Discoveries"], ["collection", "Collection"], ["achievements", "Achievements"], ["sales", "Sales"]]
 	if ui.mobile:
 		names.insert(1, ["expertise", "Expertise"])
 		names.insert(2, ["perks", "Perks"])
@@ -39,6 +39,8 @@ func build(parent, want_tab = ""):
 	match tab:
 		"story":
 			story(v)
+		"flips":
+			flips(v)
 		"discoveries":
 			discoveries(v)
 		"collection":
@@ -360,6 +362,38 @@ func logs(v):
 # ---------------------------------------------------------------------------
 # News & trends
 # ---------------------------------------------------------------------------
+func flips(v):
+	# A scrapbook of your best deals, each with its whole story.
+	var sold = []
+	for e in g.sold_history:
+		if e.has("profit"):
+			sold.append(e)
+	sold.sort_custom(func(a, b): return float(a["profit"]) > float(b["profit"]))
+	if sold.size() == 0:
+		v.add_child(k.label("Your best deals will be pinned here, with the whole story of each one.", "m", k.TEXT3, true))
+		return
+	var n = 0
+	for e in sold:
+		if n >= 12 or float(e["profit"]) <= 0.0:
+			break
+		n += 1
+		var p = k.panel("good" if n <= 3 else "card", 12)
+		var pv = k.vbox(4)
+		p.add_child(pv)
+		var h = k.hbox(10)
+		h.add_child(k.cat_icon(str(e.get("category", "Home")), 36))
+		var tv = k.vbox(1)
+		k.expand(tv)
+		var title = str(e.get("ident", "")) if str(e.get("ident", "")) != "" else str(e["name"])
+		tv.add_child(k.label("%d. %s" % [n, title], "m", k.TEXT, true))
+		tv.add_child(k.label("%s · paid %s · sold %s" % [e["name"], g.fmt_money(e.get("paid", 0)), g.fmt_money(e.get("price", 0))], "xs", k.TEXT3, true))
+		h.add_child(tv)
+		h.add_child(k.label(g.money_signed(float(e["profit"])), "l", k.GREEN))
+		pv.add_child(h)
+		for line in e.get("hist", []):
+			pv.add_child(k.label("Day %d  ·  %s" % [int(line[0]), str(line[1])], "xs", k.TEXT2, true))
+		v.add_child(p)
+
 func build_news(parent):
 	var v = k.vbox(12)
 	var head = k.panel("card2", 14)
@@ -376,6 +410,19 @@ func build_news(parent):
 	for line in g.trend_headlines:
 		hv.add_child(k.label(line, "s", k.TEXT2, true))
 	v.add_child(head)
+	var d = g.world.st()
+	var heads = d.get("headlines", [])
+	var lw = d.get("last_week", {})
+	if heads.size() > 0 or lw.size() > 0:
+		v.add_child(k.section("In the local paper"))
+		var pp = k.panel("inset", 12)
+		var pv = k.vbox(6)
+		pp.add_child(pv)
+		for i in range(heads.size() - 1, max(-1, heads.size() - 5), -1):
+			pv.add_child(k.label("\"%s\"" % str(heads[i]["text"]), "m", k.GOLD, true))
+		if lw.size() > 0:
+			pv.add_child(k.label("Boot-sale league, last week: you %s, %s %s. %s" % [g.fmt_money(lw["you"]), g.world.nick(), g.fmt_money(lw["gaz"]), str(lw.get("line", ""))], "s", k.TEXT2, true))
+		v.add_child(pp)
 	v.add_child(k.section("Demand by category"))
 	var cats = g.CATEGORIES.duplicate()
 	cats.sort_custom(func(a, b): return float(g.current_trends.get(a, 1.0)) > float(g.current_trends.get(b, 1.0)))

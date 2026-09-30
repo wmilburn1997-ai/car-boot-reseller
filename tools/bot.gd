@@ -163,6 +163,18 @@ func comps_median(item):
 	return float(v[v.size() / 2])
 
 func play_home():
+	# A specialist on the phone: take it (it's a fair price with no fees).
+	if strategy != "naive":
+		var call = g.world.pending_call()
+		if call != null:
+			g.world.answer_call(true)
+		for idx in range(g.inventory.size() - 1, -1, -1):
+			if idx < g.inventory.size() and g.world.commission_for(g.inventory[idx]) != null:
+				var it = g.inventory[idx]
+				if not it["testable"] or it["tested"] or (g.cash >= g.test_cost() and g.energy >= g.test_energy()):
+					if it["testable"] and not it["tested"]:
+						g.test_item(idx)
+					g.world.deliver_commission(idx)
 	for idx in range(g.inventory.size() - 1, -1, -1):
 		if idx >= g.inventory.size():
 			continue

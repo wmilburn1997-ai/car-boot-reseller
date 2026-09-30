@@ -75,4 +75,12 @@ func run_one(seed, days):
 		"sold": g.sold_history.size(), "level": g.player_level, "profit": snapped(g.total_lifetime_profit, 1),
 		"rating": snapped(g.seller_rating, 0.1), "premises": g.premises_level, "vehicle": g.vehicle_level,
 		"equip": g.equipment.keys(), "clearances": bot.stats["clearances"], "discoveries": disc, "missed": missed,
-		"max_tier": g.max_expertise_tier(), "goals": g.goals_done, "curve": curve}
+		"max_tier": g.max_expertise_tier(), "goals": g.goals_done, "curve": curve,
+		"gaz_record": g.world.st()["record"], "commissions_done": _count_channel(g, "commission"), "bigfind": _count_channel(g, "bigfind")}
+
+func _count_channel(g, ch):
+	var n = 0
+	for s in g.sold_history:
+		if str(s.get("channel", "")) == ch:
+			n += 1
+	return n

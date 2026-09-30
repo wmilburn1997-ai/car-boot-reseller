@@ -4,6 +4,10 @@ extends RefCounted
 # clearances, weekly news, rumours, buyer messages and trade hints.
 # Pure data. All people, places and venues are fictional.
 
+# Names that read as female, for personalities whose lines assume it (widow, nan...).
+const FEMALE_NAMES = ["Doreen", "Priya", "Siobhan", "Maureen", "Aisha", "Brenda", "Sharon", "Bernadette", "Nia", "Agnieszka", "Fatima", "Pauline", "Chloe", "Janet", "Mairead", "Shanice", "Hyacinth", "Kerry", "Yasmin", "Tracey", "Glenys", "Sunita", "Leanne", "Beryl", "Megan", "Morag", "Sandra", "Bethan", "Joan", "Ellie", "Ivy", "Stacey", "Marcia", "Jadwiga", "Hilary", "Kirsty", "Zainab"]
+const MALE_NAMES = ["Kev", "Tomasz", "Winston", "Gary", "Callum", "Dev", "Terry", "Olumide", "Wayne", "Graham", "Barry", "Rhys", "Des", "Ravi", "Colin", "Alan", "Dariusz", "Stuart", "Clive", "Imran", "Malcolm", "Kwame", "Declan", "Nigel", "Dean", "Oluwaseun", "Craig", "Arjun", "Liam", "Delroy", "Hamza", "Keith", "Rajesh", "Euan", "Frank", "Tyrone", "Mo", "Norman", "Ron"]
+const PERSONALITY_GENDER = {"grieving_widow": "f", "glamorous_nan": "f", "antiques_lady": "f", "divorce_clearout": "f", "flash_lad": "m", "clearance_man": "m", "wheeler_dealer": "m", "grumpy_old_timer": "m"}
 const FIRST_NAMES = [
 	"Doreen", "Kev", "Priya", "Tomasz", "Siobhan", "Winston", "Maureen", "Gary",
 	"Aisha", "Callum", "Brenda", "Dev", "Sharon", "Terry", "Olumide", "Bernadette",

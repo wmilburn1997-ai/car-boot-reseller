@@ -678,6 +678,24 @@ func show_market():
 		return
 	begin("show_market")
 	market.build_market(content)
+	maybe_phone_call()
+
+var call_shown_uid = -1
+
+func maybe_phone_call():
+	var c = g.world.pending_call()
+	if c == null or int(c["uid"]) == call_shown_uid:
+		return
+	call_shown_uid = int(c["uid"])
+	var name = ""
+	for it in g.inventory:
+		if int(it["uid"]) == int(c["uid"]):
+			name = g.item_display_name(it)
+	big_popup("YOUR PHONE RINGS", "[i]%s[/i]\n\n\"%s\"\n\nThey'd pay %s for %s. No fees, no postage." % [str(c["caller"]), str(c["line"]), g.fmt_money(c["offer"]), name], "rare", {"buttons": [["Accept %s" % g.fmt_money(c["offer"]), func(): g.world.answer_call(true), "buy"], ["Not yet", func(): g.world.answer_call(false), "ghost"]]})
+
+func show_gaz_shop():
+	begin("show_gaz_shop")
+	market.build_gaz_shop(content)
 
 func show_stall():
 	if g.clearance != null:
@@ -701,6 +719,7 @@ func show_inventory(fresh = false):
 		sheet_open = false
 	begin("show_inventory", [false])
 	stock.build(content)
+	maybe_phone_call()
 
 func show_business():
 	begin("show_business")
@@ -772,6 +791,12 @@ func master_detail(parent, list_key, list_node, detail_node, detail_ratio = 0.9,
 		dp.add_child(ds)
 	row.add_child(dp)
 	parent.add_child(row)
+
+func close_sheet():
+	for c in sheet_layer.get_children():
+		sheet_layer.remove_child(c)
+		c.queue_free()
+	sheet_open = false
 
 func open_sheet(title_text, body_node, footer_node = null, on_close = null):
 	for c in sheet_layer.get_children():
@@ -948,9 +973,20 @@ func _next_popup():
 		btw.tween_property(bl, "modulate", Color(1.3, 1.3, 1.3, 1), 0.25)
 		btw.tween_property(bl, "modulate", Color(1, 1, 1, 1), 0.25)
 	v.add_child(k.rich(str(entry[1]), "b", k.TEXT2, "center"))
-	var ok = k.button("Nice" if kind in ["level", "rare", "grail", "achievement"] else "OK", "primary" if kind != "bad" else "ghost", func(): _close_popup(), "", "m", 180, 46)
-	ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(ok)
+	if extra.has("buttons"):
+		var brow = k.hbox(10)
+		brow.alignment = BoxContainer.ALIGNMENT_CENTER
+		for bd in extra["buttons"]:
+			var cb = bd[1]
+			var bb = k.button(str(bd[0]), str(bd[2]) if bd.size() > 2 else "primary", func():
+				_close_popup()
+				cb.call(), "", "m", 150, 46)
+			brow.add_child(bb)
+		v.add_child(brow)
+	else:
+		var ok = k.button("Nice" if kind in ["level", "rare", "grail", "achievement"] else "OK", "primary" if kind != "bad" else "ghost", func(): _close_popup(), "", "m", 180, 46)
+		ok.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		v.add_child(ok)
 	p.pivot_offset = p.custom_minimum_size / 2.0
 	p.scale = Vector2(0.85, 0.85)
 	p.modulate = Color(1, 1, 1, 0)

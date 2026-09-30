@@ -17,6 +17,9 @@ const ContentScript = preload("res://scripts/content.gd")
 const Biz = preload("res://scripts/data/business.gd")
 const Lines012 = preload("res://scripts/data/lines_012.gd")
 const Ident = preload("res://scripts/data/identity.gd")
+const WorldSys = preload("res://scripts/sys_world.gd")
+var w2 = {}
+var world = WorldSys.new(self)
 const WorldData = preload("res://scripts/data/world.gd")
 const UIRoot = preload("res://scripts/ui/ui_root.gd")
 static var _content_cache = null
@@ -177,6 +180,7 @@ func get_save_data():
 		"save_version": SAVE_VERSION,
 		"game_version": GAME_VERSION,
 		"run_seed": str(run_seed),
+		"w2": w2,
 		"rng_seed": str(rng.seed),
 		"rng_state": str(rng.state),
 		"energy": energy,
@@ -302,6 +306,9 @@ func apply_save_data(parsed):
 		rng.seed = hash([run_seed, "live", int(parsed.get("day", 1))])
 	cash = float(parsed.get("cash", cash))
 	day = int(parsed.get("day", day))
+	w2 = parsed.get("w2", {}) if typeof(parsed.get("w2", {})) == TYPE_DICTIONARY else {}
+	for e in w2.get("gaz_shop", []):
+		e["item"] = normalize_item(e["item"])
 	player_level = int(parsed.get("player_level", player_level))
 	player_xp = int(parsed.get("player_xp", player_xp))
 	next_item_uid = int(parsed.get("next_item_uid", 1))
@@ -782,14 +789,25 @@ func generate_day():
 					reg = pool[pool.size() - 1][0]
 		if reg == null:
 			reg = make_regular(arch)
+			var gpool = WorldData.FIRST_NAMES
+			var gg = str(WorldData.PERSONALITY_GENDER.get(str(reg["personality"]), ""))
+			if gg == "f":
+				gpool = WorldData.FEMALE_NAMES
+			elif gg == "m":
+				gpool = WorldData.MALE_NAMES
 			while used_first.has(reg["first"]):
-				reg["first"] = pick_line(WorldData.FIRST_NAMES)
+				reg["first"] = pick_line(gpool)
 				reg["name"] = reg["first"] + " " + pick_line(WorldData.SURNAMES)
 			reg["id"] = -1
 		used_regulars[reg["id"]] = true
 		used_first[reg["first"]] = true
 		stalls.append(build_stall(reg, mfx, wfx))
 	plan_rival_route()
+	world.st()
+	world.roll_market_event()
+	world.expire_commissions()
+	world.roll_commission()
+	lines_used_today = {}
 	current_stall_index = 0
 
 var home_venue = ""
@@ -862,6 +880,8 @@ func on_stall_visit(stall):
 	if r != null:
 		r["visits"] = int(r["visits"]) + 1
 		r["last_seen"] = day
+		if float(r["rel"]) < 20.0:
+			r["rel"] = float(r["rel"]) + 1.5   # turning up counts for something
 	stall["greeting"] = stall_greeting(stall)
 	if stall.get("tipoff", false) and r != null:
 		var lead = add_clearance_lead("tip", r["first"])
@@ -1297,6 +1317,8 @@ func haggle_patience(item, stall):
 	return int(item["patience"])
 
 func haggle_open(item, stall):
+	if to_bool(stall.get("no_haggle", false)):
+		return false
 	return not to_bool(item.get("seller_refuses", false)) and not to_bool(stall.get("banned_today", false)) and not to_bool(item.get("haggle_closed", false)) and item["haggle_result"] != "accepted"
 
 func item_flaws(item):
@@ -1377,6 +1399,8 @@ func seller_notices(stall, item):
 	# Called when you research or specialist-check an item in front of its seller.
 	if has_perk("poker_face") or item.get("noticed", false) or not haggle_open(item, stall):
 		return
+	if float(item["asking"]) < 15.0 or int(stall.get("noticed_count", 0)) >= 2 or OS.get_environment("CBR_NO_NOTICE") != "":
+		return
 	var ch = float(NOTICE_CHANCE.get(stall["seller"], 0.1))
 	var pers = personality_of(stall)
 	if pers != null:
@@ -1384,6 +1408,7 @@ func seller_notices(stall, item):
 	if rng.randf() >= ch:
 		return
 	item["noticed"] = true
+	stall["noticed_count"] = int(stall.get("noticed_count", 0)) + 1
 	haggle_base_ask(item)
 	var up = rng.randf_range(0.08, 0.18)
 	var was = float(item["asking"])
@@ -1598,6 +1623,10 @@ func hist(item, text):
 		h = h.slice(h.size() - 14)
 	item["hist"] = h
 
+func a_an(word):
+	var w = str(word)
+	return ("an " if w.length() > 0 and "aeiou".find(w.substr(0, 1).to_lower()) >= 0 else "a ") + w
+
 func item_display_name(item):
 	# The specific name if the item has one ("Iron Parish – Harvest of Rust"), else its kind.
 	var n = str(item.get("ident", ""))
@@ -1608,7 +1637,10 @@ func market_event_fx(key, default):
 	var ev = market_today.get("event", {})
 	if typeof(ev) != TYPE_DICTIONARY:
 		return default
-	return ev.get("fx", {}).get(key, default)
+	var fx = ev.get("fx", {})
+	if fx.has("after") and current_time_minutes < int(fx["after"]):
+		return default
+	return fx.get(key, default)
 
 func pers_line(stall, key, vars = {}):
 	# Lines from the 0.12 dialogue set, falling back to the base personality lines.
@@ -1680,6 +1712,11 @@ func buy_item(index):
 	item["bought_from"] = stall.get("seller_full_name", stall["seller_display_name"])
 	item["bought_day"] = day
 	var pn = personality_of(stall)
+	item["from_reg"] = int(stall.get("regular_id", -1))
+	if market_today.get("rival_here", false) and not stall.get("rival_visited", false) and int(stall.get("rival_eta", -1)) > current_time_minutes and rival.get("cats", []).has(item["category"]) and float(item["true_value"]) >= float(item["asking"]) * 1.8:
+		stall["beat_gaz_item"] = item["name"]
+	if int(stall.get("regular_id", -1)) >= 0:
+		world.remember(int(stall["regular_id"]), {"kind": "bought", "item": item["name"], "price": float(item["asking"])})
 	hist(item, "Bought from %s%s for %s%s." % [item["bought_from"], (" (%s)" % str(pn["name"]).to_lower()) if pn != null else "", fmt_money(item["asking"]), (" (asked %s)" % fmt_money(item.get("orig_asking", item["asking"]))) if float(item.get("orig_asking", 0.0)) > float(item["asking"]) + 0.5 else ""])
 	item["carried_day"] = day
 	inventory.append(item)
@@ -2653,6 +2690,16 @@ func record_completed_sale(item, sale_price, costs, channel):
 		fs_sale["lifetime_profit"] = float(fs_sale["lifetime_profit"]) + sale_profit
 	total_lifetime_profit += sale_profit
 	day_stats["sale_profit"] = float(day_stats.get("sale_profit", 0.0)) + sale_profit
+	world.add_player_profit(sale_profit)
+	world.on_big_sale(item, sale_price, sale_profit)
+	if int(item.get("from_reg", -1)) >= 0:
+		var gem = false
+		for t in known_traits(item):
+			if float(t["mult"]) >= 1.3:
+				gem = true
+		world.remember(int(item["from_reg"]), {"kind": "sold", "item": item["name"], "price": float(item["paid"]), "sold": sale_price, "gem": gem})
+	if in_end_day:
+		log_activity("Overnight: sold %s for %s (%s)." % [item["name"], fmt_money(sale_price), money_signed(sale_profit)])
 	if sale_profit > 0.0:
 		day_stats["profitable_sales"] += 1
 		unlock_achievement("First Flip")
@@ -3011,6 +3058,10 @@ func end_day():
 	process_auctions()
 	process_shop_floor()
 	process_staff()
+	world.gaz_night()
+	world.check_big_finds()
+	if closing_day % 7 == 0:
+		world.week_rollover()
 	for item in inventory:
 		item["days_owned"] = int(item.get("days_owned", 0)) + 1
 	var running = running_costs()
@@ -3709,6 +3760,7 @@ func init_new_run_state_only():
 	collector_offers = {}
 	home_venue = ""
 	pending_notices = []
+	w2 = {}
 
 func migrate_from_0_10(parsed):
 	# 0.10 -> 0.11: upgrade tracks become the business; knowledge becomes expertise; old perks are refunded.
@@ -3883,6 +3935,9 @@ func show_stall():
 
 func show_market():
 	_screen("show_market")
+
+func show_gaz_shop():
+	_screen("show_gaz_shop")
 
 func show_stall_list():
 	_screen("show_market")
@@ -4877,6 +4932,7 @@ var next_item_uid = 1
 func spend_time(minutes):
 	current_time_minutes += int(minutes)
 	advance_rival()
+	world.event_tick()
 
 func season_weather_weights(season):
 	match season:
@@ -4969,7 +5025,8 @@ func make_regular(archetype = ""):
 	if pers_ids.size() == 0:
 		pers_ids = WorldData.PERSONALITIES.keys()
 	var pid = pers_ids[rng.randi_range(0, pers_ids.size() - 1)]
-	var first = pick_line(WorldData.FIRST_NAMES)
+	var gender = str(WorldData.PERSONALITY_GENDER.get(pid, ""))
+	var first = pick_line(WorldData.FEMALE_NAMES if gender == "f" else (WorldData.MALE_NAMES if gender == "m" else WorldData.FIRST_NAMES))
 	var sur = pick_line(WorldData.SURNAMES)
 	var r = {"id": next_regular_id, "first": first, "name": "%s %s" % [first, sur], "archetype": archetype, "personality": pid,
 		"cats": WorldData.PERSONALITIES[pid]["cats"].duplicate(), "rel": 0.0, "visits": 0, "last_seen": -1,
@@ -5032,14 +5089,42 @@ func stall_line(stall, key, vars = {}):
 		return ""
 	return fill_line(pick_line(p["lines"].get(key, [])), vars)
 
+var lines_used_today = {}
+
+func unique_line(arr, filter_claims = false):
+	# A line nobody else has said today, and (optionally) none that claim history that didn't happen.
+	var cands = []
+	for l in arr:
+		var t = str(l)
+		if lines_used_today.has(t):
+			continue
+		if filter_claims and (t.findn("you bought") >= 0 or t.findn("you had") >= 0 or t.findn("who bought") >= 0 or t.findn("you took") >= 0):
+			continue
+		cands.append(t)
+	if cands.size() == 0:
+		cands = arr
+	if typeof(cands) != TYPE_ARRAY or cands.size() == 0:
+		return ""
+	var pick = str(cands[rng.randi_range(0, cands.size() - 1)])
+	lines_used_today[pick] = true
+	return pick
+
 func stall_greeting(stall):
+	if stall.get("greeting", "") != "":
+		return stall["greeting"]
 	var rid = int(stall.get("regular_id", -1))
 	var r = regular_by_id(rid) if rid >= 0 else null
+	var p = personality_of(stall)
+	if p == null:
+		return ""
 	if r == null or int(r["visits"]) <= 1:
-		return stall_line(stall, "greet_new")
+		return unique_line(p["lines"].get("greet_new", []))
+	var mem = world.memory_greeting(stall)
+	if mem != "":
+		return mem
 	if float(r["rel"]) >= 65:
-		return stall_line(stall, "greet_friend")
-	return stall_line(stall, "greet_regular")
+		return unique_line(p["lines"].get("greet_friend", []), true)
+	return unique_line(p["lines"].get("greet_regular", []), true)
 
 # --- rival --------------------------------------------------------------
 
@@ -5085,6 +5170,9 @@ func rival_visit(si):
 		return
 	var stall = stalls[si]
 	stall["rival_visited"] = true
+	if str(stall.get("beat_gaz_item", "")) != "":
+		add_toast(fill_line(pick_line(Lines012.RIVAL_LINES["you_beat_him"]), {"item": "the " + str(stall["beat_gaz_item"]).to_lower()}), "success")
+		rival["beaten"] = int(rival.get("beaten", 0)) + 1
 	if current_time_minutes >= int(stall["packing_minute"]):
 		return
 	# He takes up to 2 of the most valuable items in his categories (or the best overall bargain).
@@ -5114,6 +5202,7 @@ func rival_visit(si):
 			if j < int(stall["revealed"]):
 				revealed_removed += 1
 			took.append(stall["stock"][j]["name"])
+			world.gaz_took(stall["stock"][j], stall, stall.get("visited", false) and j < int(stall["revealed"]))
 			rival["snatched"] = int(rival.get("snatched", 0)) + 1
 			continue
 		new_stock.append(stall["stock"][j])
