@@ -3438,16 +3438,20 @@ func bug_report_text():
 	return "\n".join(lines)
 
 var patch_notes = [
+	{"version": "0.12: The Living Market", "notes": [
+		"Haggling is a conversation: sellers counter, lose patience and name a final price. Point out flaws you've found; research in front of a sharp dealer and the price may go up.",
+		"Every item has its own pixel art, a specific identity, where it came from, and a story that follows it until it sells. Your best deals go in the Best flips scrapbook.",
+		"Gaz, your rival, has an online shop you can raid, a weekly scoreboard, and texts when he flips something you walked past.",
+		"Regulars remember what you really bought and sold. Wanted requests, specialist phone calls for big finds, the weekly Valuation Tent, and one odd thing per market day.",
+		"Late game: signature categories, the weekly Saleroom (bid, or consign your own finds), estate sales with sealed bids, category bubbles, and a Runner who works a second market.",
+		"The night report leads with profit and explains why listings aren't selling, with one-tap price drops.",
+	]},
 	{"version": "0.11: The Business Update", "notes": [
-		"Discoveries: items hide details, good and bad, specific to their category. Purple clues tell you something's there; checks, expertise and workshop kit identify it.",
-		"Expertise: selling and researching in a category makes you an Enthusiast, then a Specialist (with a hands-on check at stalls), an Expert (a collector contact) and an Authority.",
-		"The Business: move from a box room to a garage, lock-up, shop and warehouse. Buy vehicles, fit out a workshop, hire staff.",
-		"A living market: weather, special market days, regular sellers who remember you, a rival who snaps up bargains, and house clearances once you have a van.",
-		"A new interface, built separately for desktop and phones.",
+		"Discoveries, Expertise, the Business (premises, vehicles, workshop, staff), a living market, and a new interface for desktop and phones.",
 	]},
 	{"version": "Known rough edges", "notes": [
-		"Balance is still being tuned, especially the shop and warehouse late game.",
-		"Items use category icons rather than individual artwork.",
+		"Balance is still being tuned, especially past the warehouse.",
+		"An item's name can occasionally contradict what you later discover about it.",
 	]},
 ]
 
