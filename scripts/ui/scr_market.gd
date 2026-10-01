@@ -593,13 +593,13 @@ func fixer_card():
 	h.add_child(k.label("The Fixer", "m", k.TEXT))
 	v.add_child(h)
 	var done = g.fixer_uses_today >= g.fixer_max_uses()
-	v.add_child(k.label("Round the back of the burger van. Double or nothing, 46%% odds. %s" % ("Done for today." if done else ""), "xs", k.TEXT3, true))
+	v.add_child(k.label("Round the back of the burger van. Double or nothing: 44%% to win, and 5%% of the time he trebles it. %s" % ("Done for today." if done else ""), "xs", k.TEXT3, true))
 	var row = k.hbox(6)
 	var wagers = [25, 75, 200]
 	if g.player_level >= 5:
 		wagers.append(350)
 	for w in wagers:
-		var b = k.button("£%d" % w, "danger", func(): g.fixer_gamble(w), "46%% chance to get £%d back." % (w * 2), "s")
+		var b = k.button("£%d" % w, "danger", func(): g.fixer_gamble(w), "44%% to get £%d back; 5%% to get £%d." % [w * 2, w * 3], "s")
 		b.disabled = done or g.cash < w
 		row.add_child(b)
 	v.add_child(row)

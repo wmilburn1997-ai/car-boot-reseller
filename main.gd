@@ -7,7 +7,7 @@ var rng = RandomNumberGenerator.new()
 var run_seed = 0
 var forced_run_seed = -1   # tools set this for reproducible runs
 
-const GAME_VERSION = "0.13.0-playtest"
+const GAME_VERSION = "0.13.1-playtest"
 const STARTING_CASH = 300.0
 const SAVE_PATH = "user://savegame.json"
 # Tools can point the game at another save file (CBR_SAVE=user://x.json) so parallel test runs don't collide.
@@ -158,14 +158,16 @@ func fixer_gamble(amount):
 	fixer_uses_today += 1
 	cash -= amount
 	day_stats["other_income"] = float(day_stats.get("other_income", 0.0)) - amount
-	var fr = luck.roll("fixer", 0.46, "The Fixer: £%d double or nothing" % int(amount))
-	fr["label"] = "Double your £%d" % int(amount)
+	var fr = luck.roll("fixer", 0.44, "The Fixer: £%d double or nothing" % int(amount))
+	fr["label"] = "Your £%d, double or nothing" % int(amount)
+	luck.tier_bands(fr, [["Treble", 0.05, "gold", "£%d becomes £%d" % [int(amount), int(amount * 3.0)]], ["Double", 0.44, "green", "£%d becomes £%d" % [int(amount), int(amount * 2.0)]]], "you lose the £%d" % int(amount))
 	var won = fr["hit"]
 	if won:
-		cash += amount * 2.0
-		day_stats["other_income"] = float(day_stats.get("other_income", 0.0)) + amount * 2.0
+		var mult = 3.0 if fr["band"] == "Treble" else 2.0
+		cash += amount * mult
+		day_stats["other_income"] = float(day_stats.get("other_income", 0.0)) + amount * mult
 		lifetime_fixer_wins += 1
-		show_roll("THE FIXER", [fr], "Won! £%.0f becomes £%.0f." % [amount, amount * 2.0])
+		show_roll("THE FIXER", [fr], "%s! £%.0f becomes £%.0f." % ["Treble" if mult > 2.0 else "Won", amount, amount * mult])
 		play_sfx("rare")
 		unlock_check_high_roller()
 	else:
@@ -2275,7 +2277,7 @@ func deep_research(index):
 	var reason = ""
 	if item.has("traits") and item.get("hidden_special", "") == "":
 		# Deep Research rolls to find deep- and research-level details, with a long shot at specialist clues.
-		var res = luck.do_dig(item, "deep", "inv")
+		var res = luck.do_dig(item, "deep", "inv", dr_cost)
 		reason = luck.dig_result_text(item, "deep", res)
 		show_roll("DEEP RESEARCH", res["entries"], reason)
 	else:
@@ -2480,9 +2482,16 @@ func repair_item(index):
 		var chance = repair_fault_chance(item)
 		var rr = luck.roll("repair", chance, "Repair: %s" % fault_label(item).to_lower())
 		rr["label"] = "Fix the %s" % fault_label(item).to_lower()
+		var fix_desc = "fault gone" if item["fault_severity"] in ["Minor", "Moderate"] else ("eased to minor" if item["fault_severity"] == "Major" else "brought back to moderate")
+		luck.tier_bands(rr, [["Perfect fix", min(0.08, chance * 0.5), "gold", "fault gone completely, and condition +1"], ["Fixed", chance, "green", fix_desc]], "the fault beats you")
 		entries.append(rr)
 		var success = rr["hit"]
-		if success:
+		if success and rr["band"] == "Perfect fix":
+			item["fault"] = false
+			item["fault_severity"] = "None"
+			item["condition"] = min(10, int(item["condition"]) + 1)
+			notes.append("a perfect repair: fault gone and condition up to %d/10" % int(item["condition"]))
+		elif success:
 			if item["fault_severity"] in ["Minor", "Moderate"]:
 				item["fault"] = false
 				item["fault_severity"] = "None"
@@ -2497,10 +2506,15 @@ func repair_item(index):
 		var ch = repair_trait_chance()
 		var r2r = luck.roll("repair", ch, "Repair: %s" % trait_def(t)["name"])
 		r2r["label"] = "Fix: %s" % trait_def(t)["name"]
+		luck.tier_bands(r2r, [["Restored", 0.08, "gold", "fixed, and condition +1"], ["Fixed", ch, "green", "fixed"]], "still broken")
 		entries.append(r2r)
 		if r2r["hit"]:
 			fix_trait(item, t)
-			notes.append("%s fixed" % trait_def(t)["name"])
+			if r2r["band"] == "Restored":
+				item["condition"] = min(10, int(item["condition"]) + 1)
+				notes.append("%s restored (condition %d/10)" % [trait_def(t)["name"], int(item["condition"])])
+			else:
+				notes.append("%s fixed" % trait_def(t)["name"])
 		else:
 			notes.append("couldn't fix the %s" % trait_def(t)["name"].to_lower())
 	item["repair_note"] = ", ".join(notes).capitalize()
@@ -3051,14 +3065,13 @@ func buy_mystery_package():
 	var bands = mystery_bands()
 	var mr = luck.roll("mystery", float(bands[bands.size() - 1][1]), "Mystery box")
 	mr["label"] = "What's inside?"
-	mr["bands"] = []
+	var mb = []
+	var mcol = {"Grail": "purple", "Jackpot": "gold", "Excellent": "blue", "Good": "green", "Average": "green"}
+	var mdesc = {"Grail": "£500–£900 inside", "Jackpot": "£150–£400 inside", "Excellent": "£60–£120 inside", "Good": "£35–£60 inside", "Average": "£18–£35 inside"}
 	for b in bands:
-		mr["bands"].append([b[0], b[1], "gold" if b[0] in ["Grail", "Jackpot", "Excellent"] else "green"])
-	var tier = "Poor"
-	for b in bands:
-		if float(mr["roll"]) < float(b[1]):
-			tier = str(b[0])
-			break
+		mb.append([b[0], b[1], mcol.get(b[0], "green"), mdesc.get(b[0], "")])
+	luck.tier_bands(mr, mb, "Poor: £5–£20 inside")
+	var tier = mr["band"] if mr["band"] != "" else "Poor"
 	var count = 2 if rng.randf() < 0.30 else 1
 	var budget = package_budget(tier)
 	var contents = []
@@ -3491,6 +3504,12 @@ func bug_report_text():
 	return "\n".join(lines)
 
 var patch_notes = [
+	{"version": "0.13.1: Rare rolls", "notes": [
+		"Every roll card now has a key: each zone of the bar is labelled with the roll you need and what it gets you, before the marker lands.",
+		"Rarer outcomes sit inside the hit zone. Research and deep research: under 10 is a Rare find (one extra hidden detail, or your fee back), under 2 is the Jackpot (everything, fee back).",
+		"Repairs: Perfect fix / Restored (condition +1). Cleaning: Like new (+2 condition). The Fixer: Treble. Coin toss: it can land on its edge. Mystery boxes and the tombola show what every tier holds.",
+		"Rolls now read 0.0–99.9. Lower is better.",
+	]},
 	{"version": "0.13: Odds On", "notes": [
 		"Every gamble shows its odds first and the roll it hit afterwards: research, deep research, long shots on clues, repairs, cleaning, auctions, the Fixer and mystery boxes.",
 		"Dig again: another roll on the same item, a little dearer each time.",
@@ -3798,7 +3817,7 @@ func do_research(where, index):
 	add_expertise(item["category"], 2 if has_equip("library") else 1)
 	item["basic_researched"] = true
 	item["action_order"].append("research")
-	var res = luck.do_dig(item, "research", where)
+	var res = luck.do_dig(item, "research", where, rc_cost)
 	item["basic_comps"] = make_comps(item, false)
 	item["locked_gamble_hint"] = gamble_hint_chance(item)
 	item["research_note"] = luck.dig_result_text(item, "research", res)
@@ -3823,7 +3842,7 @@ func dig_again(where, index, method):
 	energy -= en
 	spend_time(4 if method == "research" else 15)
 	day_stats["research"] += cost
-	var res = luck.do_dig(item, method, where)
+	var res = luck.do_dig(item, method, where, cost)
 	var note = luck.dig_result_text(item, method, res)
 	if method == "research":
 		item["research_note"] = note
@@ -4764,10 +4783,11 @@ func clean_item(index):
 	var centries = []
 	if int(item["condition"]) < 8:
 		var cr = luck.roll("clean", 0.30, "Cleaning: condition up a point")
-		cr["label"] = "Condition up a point"
+		cr["label"] = "Does it come up nicely?"
+		luck.tier_bands(cr, [["Like new", 0.04, "gold", "condition up two points"], ["Brighter", 0.30, "green", "condition up a point"]], "cleaner, same condition")
 		centries.append(cr)
 		if cr["hit"]:
-			item["condition"] = int(item["condition"]) + 1
+			item["condition"] = min(10, int(item["condition"]) + (2 if cr["band"] == "Like new" else 1))
 			notes.append("condition up to %d/10" % int(item["condition"]))
 		if item["condition_checked"]:
 			item["condition_price_note"] = condition_reveal_note(item)

@@ -528,7 +528,7 @@ func dig_tile(it, index, where, method):
 	var en = g.luck.dig_energy(method)
 	var parts = []
 	if not it.get("dig_hit_" + method, false):
-		parts.append("%d%% find" % int(round(g.luck.find_chance(it, method) * 100.0)))
+		parts.append("%d%% find (10%% rare)" % int(round(g.luck.find_chance(it, method) * 100.0)))
 	var ls = g.luck.best_long_shot(it, method)
 	if float(ls[1]) > 0.0:
 		parts.append("%d%% long shot" % int(round(float(ls[1]) * 100.0)))
@@ -672,7 +672,7 @@ func stall_actions(it, index):
 	if it["basic_researched"] and g.luck.can_dig_again(it, "research"):
 		gr.add_child(dig_tile(it, index, "stall", "research"))
 	else:
-		gr.add_child(k.action_tile(ui.tex("research_icon"), "Research" if not it["basic_researched"] else "Researched", ("%d%% find · " % int(round(g.luck.find_chance(it, "research") * 100.0)) if not it["basic_researched"] else "") + (time_cost(2, 4, rc) if rc > 0 else time_cost(2, 4) + " · free"), "action", func(): g.prebuy_research(index), g.cash < rc or g.energy < 2, "Recent sold prices, plus a roll to turn up hidden details. You see the odds first.", it["basic_researched"]))
+		gr.add_child(k.action_tile(ui.tex("research_icon"), "Research" if not it["basic_researched"] else "Researched", ("%d%% find · 10%% rare · " % int(round(g.luck.find_chance(it, "research") * 100.0)) if not it["basic_researched"] else "") + (time_cost(2, 4, rc) if rc > 0 else time_cost(2, 4) + " · free"), "action", func(): g.prebuy_research(index), g.cash < rc or g.energy < 2, "Recent sold prices, plus a roll to turn up hidden details. Roll under 10 for a rare find (an extra detail), under 2 for the jackpot (everything, fee back).", it["basic_researched"]))
 	var tier = g.expertise_tier(it["category"])
 	var act = g.SPECIALIST_ACTIONS.get(it["category"], "Specialist check")
 	if tier >= 2:
@@ -742,7 +742,7 @@ func haggle_panel(it, index, stall):
 	v.add_child(ch_row)
 	if g.luck.can_toss(it, stall):
 		var tr = k.hbox(8)
-		var tl = k.label("\"Toss you for it?\" Heads: %s. Tails: %s. 50%%." % [g.fmt_money(round(asking * 0.5)), g.fmt_money(round(asking * 1.25))], "xs", k.GOLD, true)
+		var tl = k.label("\"Toss you for it?\" Heads (50%%): %s. Tails: %s. 2%% it lands on its edge: £1." % [g.fmt_money(round(asking * 0.5)), g.fmt_money(round(asking * 1.25))], "xs", k.GOLD, true)
 		k.expand(tl)
 		tr.add_child(tl)
 		tr.add_child(k.button("Toss a coin", "gold", func(): g.luck.toss(index), "A chancer's offer: one flip, and you buy it either way.", "s"))
@@ -800,7 +800,7 @@ func inv_actions(it, index):
 		gr.add_child(k.action_tile(ui.tex("condition_icon"), "Check condition", time_cost(4, 5, g.condition_cost()), "action", func(): g.inventory_check_condition(index), g.cash < g.condition_cost() or g.energy < 4, "Exact condition score and hidden wear."))
 	if not it["basic_researched"]:
 		var rc = g.research_cost()
-		gr.add_child(k.action_tile(ui.tex("research_icon"), "Research", "%d%% find · %s" % [int(round(g.luck.find_chance(it, "research") * 100.0)), time_cost(2, 4, rc) if rc > 0 else time_cost(2, 4)], "action", func(): g.inventory_basic_research(index), g.cash < rc or g.energy < 2, "Recent sold prices, plus a roll to turn up hidden details."))
+		gr.add_child(k.action_tile(ui.tex("research_icon"), "Research", "%d%% find · 10%% rare · %s" % [int(round(g.luck.find_chance(it, "research") * 100.0)), time_cost(2, 4, rc) if rc > 0 else time_cost(2, 4)], "action", func(): g.inventory_basic_research(index), g.cash < rc or g.energy < 2, "Recent sold prices, plus a roll to turn up hidden details. Roll under 10 for a rare find (an extra detail), under 2 for the jackpot (everything, fee back)."))
 	elif g.luck.can_dig_again(it, "research"):
 		gr.add_child(dig_tile(it, index, "inv", "research"))
 	var drc = g.deep_research_cost(it)
@@ -814,7 +814,7 @@ func inv_actions(it, index):
 	if tier >= 2:
 		gr.add_child(k.action_tile("star", g.SPECIALIST_ACTIONS.get(it["category"], "Specialist check") if not it.get("expert_checked", false) else "Checked", "3 energy · 3m", "special", func(): g.specialist_check("inv", index), g.energy < 3, "Your %s expertise at work." % it["category"], it.get("expert_checked", false)))
 	if g.has_equip("cleaning"):
-		gr.add_child(k.action_tile("brush", "Clean it" if not it.get("cleaned", false) else "Cleaned", ("30%% condition up · " if int(it["condition"]) < 8 and not it.get("cleaned", false) else "") + time_cost(4, 12, 1.0), "action", func(): g.clean_item(index), g.cash < 1 or g.energy < 4, "Grime off: fixes dirt and tarnish, can reveal marks, sometimes lifts condition.", it.get("cleaned", false)))
+		gr.add_child(k.action_tile("brush", "Clean it" if not it.get("cleaned", false) else "Cleaned", ("30%% brighter · 4%% like new · " if int(it["condition"]) < 8 and not it.get("cleaned", false) else "") + time_cost(4, 12, 1.0), "action", func(): g.clean_item(index), g.cash < 1 or g.energy < 4, "Grime off: fixes dirt and tarnish, can reveal marks, sometimes lifts condition.", it.get("cleaned", false)))
 	if g.has_equip("auth"):
 		gr.add_child(k.action_tile("uv", "UV lamp" if not it.get("uv_checked", false) else "UV checked", "2 energy · 3m", "action", func(): g.uv_check(index), g.energy < 2, "Repaints, restorations and touched-up signatures glow under UV.", it.get("uv_checked", false)))
 	var parts = g.known_fixable(it, "parts")

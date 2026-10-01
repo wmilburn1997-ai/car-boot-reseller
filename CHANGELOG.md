@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.1: "Rare rolls"
+
+- **A key on every roll card.** Each zone of the bar is coloured, edge-numbered and explained before the marker lands ("Under 2 · Jackpot 2% · every hidden detail on it, and your fee back"). The zone and key row you land in light up; the rest dim.
+- **Rarer outcomes inside the hit zone** (roll low to win, 0.0–99.9):
+  - Research and Deep Research: Jackpot under 2 (every hidden detail plus fee back), Rare find under 10 (one extra hidden detail, clues first, or fee back), Find under the find chance.
+  - Repairs: Perfect fix (fault gone completely, condition +1) / Restored (condition +1) on about 8%.
+  - Cleaning: Like new under 4 (condition +2).
+  - The Fixer: 44% to win, with a 5% Treble inside it (EV about the same as before).
+  - Coin toss: 2% it lands on its edge and goes for £1.
+  - Mystery boxes and the tombola: every tier shows what's inside.
+- Item tiles show "62% find · 10% rare" and the cleaning odds.
+
 ## 0.13.0: "Odds On"
 
 You now see the odds before every gamble and the roll it actually hit afterwards.

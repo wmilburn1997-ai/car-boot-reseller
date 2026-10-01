@@ -907,6 +907,57 @@ func position_rolls():
 
 const ROLL_GREEN = Color(0.30, 0.78, 0.45)
 const ROLL_GOLD = Color(0.96, 0.78, 0.30)
+const ROLL_MISS = Color(0.20, 0.22, 0.26)
+
+func band_color(key):
+	match str(key):
+		"gold": return ROLL_GOLD
+		"purple": return Color(0.78, 0.52, 1.0)
+		"blue": return Color(0.40, 0.66, 1.0)
+	return ROLL_GREEN
+
+func roll_bands(e):
+	# Best-first outcome tiers [name, upto, colour, what you get]; a plain roll is one green tier.
+	var bands = e.get("bands", [])
+	if bands.size() == 0:
+		bands = [["Hit", float(e["chance"]), "green", ""]]
+	return bands
+
+func roll_legend(e, compact):
+	# The key under the bar: what each zone of the roll gets you. Shown before the roll lands.
+	var lv = k.vbox(1)
+	var rows = []
+	var lo = 0.0
+	for b in roll_bands(e):
+		var up = float(b[1])
+		if up <= lo:
+			continue
+		rows.append([str(b[0]), "Under " + g.luck.pct_text(up), band_color(b[2]), str(b[3]) if b.size() > 3 else "", "%s%%" % g.luck.pct_text(up - lo)])
+		lo = up
+	if lo < 1.0:
+		rows.append(["Miss", g.luck.pct_text(lo) + "+", ROLL_MISS.lightened(0.35), str(e.get("miss_text", "")), "%s%%" % g.luck.pct_text(1.0 - lo)])
+	var nodes = {}
+	for r in rows:
+		var h = k.hbox(6)
+		var sw = ColorRect.new()
+		sw.color = r[2]
+		sw.custom_minimum_size = Vector2(10, 10)
+		sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		sw.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		h.add_child(sw)
+		var rng_l = k.label(r[1], "xs", k.TEXT3)
+		rng_l.custom_minimum_size = Vector2(62, 0)
+		h.add_child(rng_l)
+		var txt = "[color=#%s]%s[/color] [color=#%s]%s[/color]" % [r[2].lightened(0.15).to_html(false), r[0], k.TEXT3.to_html(false), r[4]]
+		if r[3] != "":
+			txt += "[color=#%s]  ·  %s[/color]" % [k.TEXT2.to_html(false), r[3]]
+		var rt = k.rich(txt, "xs", k.TEXT2)
+		rt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		k.expand(rt)
+		h.add_child(rt)
+		lv.add_child(h)
+		nodes[r[0]] = h
+	return [lv, nodes]
 
 func roll_card(title, entries, text):
 	if roll_box == null or not is_instance_valid(roll_box):
@@ -916,10 +967,6 @@ func roll_card(title, entries, text):
 		var old = roll_box.get_child(0)
 		roll_box.remove_child(old)
 		old.queue_free()
-	var any_hit = false
-	for e in entries:
-		if e["hit"]:
-			any_hit = true
 	var cw = roll_box.custom_minimum_size.x
 	var p = PanelContainer.new()
 	var st = k.sbox(Color(0.05, 0.065, 0.09, 0.97), k.LINE2, 10, 2, 14)
@@ -932,17 +979,24 @@ func roll_card(title, entries, text):
 	p.add_child(v)
 	var th = k.hbox(8)
 	th.add_child(k.glyph("dots", k.GOLD, 14))
-	th.add_child(k.label(str(title), "s", k.GOLD))
+	var tl = k.label(str(title), "s", k.GOLD)
+	k.expand(tl)
+	th.add_child(tl)
+	th.add_child(k.label("roll low to win", "xs", k.TEXT3))
 	v.add_child(th)
 	var bar_w = cw - 28.0
 	var delay = 0.0
 	var result_lbl = k.label(str(text), "s", k.TEXT, true)
 	result_lbl.modulate = Color(1, 1, 1, 0)
 	var compact = entries.size() >= 4
-	var bar_h = 12.0 if compact else 22.0
+	var bar_h = 12.0 if compact else 24.0
+	var legend_rows = 0
+	var shared_legend = null
+	if compact:
+		shared_legend = roll_legend(entries[0], true)
 	for e in entries:
-		var row = k.hbox(6) if compact else k.vbox(3)
-		var pct = int(round(float(e["chance"]) * 100.0))
+		var row = k.hbox(6) if compact else k.vbox(4)
+		var pct = g.luck.pct_text(float(e["chance"]))
 		var res = k.label("", "s" if compact else "m", k.TEXT)
 		if compact:
 			var nm0 = k.label(str(e.get("label", "")), "xs", k.TEXT2)
@@ -950,79 +1004,132 @@ func roll_card(title, entries, text):
 			row.add_child(nm0)
 		else:
 			var top = k.hbox(6)
-			var nm = k.label(str(e.get("label", "")), "s", k.TEXT2)
+			var nm = k.label(str(e.get("label", "")), "s", k.TEXT)
 			k.expand(nm)
 			top.add_child(nm)
-			top.add_child(k.label("%d%% chance" % pct, "s", k.TEXT2))
+			top.add_child(k.label("%s%% to hit" % pct, "s", k.TEXT2))
 			row.add_child(top)
 		var this_w = (bar_w - 58.0 - 110.0 - 12.0) if compact else bar_w
-		# The bar: the hit zone is the left part (rolls 1..chance).
+		# The bar: rolls run 0–100 left to right; the best outcomes sit at the far left.
 		var bar = Control.new()
 		bar.custom_minimum_size = Vector2(this_w, bar_h)
 		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var bg = ColorRect.new()
-		bg.color = Color(0.12, 0.13, 0.16)
+		bg.color = ROLL_MISS
 		bg.size = Vector2(this_w, bar_h)
 		bar.add_child(bg)
-		var bands = e.get("bands", [])
-		if bands.size() == 0:
-			bands = [["", float(e["chance"]), "green"]]
-		for i in range(bands.size() - 1, -1, -1):
-			var b = bands[i]
+		var bands = roll_bands(e)
+		var zones = {}
+		var lo = 0.0
+		for b in bands:
+			var up = clamp(float(b[1]), 0.0, 1.0)
+			if up <= lo:
+				continue
 			var z = ColorRect.new()
-			z.color = (ROLL_GOLD if str(b[2]) == "gold" else ROLL_GREEN).darkened(0.45)
-			z.size = Vector2(this_w * clamp(float(b[1]), 0.0, 1.0), bar_h)
+			z.color = band_color(b[2]).darkened(0.3)
+			z.position = Vector2(this_w * lo, 0)
+			z.size = Vector2(max(4.0, this_w * (up - lo)), bar_h)
+			z.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			bar.add_child(z)
-		for t in range(1, 10):
-			var tk = ColorRect.new()
-			tk.color = Color(1, 1, 1, 0.07)
-			tk.position = Vector2(this_w * t / 10.0, 0)
-			tk.size = Vector2(1, bar_h)
-			bar.add_child(tk)
+			zones[str(b[0])] = [z, band_color(b[2])]
+			# Name the zone inside the bar when there's room.
+			if not compact and this_w * (up - lo) >= 56.0:
+				var zl = k.label(str(b[0]).to_upper(), "xs", band_color(b[2]).lightened(0.35))
+				zl.position = Vector2(this_w * lo + 5.0, 3.0)
+				zl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				bar.add_child(zl)
+			# A bright edge where each zone ends.
+			var edge = ColorRect.new()
+			edge.color = band_color(b[2])
+			edge.position = Vector2(this_w * up - 1.0, 0)
+			edge.size = Vector2(2, bar_h)
+			edge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			bar.add_child(edge)
+			lo = up
+		if not compact and (1.0 - lo) * this_w >= 48.0:
+			var ml = k.label("MISS", "xs", k.TEXT3)
+			ml.position = Vector2(this_w * lo + 6.0, 3.0)
+			ml.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			bar.add_child(ml)
 		var marker = ColorRect.new()
 		marker.color = Color(1, 1, 1)
 		marker.size = Vector2(3, bar_h + 6)
 		marker.position = Vector2(0, -3)
+		marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		bar.add_child(marker)
 		row.add_child(bar)
+		if not compact:
+			# The numbers at each zone edge, so "under 10" can be read off the bar itself.
+			var nums = Control.new()
+			nums.custom_minimum_size = Vector2(this_w, 14)
+			nums.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var last_x = -100.0
+			var lo2 = 0.0
+			for b in bands:
+				var up2 = clamp(float(b[1]), 0.0, 1.0)
+				if up2 <= lo2:
+					continue
+				lo2 = up2
+				var x = this_w * up2
+				if x - last_x < 24.0 or x > this_w - 10.0:
+					continue
+				var nl = k.label(g.luck.pct_text(up2), "xs", band_color(b[2]))
+				nl.position = Vector2(x - 6.0, -2.0)
+				nl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				nums.add_child(nl)
+				last_x = x
+			row.add_child(nums)
+		var legend_nodes = {}
 		if compact:
 			res.custom_minimum_size = Vector2(110, 0)
 			row.add_child(res)
 		else:
+			var lg = roll_legend(e, false)
+			row.add_child(lg[0])
+			legend_nodes = lg[1]
+			legend_rows += legend_nodes.size()
 			row.add_child(res)
 		res.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		v.add_child(row)
 		var final_x = clamp(this_w * float(e["roll"]), 0.0, this_w - 3.0)
-		var rv = g.luck.roll_display(e["roll"])
+		var rv = g.luck.roll_text(e["roll"])
 		var hit = e["hit"]
-		var band_name = ""
-		if e.get("bands", []).size() > 0 and hit:
-			for b in e["bands"]:
-				if float(e["roll"]) < float(b[1]):
-					band_name = str(b[0])
-					break
+		var band = g.luck.band_of(e["roll"], bands) if hit else null
+		var band_name = str(band[0]) if band != null else ""
+		var band_col = band_color(band[2]) if band != null else k.RED
+		var plain = e.get("bands", []).size() == 0
 		var tw = marker.create_tween()
 		tw.tween_interval(delay + 0.05)
 		tw.tween_property(marker, "position:x", this_w - 3.0, 0.32).set_trans(Tween.TRANS_SINE)
 		tw.tween_property(marker, "position:x", this_w * 0.15, 0.30).set_trans(Tween.TRANS_SINE)
 		tw.tween_property(marker, "position:x", final_x, 0.55).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
 		var short = compact
+		var special = band != null and str(band[2]) in ["gold", "purple"] and bands.size() > 1
 		tw.tween_callback(func():
 			if not is_instance_valid(res):
 				return
-			var word = (band_name.to_upper() if band_name != "" else "HIT") if hit else "MISS"
-			res.text = ("%d · %s" % [rv, word]) if short else ("Rolled %d  ·  %s" % [rv, word])
-			res.add_theme_color_override("font_color", (ROLL_GOLD if band_name in ["Star prize", "Grail", "Jackpot", "Excellent"] else ROLL_GREEN) if hit else k.RED)
-			marker.color = (ROLL_GREEN if hit else k.RED)
+			var word = ("HIT" if plain else band_name.to_upper()) if hit else "MISS"
+			res.text = ("%s · %s" % [rv, word]) if short else ("Rolled %s  ·  %s" % [rv, word])
+			res.add_theme_color_override("font_color", band_col)
+			marker.color = band_col.lightened(0.3)
+			# Light up the zone and the key row you landed in; dim the rest.
+			var key = band_name if hit else "Miss"
+			for zn in zones:
+				if is_instance_valid(zones[zn][0]):
+					zones[zn][0].color = zones[zn][1].darkened(0.1 if zn == key else 0.62)
+			for nk in legend_nodes:
+				if is_instance_valid(legend_nodes[nk]):
+					legend_nodes[nk].modulate = Color(1, 1, 1, 1) if nk == key else Color(1, 1, 1, 0.38)
 			res.pivot_offset = Vector2(res.size.x, res.size.y / 2.0)
-			res.scale = Vector2(1.35, 1.35)
+			res.scale = Vector2(1.45 if special else 1.35, 1.45 if special else 1.35)
 			var t2 = res.create_tween()
-			t2.tween_property(res, "scale", Vector2(1, 1), 0.18).set_trans(Tween.TRANS_BACK)
-			g.play_sfx("coin" if hit else "fail"))
+			t2.tween_property(res, "scale", Vector2(1, 1), 0.22 if special else 0.18).set_trans(Tween.TRANS_BACK)
+			g.play_sfx(("rare" if special else "coin") if hit else "fail"))
 		delay += 0.35 if entries.size() <= 3 else 0.12
 	if compact:
-		v.add_child(k.label("%d%% chance each" % int(round(float(entries[0]["chance"]) * 100.0)), "xs", k.TEXT3))
+		v.add_child(shared_legend[0])
+		legend_rows += shared_legend[1].size()
 	v.add_child(result_lbl)
 	roll_box.add_child(p)
 	p.modulate = Color(1, 1, 1, 0)
@@ -1033,7 +1140,7 @@ func roll_card(title, entries, text):
 		if is_instance_valid(result_lbl):
 			var rt = result_lbl.create_tween()
 			rt.tween_property(result_lbl, "modulate", Color(1, 1, 1, 1), 0.2))
-	ftw.tween_interval(3.4)
+	ftw.tween_interval(clamp(3.4 + 0.35 * float(legend_rows), 3.4, 6.5))
 	ftw.tween_property(p, "modulate", Color(1, 1, 1, 0), 0.4)
 	ftw.tween_callback(p.queue_free)
 

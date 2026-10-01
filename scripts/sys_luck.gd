@@ -23,6 +23,9 @@ func roll(kind, chance, label = ""):
 	# One visible roll. Returns {chance, roll, hit, label}. Rolls are 1–100 for display.
 	chance = clamp(float(chance), 0.0, 1.0)
 	var r = g.rng.randf()
+	if OS.has_environment("CBR_FORCE_ROLL"):
+		# Test hook: screenshots of rare outcomes.
+		r = clamp(float(OS.get_environment("CBR_FORCE_ROLL")), 0.0, 0.999)
 	var hit = r < chance
 	var L = st()
 	L["rolls"] = int(L["rolls"]) + 1
@@ -42,11 +45,36 @@ func roll(kind, chance, label = ""):
 		L["best"] = {"chance": chance, "text": what, "day": g.day}
 	if not hit and (L["worst"].size() == 0 or chance > float(L["worst"]["chance"])):
 		L["worst"] = {"chance": chance, "text": what, "day": g.day}
-	g.record_rng("%s | Chance %d%% | Rolled %d | %s" % [what, int(round(chance * 100.0)), roll_display(r), "HIT" if hit else "miss"], false)
+	g.record_rng("%s | Under %s to hit | Rolled %s | %s" % [what, pct_text(chance), roll_text(r), "HIT" if hit else "miss"], false)
 	return {"chance": chance, "roll": r, "hit": hit, "label": what}
 
 func roll_display(r):
 	return clamp(int(floor(float(r) * 100.0)) + 1, 1, 100)
+
+func roll_text(r):
+	# Rolls are shown as 0.0–99.9: lower is better. "Under 62" means 62% chance.
+	return "%.1f" % clamp(float(r) * 100.0, 0.0, 99.9)
+
+func pct_text(c):
+	var v = float(c) * 100.0
+	if abs(v - round(v)) < 0.05:
+		return "%d" % int(round(v))
+	return "%.1f" % v
+
+func band_of(r, bands) -> Variant:
+	# Bands run best-first, each [name, upto, colour, what you get]. Returns the band hit, or null.
+	for b in bands:
+		if float(r) < float(b[1]):
+			return b
+	return null
+
+func tier_bands(e, bands, miss_text):
+	# Attach outcome tiers to a roll entry so the card can show them before the marker lands.
+	e["bands"] = bands
+	e["miss_text"] = miss_text
+	var b = band_of(e["roll"], bands)
+	e["band"] = str(b[0]) if b != null else ""
+	return e
 
 # =============================================================================
 # Digging: research and deep research as visible rolls
@@ -126,15 +154,27 @@ func can_dig_again(item, method):
 		return true
 	return best_long_shot(item, method)[1] > 0.0
 
-func do_dig(item, method, where):
+# Inside the find zone sit two rarer outcomes: the lower you roll, the better.
+const DIG_RARE = 0.10
+const DIG_JACKPOT = 0.02
+
+func dig_bands(item, method, fc):
+	var what = "what research can find" if method == "research" else "what the books can find"
+	return [["Jackpot", DIG_JACKPOT, "purple", "every hidden detail on it, and your fee back"],
+		["Rare find", DIG_RARE, "gold", "that, plus one more hidden detail (or your fee back)"],
+		["Find", fc, "green", what]]
+
+func do_dig(item, method, where, fee = 0.0):
 	# The rolls for one dig. Returns the roll entries for the card and the traits found.
 	var entries = []
 	var found = []
+	var bonus = ""
 	item["dig_" + method] = dig_tries(item, method) + 1
 	if not item.get("dig_hit_" + method, false):
 		var fc = find_chance(item, method)
 		var r = roll(method, fc, "%s: find what's there" % ("Research" if method == "research" else "Deep research"))
 		r["label"] = "Find what's there"
+		tier_bands(r, dig_bands(item, method, fc), "nothing this time")
 		entries.append(r)
 		if r["hit"]:
 			item["dig_hit_" + method] = true
@@ -142,6 +182,29 @@ func do_dig(item, method, where):
 				t["known"] = true
 				t["clue"] = true
 				found.append(t)
+			if r["band"] == "Jackpot" or r["band"] == "Rare find":
+				var extra = []
+				for t in item.get("traits", []):
+					if not t.get("known", false) and g.trait_def(t) != null:
+						extra.append(t)
+				if r["band"] == "Rare find" and extra.size() > 1:
+					# Clues first: the thing you were wondering about.
+					var pick = extra[g.rng.randi_range(0, extra.size() - 1)]
+					for t in extra:
+						if t.get("clue", false):
+							pick = t
+							break
+					extra = [pick]
+				for t in extra:
+					t["known"] = true
+					t["clue"] = true
+					found.append(t)
+				if (r["band"] == "Jackpot" or extra.size() == 0) and fee > 0.0:
+					g.cash += fee
+					item["extra_spend"] = max(0.0, float(item["extra_spend"]) - fee)
+					g.day_stats["research"] = float(g.day_stats.get("research", 0.0)) - fee
+					bonus = "Fee back (%s)." % g.fmt_money(fee)
+				g.hist(item, "%s on the %s roll." % [r["band"], "research" if method == "research" else "deep research"])
 		else:
 			# You still notice there's something there, if there is.
 			for t in dig_targets(item, method):
@@ -152,15 +215,22 @@ func do_dig(item, method, where):
 	if ls[0] != null and float(ls[1]) > 0.0:
 		var r2 = roll(method + "_long", float(ls[1]), "Long shot on a clue")
 		r2["label"] = "Long shot on the clue"
+		tier_bands(r2, [["Cracked it", float(ls[1]), "gold", "the clue gives up its secret"]], "the clue stays a mystery")
 		entries.append(r2)
 		if r2["hit"]:
 			ls[0]["known"] = true
 			found.append(ls[0])
 	for t in found:
 		g.on_trait_found(item, t, method)
-	return {"entries": entries, "found": found}
+	return {"entries": entries, "found": found, "bonus": bonus}
 
 func dig_result_text(item, method, res):
+	var t0 = _dig_result_text(item, method, res)
+	if str(res.get("bonus", "")) != "":
+		t0 += (" " if t0.ends_with(".") else ". ") + str(res["bonus"])
+	return t0
+
+func _dig_result_text(item, method, res):
 	var found = res["found"]
 	if found.size() > 0:
 		var names = []
@@ -232,13 +302,15 @@ func toss(index):
 	stall["tossed_today"] = true
 	g.spend_time(1)
 	var r = roll("toss", 0.5, "Coin toss for the %s" % g.lc(item["name"]))
-	r["label"] = "Heads: half price"
-	var price = round(ask * 0.5) if r["hit"] else worst
+	r["label"] = "Heads or tails?"
+	tier_bands(r, [["On its edge", 0.02, "purple", "he's so shocked he lets it go for a quid"], ["Heads", 0.5, "green", "half price (%s)" % g.fmt_money(round(ask * 0.5))]], "tails: you pay %s" % g.fmt_money(worst))
+	var edge = r["band"] == "On its edge"
+	var price = (1.0 if edge else round(ask * 0.5)) if r["hit"] else worst
 	item["asking"] = max(1.0, price)
 	item["haggle_result"] = "accepted"
 	item["haggle_savings"] = ask - price
-	item["haggle_note"] = "\"%s\"" % ("Heads! Fair's fair. Half price." if r["hit"] else "Tails. Unlucky, pal. Pay the man.")
-	g.show_roll("TOSS YOU FOR IT", [r], ("Heads! %s for the %s (was %s)." % [g.fmt_money(price), g.lc(item["name"]), g.fmt_money(ask)]) if r["hit"] else ("Tails. %s for the %s." % [g.fmt_money(price), g.lc(item["name"])]))
+	item["haggle_note"] = "\"%s\"" % ("On its EDGE? I've never... take it. A quid." if edge else ("Heads! Fair's fair. Half price." if r["hit"] else "Tails. Unlucky, pal. Pay the man."))
+	g.show_roll("TOSS YOU FOR IT", [r], ("It landed on its edge! %s for the %s." % [g.fmt_money(price), g.lc(item["name"])]) if edge else ("Heads! %s for the %s (was %s)." % [g.fmt_money(price), g.lc(item["name"]), g.fmt_money(ask)]) if r["hit"] else ("Tails. %s for the %s." % [g.fmt_money(price), g.lc(item["name"])]))
 	g.buy_item(index)
 
 # =============================================================================
@@ -273,11 +345,11 @@ func play_tombola(tickets):
 	for i in range(tickets):
 		var r = roll("tombola", TOMBOLA_WIN + TOMBOLA_STAR, "Tombola ticket")
 		# Bands: star prize at the very bottom of the hit zone.
-		r["bands"] = [["Star prize", TOMBOLA_STAR, "gold"], ["Prize", TOMBOLA_WIN + TOMBOLA_STAR, "green"]]
+		tier_bands(r, [["Star prize", TOMBOLA_STAR, "gold", "something worth £120 or more"], ["Prize", TOMBOLA_WIN + TOMBOLA_STAR, "green", "a small prize (up to £45)"]], "a blank: it's for the hospice")
 		r["label"] = "Ticket %d" % (i + 1)
 		entries.append(r)
 		if r["hit"]:
-			var star = float(r["roll"]) < TOMBOLA_STAR
+			var star = r["band"] == "Star prize"
 			var it = tombola_prize(star)
 			if it != null:
 				prizes.append(it)
