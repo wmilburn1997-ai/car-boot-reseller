@@ -30,6 +30,7 @@ var nav_box
 var overlay               # toasts, fx, popups
 var sheet_layer
 var toast_box
+var roll_box
 var popup_layer
 var popup_queue = []
 var popup_open = false
@@ -220,6 +221,10 @@ func build_root():
 	toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(toast_box)
 	position_toasts()
+	roll_box = k.vbox(8)
+	roll_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(roll_box)
+	position_rolls()
 	popup_layer = Control.new()
 	popup_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	popup_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -884,6 +889,153 @@ func toast(text, kind = "info"):
 func _toast_input(ev, p):
 	if ev is InputEventMouseButton and ev.pressed and is_instance_valid(p):
 		p.queue_free()
+
+# --- roll cards: the visible dice ------------------------------------------------------
+func position_rolls():
+	if roll_box == null:
+		return
+	var w = (logical.x - 20.0) if mobile else 420.0
+	roll_box.anchor_left = 0.5
+	roll_box.anchor_right = 0.5
+	roll_box.anchor_top = 0.0
+	roll_box.anchor_bottom = 0.0
+	roll_box.offset_left = -w / 2.0
+	roll_box.offset_right = w / 2.0
+	roll_box.offset_top = 70 if mobile else 96
+	roll_box.offset_bottom = 70 if mobile else 96
+	roll_box.custom_minimum_size = Vector2(w, 0)
+
+const ROLL_GREEN = Color(0.30, 0.78, 0.45)
+const ROLL_GOLD = Color(0.96, 0.78, 0.30)
+
+func roll_card(title, entries, text):
+	if roll_box == null or not is_instance_valid(roll_box):
+		return
+	position_rolls()
+	while roll_box.get_child_count() >= 2:
+		var old = roll_box.get_child(0)
+		roll_box.remove_child(old)
+		old.queue_free()
+	var any_hit = false
+	for e in entries:
+		if e["hit"]:
+			any_hit = true
+	var cw = roll_box.custom_minimum_size.x
+	var p = PanelContainer.new()
+	var st = k.sbox(Color(0.05, 0.065, 0.09, 0.97), k.LINE2, 10, 2, 14)
+	st.shadow_color = Color(0, 0, 0, 0.5)
+	st.shadow_size = 12
+	p.add_theme_stylebox_override("panel", st)
+	p.mouse_filter = Control.MOUSE_FILTER_STOP
+	p.gui_input.connect(_toast_input.bind(p))
+	var v = k.vbox(8)
+	p.add_child(v)
+	var th = k.hbox(8)
+	th.add_child(k.glyph("dots", k.GOLD, 14))
+	th.add_child(k.label(str(title), "s", k.GOLD))
+	v.add_child(th)
+	var bar_w = cw - 28.0
+	var delay = 0.0
+	var result_lbl = k.label(str(text), "s", k.TEXT, true)
+	result_lbl.modulate = Color(1, 1, 1, 0)
+	var compact = entries.size() >= 4
+	var bar_h = 12.0 if compact else 22.0
+	for e in entries:
+		var row = k.hbox(6) if compact else k.vbox(3)
+		var pct = int(round(float(e["chance"]) * 100.0))
+		var res = k.label("", "s" if compact else "m", k.TEXT)
+		if compact:
+			var nm0 = k.label(str(e.get("label", "")), "xs", k.TEXT2)
+			nm0.custom_minimum_size = Vector2(58, 0)
+			row.add_child(nm0)
+		else:
+			var top = k.hbox(6)
+			var nm = k.label(str(e.get("label", "")), "s", k.TEXT2)
+			k.expand(nm)
+			top.add_child(nm)
+			top.add_child(k.label("%d%% chance" % pct, "s", k.TEXT2))
+			row.add_child(top)
+		var this_w = (bar_w - 58.0 - 110.0 - 12.0) if compact else bar_w
+		# The bar: the hit zone is the left part (rolls 1..chance).
+		var bar = Control.new()
+		bar.custom_minimum_size = Vector2(this_w, bar_h)
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var bg = ColorRect.new()
+		bg.color = Color(0.12, 0.13, 0.16)
+		bg.size = Vector2(this_w, bar_h)
+		bar.add_child(bg)
+		var bands = e.get("bands", [])
+		if bands.size() == 0:
+			bands = [["", float(e["chance"]), "green"]]
+		for i in range(bands.size() - 1, -1, -1):
+			var b = bands[i]
+			var z = ColorRect.new()
+			z.color = (ROLL_GOLD if str(b[2]) == "gold" else ROLL_GREEN).darkened(0.45)
+			z.size = Vector2(this_w * clamp(float(b[1]), 0.0, 1.0), bar_h)
+			bar.add_child(z)
+		for t in range(1, 10):
+			var tk = ColorRect.new()
+			tk.color = Color(1, 1, 1, 0.07)
+			tk.position = Vector2(this_w * t / 10.0, 0)
+			tk.size = Vector2(1, bar_h)
+			bar.add_child(tk)
+		var marker = ColorRect.new()
+		marker.color = Color(1, 1, 1)
+		marker.size = Vector2(3, bar_h + 6)
+		marker.position = Vector2(0, -3)
+		bar.add_child(marker)
+		row.add_child(bar)
+		if compact:
+			res.custom_minimum_size = Vector2(110, 0)
+			row.add_child(res)
+		else:
+			row.add_child(res)
+		res.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		v.add_child(row)
+		var final_x = clamp(this_w * float(e["roll"]), 0.0, this_w - 3.0)
+		var rv = g.luck.roll_display(e["roll"])
+		var hit = e["hit"]
+		var band_name = ""
+		if e.get("bands", []).size() > 0 and hit:
+			for b in e["bands"]:
+				if float(e["roll"]) < float(b[1]):
+					band_name = str(b[0])
+					break
+		var tw = marker.create_tween()
+		tw.tween_interval(delay + 0.05)
+		tw.tween_property(marker, "position:x", this_w - 3.0, 0.32).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(marker, "position:x", this_w * 0.15, 0.30).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(marker, "position:x", final_x, 0.55).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+		var short = compact
+		tw.tween_callback(func():
+			if not is_instance_valid(res):
+				return
+			var word = (band_name.to_upper() if band_name != "" else "HIT") if hit else "MISS"
+			res.text = ("%d · %s" % [rv, word]) if short else ("Rolled %d  ·  %s" % [rv, word])
+			res.add_theme_color_override("font_color", (ROLL_GOLD if band_name in ["Star prize", "Grail", "Jackpot", "Excellent"] else ROLL_GREEN) if hit else k.RED)
+			marker.color = (ROLL_GREEN if hit else k.RED)
+			res.pivot_offset = Vector2(res.size.x, res.size.y / 2.0)
+			res.scale = Vector2(1.35, 1.35)
+			var t2 = res.create_tween()
+			t2.tween_property(res, "scale", Vector2(1, 1), 0.18).set_trans(Tween.TRANS_BACK)
+			g.play_sfx("coin" if hit else "fail"))
+		delay += 0.35 if entries.size() <= 3 else 0.12
+	if compact:
+		v.add_child(k.label("%d%% chance each" % int(round(float(entries[0]["chance"]) * 100.0)), "xs", k.TEXT3))
+	v.add_child(result_lbl)
+	roll_box.add_child(p)
+	p.modulate = Color(1, 1, 1, 0)
+	var ftw = p.create_tween()
+	ftw.tween_property(p, "modulate", Color(1, 1, 1, 1), 0.12)
+	ftw.tween_interval(delay + 1.2)
+	ftw.tween_callback(func():
+		if is_instance_valid(result_lbl):
+			var rt = result_lbl.create_tween()
+			rt.tween_property(result_lbl, "modulate", Color(1, 1, 1, 1), 0.2))
+	ftw.tween_interval(3.4)
+	ftw.tween_property(p, "modulate", Color(1, 1, 1, 0), 0.4)
+	ftw.tween_callback(p.queue_free)
 
 func clear_toasts():
 	if toast_box == null or not is_instance_valid(toast_box):

@@ -19,7 +19,7 @@ func build(parent, want_tab = ""):
 		tab = want_tab
 	var v = k.vbox(12)
 	var tabs = k.hbox(6)
-	var names = [["story", "Story"], ["flips", "Best flips"], ["discoveries", "Discoveries"], ["collection", "Collection"], ["achievements", "Achievements"], ["sales", "Sales"]]
+	var names = [["story", "Story"], ["flips", "Best flips"], ["luck", "Luck"], ["discoveries", "Discoveries"], ["collection", "Collection"], ["achievements", "Achievements"], ["sales", "Sales"]]
 	if ui.mobile:
 		names.insert(1, ["expertise", "Expertise"])
 		names.insert(2, ["perks", "Perks"])
@@ -41,6 +41,8 @@ func build(parent, want_tab = ""):
 			story(v)
 		"flips":
 			flips(v)
+		"luck":
+			luck_tab(v)
 		"discoveries":
 			discoveries(v)
 		"collection":
@@ -362,6 +364,81 @@ func logs(v):
 # ---------------------------------------------------------------------------
 # News & trends
 # ---------------------------------------------------------------------------
+const LUCK_NAMES = {"research": "Research", "research_long": "Research long shots", "deep": "Deep research", "deep_long": "Deep research long shots", "repair": "Repairs", "clean": "Cleaning", "fixer": "The Fixer", "mystery": "Mystery boxes", "toss": "Coin tosses", "tombola": "Tombola"}
+
+func luck_tab(v):
+	# Every visible roll you've made: the dice are honest, and here's the proof.
+	var L = g.luck.st()
+	var rolls = int(L["rolls"])
+	var head = k.panel("card2", 14)
+	var hv = k.vbox(6)
+	head.add_child(hv)
+	hv.add_child(k.label("Your luck", "xl", k.TEXT))
+	if rolls == 0:
+		hv.add_child(k.label("No rolls yet. Research, repairs, the Fixer, mystery boxes, coin tosses and the tombola all show their odds and the roll they hit.", "s", k.TEXT3, true))
+		v.add_child(head)
+		return
+	var hits = int(L["hits"])
+	var expv = float(L["expected"])
+	var diff = float(hits) - expv
+	var verdict = "Bang on average."
+	if diff >= max(2.0, expv * 0.1):
+		verdict = "Lucky. Don't tell Gaz."
+	elif diff <= -max(2.0, expv * 0.1):
+		verdict = "Unlucky. It evens out. Mostly."
+	var hh = k.hbox(24)
+	var a = k.vbox(0)
+	a.add_child(k.label("Hits", "xs", k.TEXT3))
+	a.add_child(k.label("%d / %d" % [hits, rolls], "hero", k.GREEN))
+	hh.add_child(a)
+	var b = k.vbox(0)
+	b.add_child(k.label("Expected", "xs", k.TEXT3))
+	b.add_child(k.label("%.1f" % expv, "xl", k.TEXT))
+	b.add_child(k.label(("+%.1f" % diff) if diff >= 0 else ("%.1f" % diff), "s", k.GREEN if diff >= 0 else k.RED))
+	b.size_flags_vertical = Control.SIZE_SHRINK_END
+	hh.add_child(b)
+	hv.add_child(hh)
+	hv.add_child(k.label(verdict, "m", k.GOLD))
+	v.add_child(head)
+	var by = L["by"]
+	var keys = by.keys()
+	keys.sort_custom(func(x, y): return int(by[x]["rolls"]) > int(by[y]["rolls"]))
+	var tp = k.panel("card", 12)
+	var tv = k.vbox(6)
+	tp.add_child(tv)
+	tv.add_child(k.label("BY KIND", "xs", k.TEXT3))
+	for kk in keys:
+		var e = by[kk]
+		var row = k.hbox(8)
+		var nl = k.label(LUCK_NAMES.get(kk, str(kk).capitalize()), "s", k.TEXT)
+		k.expand(nl)
+		row.add_child(nl)
+		var ed = float(e["hits"]) - float(e["expected"])
+		row.add_child(k.label("%d of %d hit · expected %.1f" % [int(e["hits"]), int(e["rolls"]), float(e["expected"])], "s", k.TEXT2))
+		row.add_child(k.label(("+%.1f" % ed) if ed >= 0 else ("%.1f" % ed), "s", k.GREEN if ed >= 0 else k.RED))
+		tv.add_child(row)
+	v.add_child(tp)
+	var bw = k.grid(1 if ui.mobile else 2, 10, 10)
+	if L["best"].size() > 0:
+		var p1 = k.panel("good", 12)
+		var v1 = k.vbox(2)
+		p1.add_child(v1)
+		v1.add_child(k.label("LUCKIEST HIT", "xs", k.TEXT3))
+		v1.add_child(k.label("%d%% chance" % int(round(float(L["best"]["chance"]) * 100.0)), "xl", k.GREEN))
+		v1.add_child(k.label("%s (day %d)" % [L["best"]["text"], int(L["best"]["day"])], "s", k.TEXT2, true))
+		p1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bw.add_child(p1)
+	if L["worst"].size() > 0:
+		var p2 = k.panel("bad", 12)
+		var v2 = k.vbox(2)
+		p2.add_child(v2)
+		v2.add_child(k.label("CRUELLEST MISS", "xs", k.TEXT3))
+		v2.add_child(k.label("%d%% chance" % int(round(float(L["worst"]["chance"]) * 100.0)), "xl", k.RED))
+		v2.add_child(k.label("%s (day %d)" % [L["worst"]["text"], int(L["worst"]["day"])], "s", k.TEXT2, true))
+		p2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bw.add_child(p2)
+	v.add_child(bw)
+
 func flips(v):
 	# A scrapbook of your best deals, each with its whole story.
 	var sold = []

@@ -179,7 +179,12 @@ func _cmd(cmd):
 			var args = []
 			for i in range(2, p.size()):
 				args.append(_conv(p[i]))
-			var r = m.callv(p[1], args)
+			var target = m
+			var fn = p[1]
+			if fn.find(".") > 0:
+				target = m.get(fn.split(".")[0])
+				fn = fn.split(".")[1]
+			var r = target.callv(fn, args)
 			print("  = ", _short(r))
 		"view", "iview":
 			# select a stall item (view N) or stock item (iview N) and show its screen, for screenshots
@@ -223,6 +228,22 @@ func _cmd(cmd):
 				await process_frame
 			m.ui.adjust_scale()
 			m.ui.rerender() if m.ui.has_method("rerender") else null
+		"clues":
+			var stl = m.stalls[m.current_stall_index]
+			for i in range(min(int(stl["revealed"]), stl["stock"].size())):
+				var it = stl["stock"][i]
+				for t in it["traits"]:
+					if t.get("clue", false) and not t.get("known", false):
+						print("  clue on (%d) %s: %s" % [i, it["name"], m.luck.clue_odds_text(it)])
+		"sleep":
+			await create_timer(float(p[1])).timeout
+		"wait":
+			for i in range(max(1, n)):
+				await process_frame
+		"redig": m.dig_again("stall", n, "research"); _after_stall(n)
+		"idig": m.dig_again("inv", n, p[2] if p.size() > 2 else "research"); _after_inv(n)
+		"toss": m.luck.toss(n); stall()
+		"tombola": m.luck.play_tombola(n)
 		"shot":
 			for i in range(12):
 				await process_frame

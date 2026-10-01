@@ -42,6 +42,9 @@ func build_market(parent):
 		var sr = saleroom_card()
 		if sr != null:
 			v.add_child(sr)
+		var tb = tombola_card()
+		if tb != null:
+			v.add_child(tb)
 		var leads = leads_card()
 		if leads != null:
 			v.add_child(leads)
@@ -272,6 +275,31 @@ func event_card():
 		var b = k.button("Find the owner", "special", func(): g.world.help_lost_dog(), "Walk the dog round the field. 15 minutes, 5 energy.", "s")
 		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		(tv if ui.mobile else h).add_child(b)
+	return p
+
+func tombola_card():
+	if not g.luck.tombola_here():
+		return null
+	var L = g.luck
+	var p = k.panel("card2", 14)
+	var v = k.vbox(8)
+	p.add_child(v)
+	var h = k.hbox(10)
+	h.add_child(k.glyph("dots", k.GOLD, 22))
+	var tv = k.vbox(2)
+	k.expand(tv)
+	tv.add_child(k.label("THE TOMBOLA", "s", k.GOLD))
+	tv.add_child(k.label("%s a ticket. Win %d%%, star prize %s%%. Prizes are bric-a-brac; the star prize is something good." % [g.fmt_money(L.TOMBOLA_PRICE), int(round(L.TOMBOLA_WIN * 100.0 + L.TOMBOLA_STAR * 100.0)), str(snapped(L.TOMBOLA_STAR * 100.0, 0.1))], "s", k.TEXT, true))
+	tv.add_child(k.label("%d tickets left" % L.tombola_left(), "xs", k.TEXT3))
+	h.add_child(tv)
+	v.add_child(h)
+	var row = k.hbox(8)
+	for n in [1, 5]:
+		var nn = n
+		var b = k.button("%d ticket%s · %s" % [n, "" if n == 1 else "s", g.fmt_money(L.TOMBOLA_PRICE * n)], "gold" if n == 1 else "action", func(): L.play_tombola(nn), "", "s")
+		b.disabled = L.tombola_left() < n or g.cash < L.TOMBOLA_PRICE * n
+		row.add_child(b)
+	v.add_child(row)
 	return p
 
 func saleroom_card():
@@ -531,6 +559,13 @@ func mystery_card():
 	h.add_child(k.label("Mystery boxes", "m", k.TEXT))
 	v.add_child(h)
 	v.add_child(k.label("Sealed boxes, £30 each. One or two things inside. On average they're worth less than you pay.", "xs", k.TEXT3, true))
+	var odds = []
+	var prev = 0.0
+	for b in g.mystery_bands():
+		odds.append("%s %s%%" % [b[0], str(snapped((float(b[1]) - prev) * 100.0, 0.1)).trim_suffix(".0")])
+		prev = float(b[1])
+	odds.append("Poor %d%%" % int(round((1.0 - prev) * 100.0)))
+	v.add_child(k.label("Odds: " + " · ".join(odds), "xs", k.GOLD, true))
 	var b = k.button("Buy one (%d left)" % g.mystery_packages_left, "special", func(): g.buy_mystery_package(), "", "s")
 	b.disabled = g.cash < 30.0
 	v.add_child(b)

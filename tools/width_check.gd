@@ -35,7 +35,7 @@ func _go(days):
 		["news", func(): m.ui.show_news()], ["expertise", func(): m.ui.show_journal("expertise")],
 		["perks", func(): m.ui.show_journal("perks")], ["flips", func(): m.ui.show_journal("flips")],
 		["discoveries", func(): m.ui.show_journal("discoveries")], ["collection", func(): m.ui.show_journal("collection")],
-		["story", func(): m.ui.show_journal("story")], ["sales", func(): m.ui.show_journal("sales")]]
+		["story", func(): m.ui.show_journal("story")], ["sales", func(): m.ui.show_journal("sales")], ["luck", func(): m.ui.show_journal("luck")]]
 	for ev in m.world.EVENT_WEIGHTS.keys():
 		screens.append(["event_" + ev, func():
 			m.generate_day()

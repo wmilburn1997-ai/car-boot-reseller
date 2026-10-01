@@ -7,7 +7,7 @@ var rng = RandomNumberGenerator.new()
 var run_seed = 0
 var forced_run_seed = -1   # tools set this for reproducible runs
 
-const GAME_VERSION = "0.12.0-playtest"
+const GAME_VERSION = "0.13.0-playtest"
 const STARTING_CASH = 300.0
 const SAVE_PATH = "user://savegame.json"
 # Tools can point the game at another save file (CBR_SAVE=user://x.json) so parallel test runs don't collide.
@@ -19,9 +19,11 @@ const Lines012 = preload("res://scripts/data/lines_012.gd")
 const Ident = preload("res://scripts/data/identity.gd")
 const WorldSys = preload("res://scripts/sys_world.gd")
 const TradeSys = preload("res://scripts/sys_trade.gd")
+const LuckSys = preload("res://scripts/sys_luck.gd")
 var w2 = {}
 var world = WorldSys.new(self)
 var trade = TradeSys.new(self)
+var luck = LuckSys.new(self)
 const WorldData = preload("res://scripts/data/world.gd")
 const UIRoot = preload("res://scripts/ui/ui_root.gd")
 static var _content_cache = null
@@ -156,19 +158,18 @@ func fixer_gamble(amount):
 	fixer_uses_today += 1
 	cash -= amount
 	day_stats["other_income"] = float(day_stats.get("other_income", 0.0)) - amount
-	var roll = rng.randf()
-	var win_chance = 0.49 if false else 0.46
-	var won = roll < win_chance
-	record_rng("Fixer's Gamble: Wager £%.0f | Chance %.0f%% | Rolled: %.2f%% | Result: %s" % [amount, win_chance * 100.0, roll * 100.0, "WON" if won else "LOST"])
+	var fr = luck.roll("fixer", 0.46, "The Fixer: £%d double or nothing" % int(amount))
+	fr["label"] = "Double your £%d" % int(amount)
+	var won = fr["hit"]
 	if won:
 		cash += amount * 2.0
 		day_stats["other_income"] = float(day_stats.get("other_income", 0.0)) + amount * 2.0
 		lifetime_fixer_wins += 1
-		add_toast("The Fixer's Gamble — WON! £%.0f -> £%.0f" % [amount, amount * 2.0], "success")
+		show_roll("THE FIXER", [fr], "Won! £%.0f becomes £%.0f." % [amount, amount * 2.0])
 		play_sfx("rare")
 		unlock_check_high_roller()
 	else:
-		add_toast("The Fixer's Gamble — lost £%.0f." % amount, "error")
+		show_roll("THE FIXER", [fr], "Lost £%.0f. The Fixer shrugs." % amount)
 		play_sfx("fail")
 	save_game()
 	show_stall_list()
@@ -2273,29 +2274,10 @@ func deep_research(index):
 	var tier = expertise_tier(item["category"])
 	var reason = ""
 	if item.has("traits") and item.get("hidden_special", "") == "":
-		# 0.11 items: Deep Research identifies deep- and research-level details outright,
-		# and has a knowledge-scaled chance to place each specialist detail.
-		var found = reveal_traits(item, "deep")
-		found += reveal_traits(item, "research")
-		var chance = clamp(0.30 + 0.10 * float(tier) + (0.10 if has_equip("library") else 0.0), 0.30, 0.80)
-		var extra = 0
-		for t in item["traits"]:
-			if t.get("known", false):
-				continue
-			var d = trait_def(t)
-			if d == null or not (str(d.get("reveal", "")) in ["expert", "eye"]):
-				continue
-			var roll = rng.randf()
-			record_rng("Deep Research: identify a specialist detail | Chance %.0f%% | Rolled %.2f%% | %s" % [chance * 100.0, roll * 100.0, "IDENTIFIED" if roll < chance else "no luck"])
-			if roll < chance:
-				t["known"] = true
-				t["clue"] = true
-				on_trait_found(item, t, "deep")
-				extra += 1
-			else:
-				t["clue"] = true
-		var n = found.size() + extra
-		reason = ("Nothing new turned up: you know exactly what you've got." if not item_has_open_clue(item) else "Nothing new in the books. Whatever's odd about it needs a specialist's eye.") if n == 0 else "%d new detail%s identified." % [n, "" if n == 1 else "s"]
+		# Deep Research rolls to find deep- and research-level details, with a long shot at specialist clues.
+		var res = luck.do_dig(item, "deep", "inv")
+		reason = luck.dig_result_text(item, "deep", res)
+		show_roll("DEEP RESEARCH", res["entries"], reason)
 	else:
 		# Legacy (0.10) items keep their old behaviour.
 		var knowledge = float(category_knowledge.get(item["category"], 5))
@@ -2313,7 +2295,7 @@ func deep_research(index):
 			reason = "Possible hidden special: %s." % item["hidden_special"]
 	item["basic_comps"] = make_comps(item, true)
 	var after = estimate_identified_potential(item)
-	item["research_note"] = "%s Your estimate £%d–£%d → £%d–£%d." % [reason, before[0], before[1], after[0], after[1]]
+	item["deep_note"] = "%s Your estimate £%d–£%d → £%d–£%d." % [reason, before[0], before[1], after[0], after[1]]
 	play_sfx("reveal")
 	refresh_after("inv")
 
@@ -2446,6 +2428,23 @@ func authenticate_item(index):
 	add_toast("Authentication: %s." % item["auth_status"], "success" if item["auth_status"] == "Confirmed Genuine" else ("error" if item["auth_status"] == "Confirmed Counterfeit" else "info"))
 	refresh_after("inv")
 
+func repair_fault_chance(item):
+	var base_chance = {"Minor": 0.62, "Moderate": 0.48, "Major": 0.30, "Dead": 0.16}.get(item["fault_severity"], 0.3)
+	if item["testable"] and equip_level("repair") >= 2:
+		base_chance += 0.06
+	return clamp(base_chance + repair_bonus(), 0.05, 0.92)
+
+func repair_trait_chance():
+	return clamp(0.55 + repair_bonus(), 0.1, 0.95)
+
+func repair_odds_text(item):
+	var parts = []
+	if item["fault"] and fault_is_known(item):
+		parts.append("%d%%" % int(round(repair_fault_chance(item) * 100.0)))
+	if known_fixable(item, "repair").size() > 0:
+		parts.append("%d%%" % int(round(repair_trait_chance() * 100.0)))
+	return " / ".join(parts)
+
 func repair_cost(item):
 	if item["fault_severity"] == "Minor":
 		return 5.0
@@ -2476,14 +2475,13 @@ func repair_item(index):
 	day_stats["repairs_done"] += 1
 	item["repair_attempted"] = true
 	var notes = []
+	var entries = []
 	if item["fault"] and fault_is_known(item):
-		var base_chance = {"Minor": 0.62, "Moderate": 0.48, "Major": 0.30, "Dead": 0.16}.get(item["fault_severity"], 0.3)
-		if item["testable"] and equip_level("repair") >= 2:
-			base_chance += 0.06
-		var chance = clamp(base_chance + repair_bonus(), 0.05, 0.92)
-		var roll = rng.randf()
-		var success = roll < chance
-		record_rng("Repair success chance: %.1f%% | Rolled: %.2f%% | Result: %s" % [chance * 100.0, roll * 100.0, "SUCCESS" if success else "FAILED"])
+		var chance = repair_fault_chance(item)
+		var rr = luck.roll("repair", chance, "Repair: %s" % fault_label(item).to_lower())
+		rr["label"] = "Fix the %s" % fault_label(item).to_lower()
+		entries.append(rr)
+		var success = rr["hit"]
 		if success:
 			if item["fault_severity"] in ["Minor", "Moderate"]:
 				item["fault"] = false
@@ -2496,18 +2494,21 @@ func repair_item(index):
 		else:
 			notes.append("the fault beat you")
 	for t in known_fixable(item, "repair"):
-		var ch = clamp(0.55 + repair_bonus(), 0.1, 0.95)
-		var r2 = rng.randf()
-		record_rng("Repair %s | Chance %.0f%% | Rolled %.2f%% | %s" % [trait_def(t)["name"], ch * 100.0, r2 * 100.0, "FIXED" if r2 < ch else "FAILED"])
-		if r2 < ch:
+		var ch = repair_trait_chance()
+		var r2r = luck.roll("repair", ch, "Repair: %s" % trait_def(t)["name"])
+		r2r["label"] = "Fix: %s" % trait_def(t)["name"]
+		entries.append(r2r)
+		if r2r["hit"]:
 			fix_trait(item, t)
 			notes.append("%s fixed" % trait_def(t)["name"])
 		else:
 			notes.append("couldn't fix the %s" % trait_def(t)["name"].to_lower())
 	item["repair_note"] = ", ".join(notes).capitalize()
 	hist(item, "On the bench: %s." % ", ".join(notes))
+	show_roll("ON THE BENCH", entries, item["repair_note"] + ".")
 	add_xp(3)
-	add_toast("Repair: %s." % ", ".join(notes), "success" if "fixed" in item["repair_note"].to_lower() or "repaired" in item["repair_note"].to_lower() else "warn")
+	if not show_rolls or entries.size() == 0:
+		add_toast("Repair: %s." % ", ".join(notes), "success" if "fixed" in item["repair_note"].to_lower() or "repaired" in item["repair_note"].to_lower() else "warn")
 	refresh_after("inv")
 
 func buyer_interest_score(item, price, perceived = false, reference_override = -1.0):
@@ -2574,6 +2575,41 @@ func auction_flavor_text(tier, sniped):
 		return "Sold to the only bidder in the room."
 	return "A fair price, no drama."
 
+func auction_hype(item):
+	var hype = 0.0
+	if item["one_in"] >= 25:
+		hype += 0.15
+	if item["one_in"] >= 125:
+		hype += 0.15
+	if item["one_in"] >= 750:
+		hype += 0.15
+	if item["one_in"] >= 5000:
+		hype += 0.15
+	for t in known_traits(item):
+		if float(t["mult"]) >= 1.6:
+			hype += 0.1
+	if float(current_trends.get(item["category"], 1.0)) >= 1.10:
+		hype += 0.15
+	return clamp(hype, 0.0, 0.6)
+
+func auction_bands(item):
+	# Cumulative [tier, upto] from worst to best; a roll lands in one.
+	var hype = auction_hype(item)
+	var w = {"flop": 0.12, "weak": 0.33, "normal": 0.42, "war": 0.10 * (1.0 + hype * 1.5), "big_war": 0.03 * (1.0 + hype * 2.5)}
+	var tot = 0.0
+	for v in w.values():
+		tot += v
+	var out = []
+	var cum = 0.0
+	for key in ["flop", "weak", "normal", "war", "big_war"]:
+		cum += w[key] / tot
+		out.append([key, cum])
+	return out
+
+func auction_odds_text(item):
+	var b = auction_bands(item)
+	return "%d%% flop · %d%% bidding war" % [int(round(float(b[0][1]) * 100.0)), int(round((1.0 - float(b[2][1])) * 100.0))]
+
 func start_auction(index):
 	if index < 0 or index >= inventory.size():
 		return
@@ -2613,17 +2649,14 @@ func start_auction(index):
 	if float(current_trends.get(item["category"], 1.0)) >= 1.10:
 		hype += 0.15
 	hype = clamp(hype, 0.0, 0.6)
-	var weights = {"flop": 0.12, "weak": 0.33, "normal": 0.42, "war": 0.10 * (1.0 + hype * 1.5), "big_war": 0.03 * (1.0 + hype * 2.5)}
-	var total_weight = 0.0
-	for w in weights.values():
-		total_weight += w
-	var roll = rng.randf() * total_weight
-	var tier = "normal"
-	for key in ["flop", "weak", "normal", "war", "big_war"]:
-		roll -= weights[key]
-		if roll <= 0.0:
-			tier = key
+	var bands = auction_bands(item)
+	var ar = luck.roll("auction", 1.0 - float(bands[0][1]), "Auction: %s" % item["name"])
+	var tier = "big_war"
+	for b in bands:
+		if float(ar["roll"]) < float(b[1]):
+			tier = str(b[0])
 			break
+	item["auction_roll"] = luck.roll_display(ar["roll"])
 	var final_mult = {"flop": 0.0, "weak": rng.randf_range(0.55, 0.85), "normal": rng.randf_range(0.80, 1.05), "war": rng.randf_range(1.10, 1.40), "big_war": rng.randf_range(1.45, 2.00)}[tier]
 	record_rng("Auction started for %s: interest boost %.0f%%. The final price stays hidden until it ends." % [item["name"], hype * 100.0], false)
 	item["auctioned"] = true
@@ -2650,7 +2683,7 @@ func process_auctions():
 			item["auction_days_left"] = 0
 			cash -= 2.0
 			day_stats["fees"] += 2.0
-			night_events.append({"kind": "bad", "text": "Auction flop: %s" % item["name"], "sub": "The bids never reached the reserve. It's back in your stock (£2 listing fee lost)."})
+			night_events.append({"kind": "bad", "text": "Auction flop: %s" % item["name"], "sub": "The bids never reached the reserve (rolled %d). It's back in your stock (£2 listing fee lost)." % int(item.get("auction_roll", 0))})
 			continue
 		if item["auction_days_left"] <= 0:
 			var final_price = float(item["auction_final_price"])
@@ -2663,7 +2696,7 @@ func process_auctions():
 			var net = final_price - costs["fee"] - costs["postage"] - costs["insurance"] - costs["packaging"]
 			cash += net
 			var profit = record_completed_sale(item, final_price, costs, "auction")
-			night_events.append({"kind": "sale", "text": "Auction: %s went for £%.0f" % [item["name"], final_price], "sub": auction_flavor_text(item["auction_tier"], sniped), "amount": final_price, "profit": profit})
+			night_events.append({"kind": "sale", "text": "Auction: %s went for £%.0f" % [item["name"], final_price], "sub": "%s  (Rolled %d.)" % [auction_flavor_text(item["auction_tier"], sniped), int(item.get("auction_roll", 0))], "amount": final_price, "profit": profit})
 			to_remove.append(i)
 		else:
 			var progress = (3.0 - float(item["auction_days_left"])) / 3.0
@@ -2989,6 +3022,18 @@ func package_budget(tier):
 		return rng.randf_range(150, 400)
 	return rng.randf_range(500, 900)
 
+func mystery_bands():
+	# [[tier, cumulative chance from the best down]]
+	var order = ["Grail", "Jackpot", "Excellent", "Good", "Average"]
+	var out = []
+	var cum = 0.0
+	for t in order:
+		for row in package_table:
+			if row["tier"] == t:
+				cum += float(row["chance"])
+		out.append([t, cum])
+	return out
+
 func buy_mystery_package():
 	if mystery_packages_left <= 0:
 		queue_popup("No mystery packages left today.")
@@ -3002,15 +3047,18 @@ func buy_mystery_package():
 	cash -= 30.0
 	day_stats["buy_spend"] += 30.0
 	mystery_packages_left -= 1
-	var roll = rng.randf()
-	var cumulative = 0.0
+	# Best tiers sit at the low end of the roll; anything under 45 is Average or better.
+	var bands = mystery_bands()
+	var mr = luck.roll("mystery", float(bands[bands.size() - 1][1]), "Mystery box")
+	mr["label"] = "What's inside?"
+	mr["bands"] = []
+	for b in bands:
+		mr["bands"].append([b[0], b[1], "gold" if b[0] in ["Grail", "Jackpot", "Excellent"] else "green"])
 	var tier = "Poor"
-	for row in package_table:
-		cumulative += row["chance"]
-		if roll <= cumulative:
-			tier = row["tier"]
+	for b in bands:
+		if float(mr["roll"]) < float(b[1]):
+			tier = str(b[0])
 			break
-	record_rng("Mystery Package tier | Rolled %.2f%% | %s" % [roll * 100.0, tier])
 	var count = 2 if rng.randf() < 0.30 else 1
 	var budget = package_budget(tier)
 	var contents = []
@@ -3037,6 +3085,8 @@ func buy_mystery_package():
 		contents.append(item["name"])
 	if tier == "Jackpot" or tier == "Grail":
 		show_big_popup("MYSTERY BOX: %s!" % tier.to_upper(), "Inside: %s.\nThis one could be worth a lot." % ", ".join(contents), "rare")
+	elif show_rolls and not sim_mode:
+		show_roll("MYSTERY BOX", [mr], "%s box: %s. It's in your stock." % [tier, ", ".join(contents)])
 	else:
 		add_toast("Mystery box: %s. It's in your stock." % ", ".join(contents), "success" if tier in ["Good", "Excellent"] else "info")
 	fx_money(-30.0)
@@ -3280,6 +3330,7 @@ var sfx_enabled = true
 var ui_scale = 1.0
 var fullscreen = false
 var show_rng_toasts = false
+var show_rolls = true
 
 func load_settings():
 	var cfg = ConfigFile.new()
@@ -3291,6 +3342,7 @@ func load_settings():
 	ui_scale = float(cfg.get_value("display", "ui_scale2", 1.0))
 	fullscreen = to_bool(cfg.get_value("display", "fullscreen", false))
 	show_rng_toasts = to_bool(cfg.get_value("gameplay", "show_dice_popups", false))
+	show_rolls = to_bool(cfg.get_value("gameplay", "show_rolls", true))
 	music_volume = float(cfg.get_value("audio", "music_volume", 0.5))
 	var ts = cfg.get_value("gameplay", "tips_seen", {})
 	tips_seen = ts if typeof(ts) == TYPE_DICTIONARY else {}
@@ -3303,6 +3355,7 @@ func save_settings():
 	cfg.set_value("display", "ui_scale2", ui_scale)
 	cfg.set_value("display", "fullscreen", fullscreen)
 	cfg.set_value("gameplay", "show_dice_popups", show_rng_toasts)
+	cfg.set_value("gameplay", "show_rolls", show_rolls)
 	cfg.set_value("gameplay", "tips_seen", tips_seen)
 	cfg.save(SETTINGS_PATH)
 
@@ -3438,6 +3491,12 @@ func bug_report_text():
 	return "\n".join(lines)
 
 var patch_notes = [
+	{"version": "0.13: Odds On", "notes": [
+		"Every gamble shows its odds first and the roll it hit afterwards: research, deep research, long shots on clues, repairs, cleaning, auctions, the Fixer and mystery boxes.",
+		"Dig again: another roll on the same item, a little dearer each time.",
+		"Chancer sellers will toss you for it. The tombola turns up at some markets.",
+		"Journal → Luck: your hits against expected, and your luckiest and unluckiest rolls.",
+	]},
 	{"version": "0.12: The Living Market", "notes": [
 		"Haggling is a conversation: sellers counter, lose patience and name a final price. Point out flaws you've found; research in front of a sharp dealer and the price may go up.",
 		"Every item has its own pixel art, a specific identity, where it came from, and a story that follows it until it sells. Your best deals go in the Best flips scrapbook.",
@@ -3739,13 +3798,52 @@ func do_research(where, index):
 	add_expertise(item["category"], 2 if has_equip("library") else 1)
 	item["basic_researched"] = true
 	item["action_order"].append("research")
-	reveal_traits(item, "research")
+	var res = luck.do_dig(item, "research", where)
 	item["basic_comps"] = make_comps(item, false)
 	item["locked_gamble_hint"] = gamble_hint_chance(item)
+	item["research_note"] = luck.dig_result_text(item, "research", res)
+	show_roll("RESEARCH", res["entries"], item["research_note"])
 	if where == "stall" and current_stall_index >= 0 and current_stall_index < stalls.size():
 		seller_notices(stalls[current_stall_index], item)
 	play_sfx("reveal")
 	refresh_after(where)
+
+func dig_again(where, index, method):
+	# Another go at the same item: costs a bit more each time.
+	var item = item_at(where, index)
+	if item == null or not luck.can_dig_again(item, method):
+		return
+	var cost = luck.dig_cost(item, method)
+	var en = luck.dig_energy(method)
+	if cash < cost or energy < en:
+		queue_popup("Digging again needs %s and %d energy." % [fmt_money(cost), en])
+		return
+	cash -= cost
+	item["extra_spend"] += cost
+	energy -= en
+	spend_time(4 if method == "research" else 15)
+	day_stats["research"] += cost
+	var res = luck.do_dig(item, method, where)
+	var note = luck.dig_result_text(item, method, res)
+	if method == "research":
+		item["research_note"] = note
+	else:
+		item["deep_note"] = note
+	if res["found"].size() > 0:
+		item["basic_comps"] = make_comps(item, method == "deep")
+	hist(item, "Dug again (%s): %s" % ["research" if method == "research" else "deep research", note.to_lower()])
+	show_roll("DIG AGAIN", res["entries"], note)
+	play_sfx("reveal")
+	refresh_after(where)
+
+func show_roll(title, entries, text):
+	# The visible dice: odds, the roll, hit or miss.
+	if sim_mode or ui == null or entries.size() == 0:
+		return
+	if show_rolls:
+		ui.roll_card(title, entries, text)
+	else:
+		add_toast(text, "info")
 
 func stall_haggle_bonus(stall):
 	var b = 0.0
@@ -4663,13 +4761,21 @@ func clean_item(index):
 				t["clue"] = true
 			fix_trait(item, t)
 			notes.append("%s sorted" % d["name"])
-	if int(item["condition"]) < 8 and rng.randf() < 0.30:
-		item["condition"] = int(item["condition"]) + 1
-		notes.append("condition up to %d/10" % int(item["condition"]))
+	var centries = []
+	if int(item["condition"]) < 8:
+		var cr = luck.roll("clean", 0.30, "Cleaning: condition up a point")
+		cr["label"] = "Condition up a point"
+		centries.append(cr)
+		if cr["hit"]:
+			item["condition"] = int(item["condition"]) + 1
+			notes.append("condition up to %d/10" % int(item["condition"]))
 		if item["condition_checked"]:
 			item["condition_price_note"] = condition_reveal_note(item)
 	hist(item, "Cleaned%s." % ((": " + ", ".join(notes)) if notes.size() > 0 else ""))
-	add_toast("Cleaned %s%s" % [item["name"], (": " + ", ".join(notes)) if notes.size() > 0 else ". Looks a bit brighter."], "success" if notes.size() > 0 else "info")
+	if show_rolls and centries.size() > 0 and not sim_mode:
+		show_roll("CLEANING", centries, "Cleaned%s" % ((": " + ", ".join(notes)) if notes.size() > 0 else ". Looks a bit brighter."))
+	else:
+		add_toast("Cleaned %s%s" % [item["name"], (": " + ", ".join(notes)) if notes.size() > 0 else ". Looks a bit brighter."], "success" if notes.size() > 0 else "info")
 	play_sfx("confirm")
 	refresh_after("inv")
 

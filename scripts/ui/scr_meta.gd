@@ -371,7 +371,10 @@ func build_settings(parent):
 	v.add_child(toggle_row("Sound effects", g.sfx_enabled, func(on):
 		g.sfx_enabled = on
 		g.save_settings()))
-	v.add_child(toggle_row("Show dice rolls as pop-ups", g.show_rng_toasts, func(on):
+	v.add_child(toggle_row("Show the roll for every gamble", g.show_rolls, func(on):
+		g.show_rolls = on
+		g.save_settings()))
+	v.add_child(toggle_row("Also list every dice roll as a toast", g.show_rng_toasts, func(on):
 		g.show_rng_toasts = on
 		g.save_settings()))
 	var sz = k.hbox(8)

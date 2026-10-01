@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.13.0: "Odds On"
+
+You now see the odds before every gamble and the roll it actually hit afterwards.
+
+- **The roll card.** An animated bar shows the hit zone, a marker sweeps and lands on the roll (1–100), then HIT or MISS. It's used everywhere below. You can turn it off in Settings.
+- **Research and Deep Research are rolls.**
+  - Research: about 62% to find what's there, rising with expertise and the Reference Library. Comps are always included.
+  - Deep Research: about 68%.
+  - Purple clues show their odds, e.g. "Research 12% (long shot), Deep research 22% (long shot)". Even a novice can take a long shot at a specialist clue.
+- **Dig again.** Another roll on the same item, a little dearer each time. You see the odds before you pay.
+- **Odds on everything that was already a gamble:**
+  - repairs (e.g. "62% to fix");
+  - cleaning (30% condition up);
+  - auctions ("12% flop · 13% bidding war"; the night report shows the roll);
+  - the Fixer;
+  - mystery boxes, with a full odds table, tier bands and the roll landing in one.
+- **Toss you for it.** Chancer sellers will flip a coin: heads half price, tails 25% over. You buy it either way.
+- **The tombola.** A new market-day event, and always at village fetes. £3 a ticket, 15% to win, 1.2% star prize.
+- **Luck** (Journal). Your hits against expected, broken down by kind, plus your luckiest hit and cruellest miss.
+
+
 ## 0.12.0: "The Living Market" (from 0.11.2)
 
 ### Deals are conversations

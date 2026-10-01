@@ -499,7 +499,7 @@ func value_item(index):
 # =============================================================================
 # One odd thing per market day
 # =============================================================================
-const EVENT_WEIGHTS = {"tv_crew": 1.0, "cloudburst": 0.8, "kids_stall": 1.0, "late_van": 1.0, "dealers_at_dawn": 0.9, "lost_dog": 0.8, "charity_stall": 1.0, "trading_standards": 0.6, "brass_band": 0.8, "heatwave_ices": 0.7, "retired_dealer": 0.7}
+const EVENT_WEIGHTS = {"tv_crew": 1.0, "cloudburst": 0.8, "kids_stall": 1.0, "late_van": 1.0, "dealers_at_dawn": 0.9, "lost_dog": 0.8, "charity_stall": 1.0, "trading_standards": 0.6, "brass_band": 0.8, "heatwave_ices": 0.7, "retired_dealer": 0.7, "tombola": 1.0}
 
 func roll_market_event():
 	if g.day < 3 or g.rng.randf() > 0.5 or OS.get_environment("CBR_NO_EVENTS") != "":

@@ -522,6 +522,20 @@ func reveal_hint(it, d):
 			return "Sort through the lot at home to find out."
 	return "You'll find out eventually."
 
+func dig_tile(it, index, where, method):
+	# "Dig again": another roll, a little dearer each time. Shows the odds you're buying.
+	var cost = g.luck.dig_cost(it, method)
+	var en = g.luck.dig_energy(method)
+	var parts = []
+	if not it.get("dig_hit_" + method, false):
+		parts.append("%d%% find" % int(round(g.luck.find_chance(it, method) * 100.0)))
+	var ls = g.luck.best_long_shot(it, method)
+	if float(ls[1]) > 0.0:
+		parts.append("%d%% long shot" % int(round(float(ls[1]) * 100.0)))
+	var sub = "%s · %s · %d energy" % [" + ".join(parts), g.fmt_money(cost), en]
+	var title = "Dig again" if method == "research" else "Deeper still"
+	return k.action_tile("dots", title, sub, "special", func(): g.dig_again(where, index, method), g.cash < cost or g.energy < en, "Another go. You see the odds before you pay, and the roll after.")
+
 func findings(it, ctx):
 	var v = k.vbox(6)
 	var any = false
@@ -548,6 +562,9 @@ func findings(it, ctx):
 				clue_text = "There's something here you can't quite place."
 			tv.add_child(k.label(clue_text, "b", k.TEXT, true))
 			tv.add_child(k.label(reveal_hint(it, d), "xs", k.PURPLE.lightened(0.2), true))
+			var odds = g.luck.clue_odds_text(it)
+			if odds != "":
+				tv.add_child(k.label("Odds to crack it: " + odds, "xs", k.GOLD, true))
 			h.add_child(tv)
 			p.add_child(h)
 			v.add_child(p)
@@ -565,7 +582,9 @@ func findings(it, ctx):
 	if str(it.get("test_note", "")) != "":
 		notes.append(["bolt", "Test: " + strip_bb(it["test_note"]), k.GREEN if not it["fault"] else k.RED])
 	if str(it.get("research_note", "")) != "":
-		notes.append(["book", "Deep Research: " + strip_bb(it["research_note"]), k.BLUE])
+		notes.append(["book", "Research: " + strip_bb(it["research_note"]), k.BLUE])
+	if str(it.get("deep_note", "")) != "":
+		notes.append(["book", "Deep Research: " + strip_bb(it["deep_note"]), k.BLUE])
 	if ctx == "inv" and it["basic_researched"] and it.get("comps_values", []).size() > 0:
 		notes.append(["glass", "Sold recently (ones like yours): " + g.comps_text(it), k.BLUE])
 	if str(it.get("auth_note", "")) != "":
@@ -650,7 +669,10 @@ func stall_actions(it, index):
 	var cc = g.condition_cost()
 	gr.add_child(k.action_tile(ui.tex("condition_icon"), "Check condition" if not it["condition_checked"] else "Condition %d/10" % int(it["condition"]), time_cost(4, 5, cc), "action", func(): g.check_condition(index), g.cash < cc or g.energy < 4, "The exact condition score, plus hidden wear and damage.", it["condition_checked"]))
 	var rc = g.research_cost()
-	gr.add_child(k.action_tile(ui.tex("research_icon"), "Research" if not it["basic_researched"] else "Researched", time_cost(2, 4, rc) if rc > 0 else time_cost(2, 4) + " · free", "action", func(): g.prebuy_research(index), g.cash < rc or g.energy < 2, "Recent sold prices for this kind of item, and your margin after fees.", it["basic_researched"]))
+	if it["basic_researched"] and g.luck.can_dig_again(it, "research"):
+		gr.add_child(dig_tile(it, index, "stall", "research"))
+	else:
+		gr.add_child(k.action_tile(ui.tex("research_icon"), "Research" if not it["basic_researched"] else "Researched", ("%d%% find · " % int(round(g.luck.find_chance(it, "research") * 100.0)) if not it["basic_researched"] else "") + (time_cost(2, 4, rc) if rc > 0 else time_cost(2, 4) + " · free"), "action", func(): g.prebuy_research(index), g.cash < rc or g.energy < 2, "Recent sold prices, plus a roll to turn up hidden details. You see the odds first.", it["basic_researched"]))
 	var tier = g.expertise_tier(it["category"])
 	var act = g.SPECIALIST_ACTIONS.get(it["category"], "Specialist check")
 	if tier >= 2:
@@ -718,6 +740,13 @@ func haggle_panel(it, index, stall):
 	ch_row.add_child(k.spacer(0, 0, true))
 	ch_row.add_child(k.label("1 energy per offer", "xs", k.TEXT3))
 	v.add_child(ch_row)
+	if g.luck.can_toss(it, stall):
+		var tr = k.hbox(8)
+		var tl = k.label("\"Toss you for it?\" Heads: %s. Tails: %s. 50%%." % [g.fmt_money(round(asking * 0.5)), g.fmt_money(round(asking * 1.25))], "xs", k.GOLD, true)
+		k.expand(tl)
+		tr.add_child(tl)
+		tr.add_child(k.button("Toss a coin", "gold", func(): g.luck.toss(index), "A chancer's offer: one flip, and you buy it either way.", "s"))
+		v.add_child(tr)
 	var flaws = g.item_flaws(it)
 	if flaws.size() > 0:
 		var fl = k.flow(6, 6)
@@ -771,14 +800,21 @@ func inv_actions(it, index):
 		gr.add_child(k.action_tile(ui.tex("condition_icon"), "Check condition", time_cost(4, 5, g.condition_cost()), "action", func(): g.inventory_check_condition(index), g.cash < g.condition_cost() or g.energy < 4, "Exact condition score and hidden wear."))
 	if not it["basic_researched"]:
 		var rc = g.research_cost()
-		gr.add_child(k.action_tile(ui.tex("research_icon"), "Research", time_cost(2, 4, rc) if rc > 0 else time_cost(2, 4), "action", func(): g.inventory_basic_research(index), g.cash < rc or g.energy < 2, "Recent sold prices."))
+		gr.add_child(k.action_tile(ui.tex("research_icon"), "Research", "%d%% find · %s" % [int(round(g.luck.find_chance(it, "research") * 100.0)), time_cost(2, 4, rc) if rc > 0 else time_cost(2, 4)], "action", func(): g.inventory_basic_research(index), g.cash < rc or g.energy < 2, "Recent sold prices, plus a roll to turn up hidden details."))
+	elif g.luck.can_dig_again(it, "research"):
+		gr.add_child(dig_tile(it, index, "inv", "research"))
 	var drc = g.deep_research_cost(it)
-	gr.add_child(k.action_tile(ui.tex("deep_research_icon"), "Deep Research" if not it["deep_researched"] else "Deep researched", time_cost(10, 20, drc), "action", func(): g.deep_research(index), g.cash < drc or g.energy < 10, "Dig into editions, provenance and variants. Identifies research-level details outright, and may place specialist ones.", it["deep_researched"]))
+	if it["deep_researched"] and g.luck.can_dig_again(it, "deep"):
+		gr.add_child(dig_tile(it, index, "inv", "deep"))
+	else:
+		var dls = g.luck.best_long_shot(it, "deep")
+		var dsub = ("%d%% find%s · " % [int(round(g.luck.find_chance(it, "deep") * 100.0)), (" + %d%% long shot" % int(round(float(dls[1]) * 100.0))) if float(dls[1]) > 0.0 else ""]) if not it["deep_researched"] else ""
+		gr.add_child(k.action_tile(ui.tex("deep_research_icon"), "Deep Research" if not it["deep_researched"] else "Deep researched", dsub + time_cost(10, 20, drc), "action", func(): g.deep_research(index), g.cash < drc or g.energy < 10, "Dig into editions, provenance and variants: a roll to find what's there, and a long shot at any specialist clue.", it["deep_researched"]))
 	var tier = g.expertise_tier(it["category"])
 	if tier >= 2:
 		gr.add_child(k.action_tile("star", g.SPECIALIST_ACTIONS.get(it["category"], "Specialist check") if not it.get("expert_checked", false) else "Checked", "3 energy · 3m", "special", func(): g.specialist_check("inv", index), g.energy < 3, "Your %s expertise at work." % it["category"], it.get("expert_checked", false)))
 	if g.has_equip("cleaning"):
-		gr.add_child(k.action_tile("brush", "Clean it" if not it.get("cleaned", false) else "Cleaned", time_cost(4, 12, 1.0), "action", func(): g.clean_item(index), g.cash < 1 or g.energy < 4, "Grime off: fixes dirt and tarnish, can reveal marks, sometimes lifts condition.", it.get("cleaned", false)))
+		gr.add_child(k.action_tile("brush", "Clean it" if not it.get("cleaned", false) else "Cleaned", ("30%% condition up · " if int(it["condition"]) < 8 and not it.get("cleaned", false) else "") + time_cost(4, 12, 1.0), "action", func(): g.clean_item(index), g.cash < 1 or g.energy < 4, "Grime off: fixes dirt and tarnish, can reveal marks, sometimes lifts condition.", it.get("cleaned", false)))
 	if g.has_equip("auth"):
 		gr.add_child(k.action_tile("uv", "UV lamp" if not it.get("uv_checked", false) else "UV checked", "2 energy · 3m", "action", func(): g.uv_check(index), g.energy < 2, "Repaints, restorations and touched-up signatures glow under UV.", it.get("uv_checked", false)))
 	var parts = g.known_fixable(it, "parts")
@@ -786,7 +822,8 @@ func inv_actions(it, index):
 		gr.add_child(k.action_tile("gear", "Fit parts", time_cost(3, 10, 4.0 * parts.size()), "action", func(): g.parts_fix(index), g.cash < 4.0 * parts.size() or g.energy < 3, "Replace the missing bits from your parts bin."))
 	if g.can_repair(it) or (g.has_equip("repair") and it["repair_attempted"]):
 		var cost = g.repair_cost(it) if (it["fault"] and g.fault_is_known(it)) else 6.0
-		gr.add_child(k.action_tile("hammer", "Repair" if not it["repair_attempted"] else "Repair tried", time_cost(10, 30, cost), "action", func(): g.repair_item(index), g.cash < cost or g.energy < 10, "One attempt at fixing known faults and broken parts. Better benches, better odds.", it["repair_attempted"]))
+		var rodds = g.repair_odds_text(it)
+		gr.add_child(k.action_tile("hammer", "Repair" if not it["repair_attempted"] else "Repair tried", (("%s to fix · " % rodds) if rodds != "" and not it["repair_attempted"] else "") + time_cost(10, 30, cost), "action", func(): g.repair_item(index), g.cash < cost or g.energy < 10, "One attempt at fixing known faults and broken parts. Better benches, better odds.", it["repair_attempted"]))
 	if float(it["fake_chance"]) > 0.0 or it["auth_status"] != "Unauthenticated":
 		var ac = g.authentication_cost(it)
 		gr.add_child(k.action_tile(ui.tex("authenticate_icon"), "Authenticate" if not it["auth_attempted"] else it["auth_status"], time_cost(6, 15, ac), "action", func(): g.authenticate_item(index), g.cash < ac or g.energy < 6, "Find out if it's genuine. Selling an unchecked fake usually ends in a return and a hit to your rating.", it["auth_attempted"]))
@@ -931,7 +968,7 @@ func sell_panel(it, index):
 	if g.trade.can_consign(it):
 		alt.add_child(k.button("Consign to the Saleroom", "gold", func(): g.trade.consign(index), "It goes under the hammer on day %d. 12%% commission, no fees or postage. The room pays for what it can see, so research and authentication help." % g.trade.next_sale_day(), "s"))
 	if g.auctions_unlocked():
-		var ab = k.button("Auction (3 days)", "special", func(): g.start_auction(index), "Let bidders decide. Rare and trending things can spark a bidding war; common things can go cheap.", "s")
+		var ab = k.button("Auction (3 days) · %s" % g.auction_odds_text(it), "special", func(): g.start_auction(index), "Let bidders decide. Rare and trending things can spark a bidding war; common things can go cheap.", "s")
 		ab.disabled = not can_sell or cap_full
 		alt.add_child(ab)
 	if g.collector_contact_available(it):

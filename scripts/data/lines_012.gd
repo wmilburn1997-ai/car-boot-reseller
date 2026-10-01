@@ -541,6 +541,11 @@ const MARKET_EVENTS = {
 		"A retired antiques man is selling up. Every piece has a story. None of them are cheap.",
 		"An old trader's final boot sale. Quality on the table and a tear in his eye.",
 	]},
+	"tombola": {"title": "The Tombola", "texts": [
+		"The Scouts have a tombola by the gate. Tickets ending in 0 or 5 win. Probably.",
+		"A tombola stall with a hand-painted sign: EVERY TICKET COULD BE A WINNER. Most aren't.",
+		"The WI are running a tombola. The star prize is under a tea towel and nobody will say what it is.",
+	]},
 	"wedding_party": {"title": "Hen Do on the Loose", "texts": [
 		"A hen party in tutus is buying random ornaments and screaming at each one.",
 		"A stag do dressed as pirates is buying anything with a skull on it. And a teapot.",
