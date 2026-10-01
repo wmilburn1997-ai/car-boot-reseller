@@ -131,6 +131,8 @@ func build_day_summary(parent, s):
 		var inv2 = float(st.get("buy_spend", 0.0))
 		hv.add_child(k.label("Cash %s%s" % [g.fmt_money(s["end_cash"]), ("  ·  %s invested in stock" % g.fmt_money(inv2)) if inv2 > 0 else ""], "s", k.TEXT2))
 	v.add_child(head)
+	if g.gamble.scratch_available(s):
+		v.add_child(scratch_card(s))
 	if int(s.get("streak", 0)) > 0:
 		var w = k.panel("bad", 12)
 		w.add_child(k.label("You're overdrawn: %d night%s in the red. Four in a row and the business goes under. Sell something, fast." % [int(s["streak"]), "" if int(s["streak"]) == 1 else "s"], "m", k.RED, true))
@@ -565,3 +567,28 @@ func build_notes(parent):
 		g.add_toast("Copied.", "success"), "", "m"))
 	v.add_child(k.spacer(0, 20))
 	parent.add_child(ui.keyed_scroll("notes", v))
+
+func scratch_card(s):
+	# A bit of the day's profit on a scratch card. Just under break-even on average.
+	var price = g.gamble.scratch_price(s["stats"].get("sale_profit", 0.0))
+	var p = k.panel("gold", 12)
+	var h = k.hbox(10)
+	p.add_child(h)
+	var gl = k.glyph("spark", k.GOLD, 22)
+	gl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	h.add_child(gl)
+	var v = k.vbox(2)
+	k.expand(v)
+	v.add_child(k.label("Good day. Fancy a scratch card?", "m", k.TEXT))
+	var lo = 0.0
+	var parts = []
+	for b in g.gamble.SCRATCH:
+		parts.append("%s%% %s" % [g.luck.pct_text(float(b[1]) - lo), str(b[3])])
+		lo = float(b[1])
+	v.add_child(k.label(" · ".join(parts), "xs", k.GOLD, true))
+	h.add_child(v)
+	var b2 = k.button("Scratch  %s" % g.fmt_money(price), "gold", func(): g.gamble.scratch(s), "5% of today's profit. One a night.", "m")
+	b2.disabled = g.cash < price
+	b2.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(b2)
+	return p

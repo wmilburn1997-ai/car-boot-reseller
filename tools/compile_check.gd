@@ -2,7 +2,7 @@ extends SceneTree
 # Loads every game script so parse errors show up without running the game.
 func _initialize():
 	var bad = 0
-	for p in ["res://main.gd", "res://scripts/content.gd", "res://scripts/sys_world.gd", "res://scripts/sys_trade.gd", "res://scripts/sys_luck.gd"]:
+	for p in ["res://main.gd", "res://scripts/content.gd", "res://scripts/sys_world.gd", "res://scripts/sys_trade.gd", "res://scripts/sys_luck.gd", "res://scripts/sys_gamble.gd"]:
 		if load(p) == null:
 			bad += 1
 	for dir in ["res://scripts/ui/", "res://scripts/data/"]:

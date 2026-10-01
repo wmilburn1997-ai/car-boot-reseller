@@ -15,11 +15,14 @@ func _init(root):
 
 func in_tab(it):
 	var selling = it["listed"] or it["auctioned"] or it.get("on_shop_floor", false)
+	var vaulted = it.get("vaulted", false)
 	match tab:
 		"todo":
-			return not selling
+			return not selling and not vaulted
 		"selling":
 			return selling
+		"vault":
+			return vaulted
 	return true
 
 func rank(it):
@@ -139,13 +142,18 @@ func meter(name, v, m, c):
 func tabs_row():
 	var v = k.vbox(6)
 	var h = k.hbox(4)
-	var counts = {"todo": 0, "selling": 0, "all": g.inventory.size()}
+	var counts = {"todo": 0, "selling": 0, "vault": 0, "all": g.inventory.size()}
 	for it in g.inventory:
-		if it["listed"] or it["auctioned"] or it.get("on_shop_floor", false):
+		if it.get("vaulted", false):
+			counts["vault"] += 1
+		elif it["listed"] or it["auctioned"] or it.get("on_shop_floor", false):
 			counts["selling"] += 1
 		else:
 			counts["todo"] += 1
-	for t in [["todo", "To do"], ["selling", "For sale"], ["all", "All"]]:
+	var tabs = [["todo", "To do"], ["selling", "For sale"], ["all", "All"]]
+	if g.gamble.has_vault():
+		tabs.insert(2, ["vault", "Vault"])
+	for t in tabs:
 		var id = t[0]
 		var b = k.button("%s  %d" % [t[1], counts[id]], "tab_on" if tab == id else "ghost", func():
 			tab = id
@@ -173,7 +181,7 @@ func tabs_row():
 		h2.add_child(k.button("Test all (%d)" % untested, "action", func(): g.bulk_test_all(), "Test every untested electrical.", "xs", 0, 32))
 	if g.trade_buyer_available():
 		h2.add_child(k.button("Trade buyer: %s" % g.fmt_money(g.trade_buyer_offer()), "gold", func(): g.trade_buyer_sale(), "At the warehouse, a trade buyer will take everything unlisted you've held 3+ days, at about 60% of what it's worth. Once a day.", "xs", 0, 32))
-	if tab != "selling" and counts["todo"] > 0:
+	if tab != "selling" and tab != "vault" and counts["todo"] > 0:
 		h2.add_child(k.button("List all at estimate", "buy", func(): g.bulk_list_at_estimate(), "Lists everything tested at the middle of your estimate, skipping anything that would sell at a loss.", "xs", 0, 32))
 	v.add_child(h2)
 	return v

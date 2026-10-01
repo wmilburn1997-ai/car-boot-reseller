@@ -171,6 +171,9 @@ func status_row(it, ctx):
 		entries.append([1, k.label("%s 1/%d" % [it["rarity"].to_upper(), int(it["one_in"])], "xs", k.rarity_color(it["rarity"]))])
 	if g.world.commission_for(it) != null:
 		entries.append([0, k.label("WANTED", "xs", k.GOLD)])
+	if it.get("vaulted", false):
+		var vm = int(round((float(it.get("vault_mult", 1.0)) - 1.0) * 100.0))
+		entries.append([0, mini_stat("box", "vault %s%d%%" % ["+" if vm >= 0 else "", vm], k.GOLD if vm >= 0 else k.RED)])
 	var good = 0
 	var bad = 0
 	var clue = 0
@@ -269,6 +272,13 @@ func detail(it, ctx, index, stall = null):
 			v.add_child(k.label("Final price. Take it or leave it.", "s", k.ORANGE))
 		elif stall != null and g.to_bool(stall.get("no_haggle", false)):
 			v.add_child(k.label("Fixed prices on this stall. No haggling.", "s", k.TEXT3))
+	elif ctx == "inv" and it.get("vaulted", false):
+		v.add_child(k.section("In the vault"))
+		v.add_child(vault_panel(it, index))
+		var hpv = history_panel(it)
+		if hpv != null:
+			v.add_child(k.section("Its story so far"))
+			v.add_child(hpv)
 	elif ctx == "inv":
 		var acts = inv_actions(it, index)
 		if acts.get_child_count() > 0:
@@ -281,6 +291,34 @@ func detail(it, ctx, index, stall = null):
 			v.add_child(k.section("Its story so far"))
 			v.add_child(hp)
 	return v
+
+func vault_panel(it, index):
+	var p = k.panel("gold", 12)
+	var v = k.vbox(6)
+	p.add_child(v)
+	var vm = float(it.get("vault_mult", 1.0))
+	var pct = int(round((vm - 1.0) * 100.0))
+	v.add_child(k.label("In the vault since day %d. The market's moved it %s%d%% so far." % [int(it.get("vault_day", g.day)), "+" if pct >= 0 else "", pct], "s", k.TEXT, true))
+	var nxt = 7 - (g.day % 7)
+	v.add_child(k.label("Next weekly move: end of day %d. Odds: %s" % [g.day + (nxt if nxt < 7 else 0), g.gamble.vault_odds_text(it)], "xs", k.GOLD, true))
+	var cn = g.gamble.vault_collection_note(it)
+	if cn != "":
+		v.add_child(k.label(cn, "xs", k.GREEN, true))
+	v.add_child(k.button("Take it out", "action", func(): g.gamble.take_out(index), "Back into your stock, to sell. What the vault gained (or lost) stays with it.", "s"))
+	return p
+
+func vault_offer(it, index):
+	# The option to put something away instead of selling it.
+	if not g.gamble.has_vault() or it["auth_status"] == "Confirmed Counterfeit":
+		return null
+	var h = k.hbox(8)
+	var l = k.label("Vault it (%d/%d): rolls weekly. %s" % [g.gamble.vault_used(), g.gamble.vault_slots(), g.gamble.vault_odds_text(it)], "xs", k.TEXT2, true)
+	k.expand(l)
+	h.add_child(l)
+	var b = k.button("Put in the vault", "gold", func(): g.gamble.put_in_vault(index), "Hold it out of stock. Every week the market moves on it, up or down: you see the roll.", "s")
+	b.disabled = g.gamble.vault_used() >= g.gamble.vault_slots()
+	h.add_child(b)
+	return h
 
 func to_bool_banned(stall):
 	return stall != null and g.to_bool(stall.get("banned_today", false))
@@ -979,12 +1017,15 @@ func sell_panel(it, index):
 	alt.add_child(k.button("Sell to a trader", "ghost", func(): g.quick_sell_item(index), "Instant cash: a trader pays %d–%d%% of what it's really worth." % [int(tr_lo * 100), int(tr_hi * 100)], "s"))
 	alt.add_child(k.button("Scrap", "ghost", func(): g.scrap_item(index), "Parts value only.", "s"))
 	v.add_child(alt)
+	var vo = vault_offer(it, index)
+	if vo != null:
+		v.add_child(vo)
 	return v
 
 
 func inv_footer(it, index):
 	# Mobile sheet footer: the sell decision, always visible.
-	if it["listed"] or it["auctioned"] or it.get("on_shop_floor", false) or it["auth_status"] == "Confirmed Counterfeit":
+	if it.get("vaulted", false) or it["listed"] or it["auctioned"] or it.get("on_shop_floor", false) or it["auth_status"] == "Confirmed Counterfeit":
 		return null
 	var uid = int(it["uid"])
 	if not price_values.has(uid):

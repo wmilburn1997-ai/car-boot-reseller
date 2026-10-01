@@ -364,7 +364,7 @@ func logs(v):
 # ---------------------------------------------------------------------------
 # News & trends
 # ---------------------------------------------------------------------------
-const LUCK_NAMES = {"research": "Research", "research_long": "Research long shots", "deep": "Deep research", "deep_long": "Deep research long shots", "repair": "Repairs", "clean": "Cleaning", "fixer": "The Fixer", "mystery": "Mystery boxes", "toss": "Coin tosses", "tombola": "Tombola"}
+const LUCK_NAMES = {"research": "Research", "research_long": "Research long shots", "deep": "Deep research", "deep_long": "Deep research long shots", "repair": "Repairs", "clean": "Cleaning", "fixer": "The Fixer", "mystery": "Mystery boxes", "toss": "Coin tosses", "tombola": "Tombola", "vault": "Vault weekly moves", "box": "Taped-up boxes", "backroom": "The back room", "scratch": "Scratch cards", "auction": "Auctions"}
 
 func luck_tab(v):
 	# Every visible roll you've made: the dice are honest, and here's the proof.

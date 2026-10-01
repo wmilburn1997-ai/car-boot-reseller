@@ -422,7 +422,7 @@ func consigned_count():
 	return n
 
 func can_consign(it):
-	return saleroom_unlocked() and it["basic_researched"] and consigned_count() < consign_cap() and not it["listed"] and not it["auctioned"] and not it.get("on_shop_floor", false) and not it.get("consigned", false) and it["auth_status"] != "Confirmed Counterfeit" and g.perceived_center(it) >= 60.0 and (not it["testable"] or it["tested"])
+	return saleroom_unlocked() and it["basic_researched"] and consigned_count() < consign_cap() and not it["listed"] and not it["auctioned"] and not it.get("on_shop_floor", false) and not it.get("consigned", false) and not it.get("vaulted", false) and it["auth_status"] != "Confirmed Counterfeit" and g.perceived_center(it) >= 60.0 and (not it["testable"] or it["tested"])
 
 func consign(index):
 	if index < 0 or index >= g.inventory.size():

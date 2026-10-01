@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.14.0: "High Stakes"
+
+Four new gambles, all shown with the roll cards.
+
+- **The Vault** (Business screen; needs the High Street Shop). Floor Safe (6 pieces, £1,200, £2/day), Strongroom (12, £3,500, £5/day), Bank Vault (24, £8,000, £10/day).
+  - Vaulted items leave your stock space and can't be sold until you take them out. They get a "Vault" tab in Stock.
+  - At the end of every week each piece rolls. Base odds: frenzy +60% 3%, climbing +25% 11%, up +10% 26%, flat 33%, slipped −15% 27%. About +3% a week on average.
+  - Trends shift the odds by up to ±12 points; rarity adds up to 5; each extra piece in the same category adds 1.5 (up to 4 pieces).
+  - The change sticks with the item. It's shown in its value breakdown as "Market moves in the vault".
+- **Taped-up boxes.** About 22% of stalls have one, priced £8–£30. It holds 1–3 items from one category.
+  - Odds: Treasure (3–6×) about 4%, Good (1.5–2.2×) 16%, Fair 40%, Junk 40%.
+  - Each expertise tier in the category adds 1 point to Treasure and 3 to Good. Clueless and clearance sellers are kinder; dealers are tighter.
+  - At tier 0, contents are worth about 1.2× the price before selling fees.
+- **The back room.** On day 6 of every week, stake one researched piece (£40+ estimate) against three dealers' pieces, a pot worth about 5% of your business.
+  - Odds = 90% × your stake ÷ (stake + pot). Win: the whole pot, and you keep your piece. Lose: it's gone. On average you lose about 10% of what you stake.
+- **Scratch cards.** On the night report after £40+ profit on sales: 5% of the day's profit (£2–£100), one a night.
+  - 1% ×20, 4% ×5, 15% ×2, 25% money back, 55% nothing. You get back about 95% of what you pay in, on average.
+- Journal → Luck tracks all four.
+- New tests: `tools/gamble_test.gd`. The width check now covers the vault, box, back room and scratch screens.
+
 ## 0.13.4: "A runner who helps"
 
 - Playtest finding: the Runner brought back up to four raw items a night, and processing them ate all your energy.

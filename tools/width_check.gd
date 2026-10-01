@@ -41,12 +41,54 @@ func _go(days):
 			m.generate_day()
 			m.world.apply_event(ev)
 			m.show_market()])
+	# 0.14 screens: the vault, a taped-up box, the back room, an item in the vault, the scratch card.
+	screens.append(["vault_business", func():
+		m.premises_level = max(m.premises_level, 3)
+		m.cash = max(m.cash, 20000.0)
+		m.gamble.buy_vault()
+		for i in range(min(3, m.inventory.size())):
+			m.inventory[i]["listed"] = false
+			m.inventory[i]["auctioned"] = false
+			m.inventory[i]["on_shop_floor"] = false
+			m.inventory[i]["consigned"] = false
+			m.gamble.put_in_vault(i)
+		m.show_business()])
+	screens.append(["vault_tab", func():
+		m.ui.stock.tab = "vault"
+		m.ui.stock.tab_chosen = true
+		for it in m.inventory:
+			if it.get("vaulted", false):
+				m.selected_inv_uid = int(it["uid"])
+				break
+		m.ui.sheet_open = true
+		m.show_inventory()])
+	screens.append(["box_stall", func():
+		m.ui.sheet_open = false
+		m.ui.stock.tab = "todo"
+		m.generate_day()
+		var stl = m.stalls[0]
+		stl["box"] = {"cat": stl["stock"][0]["category"], "price": 14.0, "hint": "Taped up three times. Someone cared.", "bought": false}
+		m.go_to_stall(0)])
+	screens.append(["backroom", func():
+		m.day = 6 + 7 * int(m.day / 7)
+		m.current_time_minutes = 8 * 60
+		for it in m.inventory:
+			it["basic_researched"] = true
+			if it.get("comps_values", []).size() == 0:
+				it["basic_comps"] = m.make_comps(it, false)
+		m.show_market()])
+	screens.append(["scratch", func():
+		m.ui.show_day_summary({"day": m.day, "start_worth": 1000.0, "end_worth": 1200.0, "start_cash": 500.0, "end_cash": 700.0, "overnight_cash": 0.0, "stats": {"sale_profit": 340.0, "items_sold": 4}, "challenges_done": 0, "challenges_total": 3, "streak": 0, "events": [], "listings": [], "pitch": 6.0, "running": {}})])
 	for sc in screens:
 		sc[1].call()
 		while m.ui.popup_open:
 			m.ui._close_popup()
 		for i in range(3):
 			await process_frame
+		if OS.has_environment("WC_SHOTS"):
+			for i in range(30):
+				await process_frame
+			get_root().get_texture().get_image().save_png(OS.get_environment("WC_SHOTS") + "/wc_%s.png" % sc[0])
 		var lim = m.ui.logical.x
 		var over = _scan(m.ui.content, lim, [])
 		over.append_array(_scan(m.ui.sheet_layer, lim, []))

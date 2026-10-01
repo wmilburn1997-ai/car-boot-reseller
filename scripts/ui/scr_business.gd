@@ -30,6 +30,7 @@ func build(parent):
 	bottom.add_child(account_card())
 	bottom.add_child(staff_card())
 	v.add_child(bottom)
+	v.add_child(vault_card())
 	v.add_child(k.spacer(0, 20))
 	parent.add_child(ui.keyed_scroll("business", v))
 
@@ -45,6 +46,8 @@ func costs_bar():
 	h.add_child(stat("Fuel", g.fmt_money(rc["fuel"]) + "/day", k.TEXT2))
 	if float(rc["wages"]) > 0:
 		h.add_child(stat("Wages", g.fmt_money(rc["wages"]) + "/day", k.TEXT2))
+	if float(rc.get("vault", 0)) > 0:
+		h.add_child(stat("Vault", g.fmt_money(rc["vault"]) + "/day", k.TEXT2))
 	h.add_child(stat("Every night", g.fmt_money(float(rc["total"]) + float(g.daily_expenses)), k.RED))
 	return p
 
@@ -473,4 +476,63 @@ func category_card(c):
 		dr2.add_child(k.button("Make signature", "ghost", func(): g.set_signature(c), "Commit to %s early." % c, "xs"))
 		v.add_child(dr2)
 	h.add_child(v)
+	return p
+
+# ---------------------------------------------------------------------------
+# The Vault
+# ---------------------------------------------------------------------------
+func vault_card():
+	var G = g.gamble
+	var p = k.panel("card", 14)
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v = k.vbox(8)
+	p.add_child(v)
+	var h = k.hbox(8)
+	h.add_child(k.glyph("lock", k.GOLD, 18))
+	var tl = k.label("The Vault", "l", k.TEXT)
+	k.expand(tl)
+	h.add_child(tl)
+	if G.has_vault():
+		h.add_child(k.label("%s · %d/%d" % [G.VAULT[G.vault_level() - 1]["name"], G.vault_used(), G.vault_slots()], "s", k.GOLD))
+	v.add_child(h)
+	v.add_child(k.label("Hold your best pieces out of stock. At the end of every week the market moves on each one, and you see the roll: usually up a little, sometimes a collector frenzy (+60%), sometimes it slips (−15%). Rising trends, rarity and a collection in one category all tilt the odds.", "xs", k.TEXT3, true))
+	if G.has_vault():
+		var items = G.vaulted()
+		if items.size() == 0:
+			v.add_child(k.label("Empty. Open something in your stock and choose \"Put in the vault\".", "s", k.TEXT2, true))
+		else:
+			var total_gain = 0.0
+			for it in items:
+				var row = k.hbox(8)
+				var nm = k.label(g.item_display_name(it) if str(it.get("ident", "")) != "" else it["name"], "s", k.TEXT, false)
+				nm.clip_text = true
+				k.expand(nm)
+				row.add_child(nm)
+				var vm = float(it.get("vault_mult", 1.0))
+				var pct = int(round((vm - 1.0) * 100.0))
+				row.add_child(k.label("%s%d%%" % ["+" if pct >= 0 else "", pct], "s", k.GREEN if pct > 0 else (k.RED if pct < 0 else k.TEXT3)))
+				row.add_child(k.label("~" + g.fmt_money(g.perceived_center(it)), "s", k.GOLD))
+				v.add_child(row)
+				total_gain += g.perceived_center(it) * (1.0 - 1.0 / max(0.01, vm))
+			v.add_child(k.label("The market has moved your vault %s overall. Next move at the end of day %d." % [g.money_signed(total_gain), g.day + ((7 - g.day % 7) % 7)], "xs", k.TEXT2, true))
+	if G.vault_level() < G.VAULT.size():
+		var nxt = G.VAULT[G.vault_level()]
+		var np = k.panel("inset", 12)
+		var nv = k.vbox(6)
+		np.add_child(nv)
+		var nh = k.hbox(8)
+		nh.add_child(k.label(("UPGRADE: " if G.has_vault() else "") + nxt["name"].to_upper(), "s", k.TEXT))
+		nh.add_child(k.spacer(0, 0, true))
+		nh.add_child(k.label(g.fmt_money(nxt["cost"]), "l", k.GOLD))
+		nv.add_child(nh)
+		nv.add_child(k.label("%s %d pieces · upkeep £%.0f/day" % [nxt["desc"], int(nxt["slots"]), float(nxt["upkeep"])], "xs", k.TEXT2, true))
+		var b = k.button("Buy it  %s" % g.fmt_money(nxt["cost"]), "primary", func(): G.buy_vault(), "", "m", 0, 44)
+		if not G.vault_allowed():
+			b.text = "Needs a High Street Shop"
+			b.disabled = true
+		elif g.cash < float(nxt["cost"]):
+			b.text = "Save up: %s to go" % g.fmt_money(float(nxt["cost"]) - g.cash)
+			b.disabled = true
+		nv.add_child(b)
+		v.add_child(np)
 	return p

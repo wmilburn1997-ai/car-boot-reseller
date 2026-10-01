@@ -196,6 +196,22 @@ func _cmd(cmd):
 				m.show_inventory()
 		"screen":
 			m.call(p[1])
+		"scrollto":
+			# scrollto key px: scroll a keyed screen (e.g. business, market) for screenshots
+			for i in range(6):
+				await process_frame
+			var stack = [m.ui.content]
+			while stack.size() > 0:
+				var nd = stack.pop_back()
+				if nd is ScrollContainer and nd.has_meta("key") and str(nd.get_meta("key")) == p[1]:
+					nd.scroll_vertical = int(p[2])
+				for ch in nd.get_children():
+					stack.append(ch)
+		"forcebox":
+			# put a taped-up box on the current stall (for testing/screenshots)
+			var stl = m.stalls[m.current_stall_index]
+			stl["box"] = {"cat": stl["stock"][0]["category"], "price": 14.0, "hint": "Heavy, and it rattles.", "bought": false}
+			m.show_stall()
 		"world":
 			var d = m.world.st()
 			print("  week: you %s gaz %s | record %s" % [money(d["week"]["you"]), money(d["week"]["gaz"]), str(d["record"])])

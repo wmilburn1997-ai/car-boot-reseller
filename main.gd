@@ -7,7 +7,7 @@ var rng = RandomNumberGenerator.new()
 var run_seed = 0
 var forced_run_seed = -1   # tools set this for reproducible runs
 
-const GAME_VERSION = "0.13.4-playtest"
+const GAME_VERSION = "0.14.0-playtest"
 const STARTING_CASH = 300.0
 const SAVE_PATH = "user://savegame.json"
 # Tools can point the game at another save file (CBR_SAVE=user://x.json) so parallel test runs don't collide.
@@ -20,10 +20,12 @@ const Ident = preload("res://scripts/data/identity.gd")
 const WorldSys = preload("res://scripts/sys_world.gd")
 const TradeSys = preload("res://scripts/sys_trade.gd")
 const LuckSys = preload("res://scripts/sys_luck.gd")
+const GambleSys = preload("res://scripts/sys_gamble.gd")
 var w2 = {}
 var world = WorldSys.new(self)
 var trade = TradeSys.new(self)
 var luck = LuckSys.new(self)
+var gamble = GambleSys.new(self)
 const WorldData = preload("res://scripts/data/world.gd")
 const UIRoot = preload("res://scripts/ui/ui_root.gd")
 static var _content_cache = null
@@ -892,6 +894,7 @@ func build_stall(reg, mfx, wfx):
 	if int(reg["id"]) >= 0 and float(reg["rel"]) >= 35.0 and can_do_clearances() and clearance_leads.size() < 3 and rng.randf() < 0.14:
 		stall["tipoff"] = true
 	stall["revealed"] = min(rng.randi_range(5, 7) + (2 if staff.has("picker") else 0), stall["stock"].size())
+	gamble.maybe_add_box(stall)
 	return stall
 
 func top_expertise_category():
@@ -1074,6 +1077,8 @@ func size_units(item):
 func inventory_space_used():
 	var used = 0
 	for item in inventory:
+		if item.get("vaulted", false):
+			continue   # the vault has its own room
 		used += size_units(item)
 	return used
 
@@ -1210,7 +1215,7 @@ func all_trait_mult(item):
 func known_basis(item):
 	# How THIS example compares with a typical one, as far as you know:
 	# condition, identified traits, known faults, test and authentication results.
-	var b = float(item.get("identified_mult", 1.0)) * float(item.get("documented", 1.0))
+	var b = float(item.get("identified_mult", 1.0)) * float(item.get("documented", 1.0)) * float(item.get("vault_mult", 1.0))
 	if item["condition_checked"]:
 		b *= condition_factor(int(item["condition"]))
 	elif item["quick_look_done"]:
@@ -1994,6 +1999,8 @@ func quick_sell_item(index):
 	if index < 0 or index >= inventory.size():
 		return
 	var item = inventory[index]
+	if item.get("vaulted", false):
+		return
 	if item["auth_status"] == "Confirmed Counterfeit":
 		queue_popup("Confirmed counterfeits can't be sold. Scrap it for parts.")
 		return
@@ -2073,7 +2080,7 @@ func condition_factor(condition):
 func market_value(item):
 	# The hidden truth: what buyers will actually pay for this exact item right now.
 	var v = float(item["true_value"]) * float(item["identified_mult"]) * float(current_trends.get(item["category"], 1.0))
-	v *= float(item.get("documented", 1.0))
+	v *= float(item.get("documented", 1.0)) * float(item.get("vault_mult", 1.0))
 	v *= condition_factor(int(item["condition"]))
 	if item["fault"] and fault_is_known(item):
 		v *= fault_multiplier(item["fault_severity"])
@@ -2174,6 +2181,8 @@ func value_breakdown(item):
 		out.append(["Identified", float(item["identified_mult"]) - 1.0])
 	if float(item.get("documented", 1.0)) > 1.0:
 		out.append(["Provenance documented" if float(item["documented"]) < 1.08 else "Full provenance", float(item["documented"]) - 1.0])
+	if abs(float(item.get("vault_mult", 1.0)) - 1.0) >= 0.01:
+		out.append(["Market moves in the vault", float(item["vault_mult"]) - 1.0])
 	return out
 
 func family_range(item):
@@ -2239,7 +2248,7 @@ func family_prior(item):
 	for t in item.get("traits", []):
 		if t.get("known", false):
 			p *= float(t["mult"])
-	p *= float(item.get("identified_mult", 1.0)) * float(item.get("documented", 1.0))
+	p *= float(item.get("identified_mult", 1.0)) * float(item.get("documented", 1.0)) * float(item.get("vault_mult", 1.0))
 	if item["fault"] and fault_is_known(item):
 		p *= fault_multiplier(item["fault_severity"])
 	return max(1.0, p)
@@ -2631,6 +2640,8 @@ func start_auction(index):
 	if index < 0 or index >= inventory.size():
 		return
 	var item = inventory[index]
+	if item.get("vaulted", false):
+		return
 	if not auctions_unlocked():
 		queue_popup("Auctions unlock at level 6 (or with the Auctioneer perk).")
 		return
@@ -2747,7 +2758,7 @@ func create_listing(index, price_in):
 	if item["testable"] and not item["tested"]:
 		queue_popup("Test it first: buyers want to know it works.")
 		return
-	if item["auctioned"] or item.get("consigned", false):
+	if item["auctioned"] or item.get("consigned", false) or item.get("vaulted", false):
 		return
 	if not item["listed"] and active_listing_count() >= listing_cap():
 		queue_popup("You're at your listing limit (%d). Bigger premises or a Light-Box Studio let you list more." % listing_cap())
@@ -2791,6 +2802,8 @@ func scrap_item(index):
 	if index < 0 or index >= inventory.size():
 		return
 	var item = inventory[index]
+	if item.get("vaulted", false):
+		return
 	var recovery = max(1.0, round(max(float(item["paid"]), perceived_center(item) * 0.3) * rng.randf_range(0.04, 0.18)))
 	cash += recovery
 	day_stats["other_income"] = float(day_stats.get("other_income", 0.0)) + recovery
@@ -3518,6 +3531,12 @@ func bug_report_text():
 	return "\n".join(lines)
 
 var patch_notes = [
+	{"version": "0.14: High Stakes", "notes": [
+		"The Vault (Business, once you have the shop): hold your best pieces out of stock. Every week the market moves on each one, and you see the roll: collector frenzy +60%, climbing +25%, up +10%, flat, or slipped −15%. Trends, rarity and a collection in one category tilt the odds.",
+		"Taped-up boxes: some stalls sell one unopened. Odds shown up front (Treasure, Good, Fair, Junk), and your expertise in the box's category improves them.",
+		"The back room: once a week (day 6 of each week), the Fixer runs a dealers' card game. Stake a researched piece against the pot. The bigger your stake against the pot, the better your odds. Winner takes the lot.",
+		"Scratch cards: after a good day, the night report offers one for 5% of your profit. 1% 20×, 4% 5×, 15% 2×, 25% money back.",
+	]},
 	{"version": "0.13.4: A runner who helps", "notes": [
 		"The runner brings back fewer, better buys: up to 2 a night by default (you choose 1–3 on the Business screen).",
 		"Everything he brings is already checked, researched and tested (£2 an item), so it costs you no energy.",
@@ -3714,7 +3733,7 @@ func bulk_list_at_estimate():
 		if i >= inventory.size():
 			continue
 		var item = inventory[i]
-		if item["listed"] or item["auctioned"] or item.get("on_shop_floor", false):
+		if item["listed"] or item["auctioned"] or item.get("on_shop_floor", false) or item.get("vaulted", false) or item.get("consigned", false):
 			continue
 		if (item["testable"] and not item["tested"]) or item["auth_status"] == "Confirmed Counterfeit":
 			skipped += 1
@@ -4130,6 +4149,7 @@ func asset_value():
 		if Biz.EQUIPMENT.has(id):
 			for i in range(int(equipment[id])):
 				v += float(Biz.EQUIPMENT[id]["levels"][i]["cost"]) * 0.4
+	v += gamble.vault_asset_value()
 	return v
 
 func business_value():
@@ -4949,7 +4969,7 @@ func collector_offer_for(item):
 
 func sell_to_collector(index):
 	var item = item_at("inv", index)
-	if item == null or not collector_contact_available(item):
+	if item == null or not collector_contact_available(item) or item.get("vaulted", false):
 		return
 	var price = collector_offer_for(item)
 	collector_used_today[item["category"]] = day
@@ -5064,7 +5084,8 @@ func running_costs():
 		if Biz.STAFF.has(id):
 			wages += float(Biz.STAFF[id]["wage"])
 	var m = cost_mult()
-	return {"rent": rent * m, "fuel": fuel * m, "wages": wages * m, "total": (rent + fuel + wages) * m}
+	var vault = gamble.vault_upkeep()
+	return {"rent": rent * m, "fuel": fuel * m, "wages": wages * m, "vault": vault * m, "total": (rent + fuel + wages + vault) * m}
 
 func compute_upkeep():
 	return float(running_costs()["total"])
@@ -5278,7 +5299,7 @@ func process_shop_floor():
 
 func put_on_shop_floor(index, price):
 	var item = item_at("inv", index)
-	if item == null:
+	if item == null or item.get("vaulted", false):
 		return
 	if not shop_floor_enabled():
 		return
@@ -5958,7 +5979,7 @@ func trade_buyer_candidates():
 	var out = []
 	for i in range(inventory.size()):
 		var it = inventory[i]
-		if it["listed"] or it["auctioned"] or it.get("on_shop_floor", false) or it.get("consigned", false):
+		if it["listed"] or it["auctioned"] or it.get("on_shop_floor", false) or it.get("consigned", false) or it.get("vaulted", false):
 			continue
 		if it["auth_status"] in ["Confirmed Counterfeit", "Suspected Counterfeit"]:
 			continue

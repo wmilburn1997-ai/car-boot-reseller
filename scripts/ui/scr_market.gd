@@ -45,6 +45,9 @@ func build_market(parent):
 		var tb = tombola_card()
 		if tb != null:
 			v.add_child(tb)
+		var br = backroom_card()
+		if br != null:
+			v.add_child(br)
 		var leads = leads_card()
 		if leads != null:
 			v.add_child(leads)
@@ -659,6 +662,8 @@ func build_stall(parent):
 	var list = k.vbox(8)
 	list.add_child(stall_header(stall, closed))
 	ui.coach(list, "stall")
+	if not closed and stall.has("box") and not stall["box"].get("bought", false):
+		list.add_child(box_card(stall))
 	if not closed:
 		if vis.size() == 0:
 			list.add_child(k.label("Nothing on the table takes your fancy. Dig deeper or move on.", "b", k.TEXT3, true))
@@ -1018,3 +1023,73 @@ func clearance_rooms(v, c):
 			rv.add_child(k.label("Boxes, bin bags and a lot of dust.", "s", k.TEXT3))
 		gr.add_child(rp)
 	v.add_child(gr)
+
+# ---------------------------------------------------------------------------
+# 0.14: taped-up boxes and the back room
+# ---------------------------------------------------------------------------
+func box_card(stall):
+	var box = stall["box"]
+	var p = k.panel("purple", 12)
+	var h = k.hbox(10)
+	p.add_child(h)
+	var gl = k.glyph("box", k.PURPLE, 26)
+	gl.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	h.add_child(gl)
+	var v = k.vbox(3)
+	k.expand(v)
+	h.add_child(v)
+	v.add_child(k.label("A taped-up box: %s" % box["cat"], "m", k.TEXT))
+	v.add_child(k.label("%s Sold as seen, %s." % [box["hint"], g.fmt_money(box["price"])], "xs", k.TEXT2, true))
+	v.add_child(k.label("Odds: " + g.gamble.box_odds_text(stall), "xs", k.GOLD, true))
+	var tier = g.expertise_tier(box["cat"])
+	v.add_child(k.label("Your %s know-how is improving these odds." % box["cat"] if tier > 0 else "Expertise in %s would improve these odds." % box["cat"], "xs", k.TEXT3, true))
+	var b = k.button("Buy it unopened  %s" % g.fmt_money(box["price"]), "special", func(): g.gamble.buy_box(), "1 to 3 things inside, all from the box's category. 3 carry space.", "s")
+	b.disabled = g.cash < float(box["price"])
+	v.add_child(b)
+	return p
+
+func backroom_card():
+	var G = g.gamble
+	if not G.hr_today():
+		return null
+	var p = k.panel("bad", 14)
+	var v = k.vbox(8)
+	p.add_child(v)
+	var h = k.hbox(8)
+	h.add_child(k.glyph("coin", k.RED, 20))
+	var tl = k.label("The back room", "l", k.TEXT)
+	k.expand(tl)
+	h.add_child(tl)
+	h.add_child(k.label("once a week", "xs", k.TEXT3))
+	v.add_child(h)
+	if G.hr_played():
+		v.add_child(k.label("You've had your hand this week. The Fixer nods you out.", "s", k.TEXT3, true))
+		return p
+	v.add_child(k.label("Behind the burger van the Fixer runs a card game for dealers. Everyone stakes a piece. Put one of yours in: the bigger your stake against the pot, the better your odds. Winner takes the lot.", "xs", k.TEXT2, true))
+	var pot = G.hr_pot()
+	if pot.size() == 0:
+		v.add_child(k.label("Someone already cleaned out this week's pot.", "s", k.TEXT3))
+		return p
+	var pv = k.panel("inset", 10)
+	var pvv = k.vbox(3)
+	pv.add_child(pvv)
+	pvv.add_child(k.label("THE POT  ·  about %s" % g.fmt_money(G.pot_value()), "s", k.GOLD))
+	for it in pot:
+		pvv.add_child(k.label("%s's %s  ·  ~%s" % [str(it.get("hr_dealer", "a dealer")), g.lc(it["name"]), g.fmt_money(round(g.true_market_value(it)))], "xs", k.TEXT, true))
+	v.add_child(pv)
+	var cands = G.stake_candidates()
+	if cands.size() == 0:
+		v.add_child(k.label("You need a researched piece worth £40 or more in your stock (not listed) to sit down.", "xs", k.TEXT3, true))
+		return p
+	v.add_child(k.label("STAKE ONE OF YOURS", "xs", k.TEXT3))
+	for i in cands:
+		var it = g.inventory[i]
+		var row = k.hbox(8)
+		var nl = k.label("%s  ·  ~%s" % [it["name"], g.fmt_money(G.stake_value(it))], "s", k.TEXT, false)
+		nl.clip_text = true
+		k.expand(nl)
+		row.add_child(nl)
+		var idx = i
+		row.add_child(k.button("Stake · %s%% to win" % g.luck.pct_text(G.stake_chance(it)), "danger", func(): G.stake(idx), "Win: the whole pot, and you keep this. Lose: this is gone.", "s"))
+		v.add_child(row)
+	return p

@@ -102,7 +102,8 @@ func add_player_profit(p):
 	d["week"]["you"] = float(d["week"]["you"]) + float(p)
 
 func week_rollover():
-	# Called at the end of each 7th day: the scoreboard.
+	# Called at the end of each 7th day: the scoreboard, and the market's move on the vault.
+	g.gamble.vault_week()
 	var d = st()
 	var w = d["week"]
 	var you = float(w["you"])
