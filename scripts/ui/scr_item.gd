@@ -809,7 +809,7 @@ func inv_actions(it, index):
 	else:
 		var dls = g.luck.best_long_shot(it, "deep")
 		var dsub = ("%d%% find%s · " % [int(round(g.luck.find_chance(it, "deep") * 100.0)), (" + %d%% long shot" % int(round(float(dls[1]) * 100.0))) if float(dls[1]) > 0.0 else ""]) if not it["deep_researched"] else ""
-		gr.add_child(k.action_tile(ui.tex("deep_research_icon"), "Deep Research" if not it["deep_researched"] else "Deep researched", dsub + time_cost(10, 20, drc), "action", func(): g.deep_research(index), g.cash < drc or g.energy < 10, "Dig into editions, provenance and variants: a roll to find what's there, and a long shot at any specialist clue.", it["deep_researched"]))
+		gr.add_child(k.action_tile(ui.tex("deep_research_icon"), "Deep Research" if not it["deep_researched"] else "Deep researched", dsub + time_cost(10, 20, drc), "action", func(): g.deep_research(index), g.cash < drc or g.energy < 10, "Dig into editions, provenance and variants. A find documents the provenance (+5% to what buyers pay) and names specialist details up to one tier past your expertise; a long shot at anything beyond.", it["deep_researched"]))
 	var tier = g.expertise_tier(it["category"])
 	if tier >= 2:
 		gr.add_child(k.action_tile("star", g.SPECIALIST_ACTIONS.get(it["category"], "Specialist check") if not it.get("expert_checked", false) else "Checked", "3 energy · 3m", "special", func(): g.specialist_check("inv", index), g.energy < 3, "Your %s expertise at work." % it["category"], it.get("expert_checked", false)))

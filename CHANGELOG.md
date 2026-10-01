@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.3: "Deep research pays"
+
+- Playtest finding: a deep research **Find** almost never found anything. Only about 2% of items carry a deep-only detail. Now:
+  - **Find:** provenance documented, +5% to what buyers pay (shown in the value breakdown). The reference books also name expert and eye details up to one tier past your expertise.
+  - **Rare find / Jackpot:** full provenance (+10%), on top of their extra detail and fee back.
+- Sims (60 days): research-heavy bot £3.1k → £4.8k; careful bot unchanged at about £4.1k; tycoon (120 days) about £9.7k.
+
 ## 0.13.2: "Out of the way"
 
 - Roll cards and toasts are click-through: nothing pops up between you and the next action.

@@ -98,6 +98,11 @@ func long_shot_chance(item, method, d):
 	var tier = float(g.expertise_tier(item["category"]))
 	return clamp(base + (0.03 if method == "research" else 0.05) * tier - 0.02 * max(0.0, float(d.get("tier", 1)) - 1.0), 0.02, 0.6)
 
+func books_reach(item, d):
+	# Deep research: the reference books carry you one expertise tier beyond your own on specialist details.
+	var rv = str(d.get("reveal", ""))
+	return (rv == "expert" or rv == "eye") and int(d.get("tier", 1)) <= g.expertise_tier(item["category"]) + 1
+
 func dig_targets(item, method):
 	# Unknown details this method finds outright (on a hit).
 	var out = []
@@ -107,6 +112,9 @@ func dig_targets(item, method):
 			continue
 		var d = g.trait_def(t)
 		if d == null:
+			continue
+		if method == "deep" and books_reach(item, d):
+			out.append(t)
 			continue
 		for m in methods:
 			if g.trait_can_reveal(item, d, m):
@@ -158,11 +166,17 @@ func can_dig_again(item, method):
 const DIG_RARE = 0.10
 const DIG_JACKPOT = 0.02
 
+const DOC_FIND = 1.05
+const DOC_RARE = 1.10
+
 func dig_bands(item, method, fc):
-	var what = "what research can find" if method == "research" else "what the books can find"
+	if method == "deep":
+		return [["Jackpot", DIG_JACKPOT, "purple", "full provenance (+10% value), every hidden detail, and your fee back"],
+			["Rare find", DIG_RARE, "gold", "full provenance (+10% value), plus one more hidden detail (or your fee back)"],
+			["Find", fc, "green", "provenance documented (+5% value), and the books name specialist details up to one tier past your expertise"]]
 	return [["Jackpot", DIG_JACKPOT, "purple", "every hidden detail on it, and your fee back"],
 		["Rare find", DIG_RARE, "gold", "that, plus one more hidden detail (or your fee back)"],
-		["Find", fc, "green", what]]
+		["Find", fc, "green", "what research can find"]]
 
 func do_dig(item, method, where, fee = 0.0):
 	# The rolls for one dig. Returns the roll entries for the card and the traits found.
@@ -178,6 +192,12 @@ func do_dig(item, method, where, fee = 0.0):
 		entries.append(r)
 		if r["hit"]:
 			item["dig_hit_" + method] = true
+			if method == "deep":
+				var doc = DOC_RARE if r["band"] in ["Jackpot", "Rare find"] else DOC_FIND
+				if doc > float(item.get("documented", 1.0)):
+					item["documented"] = doc
+					bonus = "Provenance documented: +%d%% to what buyers pay." % int(round((doc - 1.0) * 100.0))
+					g.hist(item, "Provenance written up from the deep research (+%d%%)." % int(round((doc - 1.0) * 100.0)))
 			for t in dig_targets(item, method):
 				t["known"] = true
 				t["clue"] = true
@@ -203,7 +223,7 @@ func do_dig(item, method, where, fee = 0.0):
 					g.cash += fee
 					item["extra_spend"] = max(0.0, float(item["extra_spend"]) - fee)
 					g.day_stats["research"] = float(g.day_stats.get("research", 0.0)) - fee
-					bonus = "Fee back (%s)." % g.fmt_money(fee)
+					bonus = (bonus + " " if bonus != "" else "") + "Fee back (%s)." % g.fmt_money(fee)
 				g.hist(item, "%s on the %s roll." % [r["band"], "research" if method == "research" else "deep research"])
 		else:
 			# You still notice there's something there, if there is.
@@ -226,8 +246,12 @@ func do_dig(item, method, where, fee = 0.0):
 
 func dig_result_text(item, method, res):
 	var t0 = _dig_result_text(item, method, res)
-	if str(res.get("bonus", "")) != "":
-		t0 += (" " if t0.ends_with(".") else ". ") + str(res["bonus"])
+	var bonus = str(res.get("bonus", ""))
+	if bonus.begins_with("Provenance") and t0.begins_with("Nothing hidden"):
+		# Lead with what you got.
+		return bonus + " Nothing else hidden that the books can find."
+	if bonus != "":
+		t0 += (" " if t0.ends_with(".") else ". ") + bonus
 	return t0
 
 func _dig_result_text(item, method, res):
@@ -263,7 +287,7 @@ func clue_odds_text(item):
 				continue
 			if g.trait_can_reveal(item, d, "research"):
 				direct_r = true
-			if g.trait_can_reveal(item, d, "deep") or g.trait_can_reveal(item, d, "research"):
+			if g.trait_can_reveal(item, d, "deep") or g.trait_can_reveal(item, d, "research") or books_reach(item, d):
 				direct_d = true
 	if direct_r:
 		out.append("Research %d%%" % int(round(find_chance(item, "research") * 100.0)))

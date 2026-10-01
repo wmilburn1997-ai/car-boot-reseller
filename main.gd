@@ -7,7 +7,7 @@ var rng = RandomNumberGenerator.new()
 var run_seed = 0
 var forced_run_seed = -1   # tools set this for reproducible runs
 
-const GAME_VERSION = "0.13.2-playtest"
+const GAME_VERSION = "0.13.3-playtest"
 const STARTING_CASH = 300.0
 const SAVE_PATH = "user://savegame.json"
 # Tools can point the game at another save file (CBR_SAVE=user://x.json) so parallel test runs don't collide.
@@ -1210,7 +1210,7 @@ func all_trait_mult(item):
 func known_basis(item):
 	# How THIS example compares with a typical one, as far as you know:
 	# condition, identified traits, known faults, test and authentication results.
-	var b = float(item.get("identified_mult", 1.0))
+	var b = float(item.get("identified_mult", 1.0)) * float(item.get("documented", 1.0))
 	if item["condition_checked"]:
 		b *= condition_factor(int(item["condition"]))
 	elif item["quick_look_done"]:
@@ -2073,6 +2073,7 @@ func condition_factor(condition):
 func market_value(item):
 	# The hidden truth: what buyers will actually pay for this exact item right now.
 	var v = float(item["true_value"]) * float(item["identified_mult"]) * float(current_trends.get(item["category"], 1.0))
+	v *= float(item.get("documented", 1.0))
 	v *= condition_factor(int(item["condition"]))
 	if item["fault"] and fault_is_known(item):
 		v *= fault_multiplier(item["fault_severity"])
@@ -2171,6 +2172,8 @@ func value_breakdown(item):
 		out.append(["Authenticated", 0.08])
 	if float(item.get("identified_mult", 1.0)) != 1.0 and abs(float(item["identified_mult"]) - 1.0) >= 0.02:
 		out.append(["Identified", float(item["identified_mult"]) - 1.0])
+	if float(item.get("documented", 1.0)) > 1.0:
+		out.append(["Provenance documented" if float(item["documented"]) < 1.08 else "Full provenance", float(item["documented"]) - 1.0])
 	return out
 
 func family_range(item):
@@ -2236,7 +2239,7 @@ func family_prior(item):
 	for t in item.get("traits", []):
 		if t.get("known", false):
 			p *= float(t["mult"])
-	p *= float(item.get("identified_mult", 1.0))
+	p *= float(item.get("identified_mult", 1.0)) * float(item.get("documented", 1.0))
 	if item["fault"] and fault_is_known(item):
 		p *= fault_multiplier(item["fault_severity"])
 	return max(1.0, p)
@@ -3515,6 +3518,11 @@ func bug_report_text():
 	return "\n".join(lines)
 
 var patch_notes = [
+	{"version": "0.13.3: Deep research pays", "notes": [
+		"A deep research Find now always gets you something: the provenance is written up, and buyers pay 5% more for it.",
+		"The books also name specialist details (expert and eye marks) up to one tier past your own expertise.",
+		"Rare find and Jackpot write up full provenance (+10%).",
+	]},
 	{"version": "0.13.2: Out of the way", "notes": [
 		"Roll cards and notices never block a click: tap or click straight through them.",
 		"After the first few rolls of each kind, the card shrinks to a slim bar: zones, the number, one line of result. On PC it sits in the sidebar, clear of the stalls and the Buy button.",
