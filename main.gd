@@ -7,7 +7,7 @@ var rng = RandomNumberGenerator.new()
 var run_seed = 0
 var forced_run_seed = -1   # tools set this for reproducible runs
 
-const GAME_VERSION = "0.13.3-playtest"
+const GAME_VERSION = "0.13.4-playtest"
 const STARTING_CASH = 300.0
 const SAVE_PATH = "user://savegame.json"
 # Tools can point the game at another save file (CBR_SAVE=user://x.json) so parallel test runs don't collide.
@@ -3518,6 +3518,11 @@ func bug_report_text():
 	return "\n".join(lines)
 
 var patch_notes = [
+	{"version": "0.13.4: A runner who helps", "notes": [
+		"The runner brings back fewer, better buys: up to 2 a night by default (you choose 1–3 on the Business screen).",
+		"Everything he brings is already checked, researched and tested (£2 an item), so it costs you no energy.",
+		"He lists them for you at fair prices, if you leave that switched on. Reprice or pull them whenever you like.",
+	]},
 	{"version": "0.13.3: Deep research pays", "notes": [
 		"A deep research Find now always gets you something: the provenance is written up, and buyers pay 5% more for it.",
 		"The books also name specialist details (expert and eye marks) up to one tier past your own expertise.",

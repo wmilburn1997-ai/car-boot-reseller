@@ -317,10 +317,34 @@ func submit_estate_bid(amount):
 # =============================================================================
 const RUNNER_VENUES = ["Bishop's Lydeard boot sale", "the Tuesday flea market in Frome", "Kempton Park", "a church-hall sale in Ludlow", "the Sunday boot at Wetherby", "the showground at Newark", "a village fete near Thirsk", "the Malvern flea market"]
 
+func runner_orders():
+	# What you've told the runner: how many to bring back, and whether to list them for you.
+	var d = g.world.st()
+	if not d.has("runner"):
+		d["runner"] = {"cap": 2, "list": true}
+	return d["runner"]
+
+func runner_prep(it):
+	# He does the legwork before it reaches you: condition, sold prices, a test if it plugs in.
+	your_read(it)
+	it["quick_look_done"] = true
+	it["condition_checked"] = true
+	it["condition_price_note"] = g.condition_reveal_note(it)
+	if not it["basic_researched"]:
+		it["basic_researched"] = true
+		it["basic_comps"] = g.make_comps(it, false)
+	g.reveal_traits_quiet(it, ["look", "condition", "research"])
+	if it["testable"]:
+		it["tested"] = true
+		g.reveal_traits_quiet(it, ["test"])
+	it["research_note"] = "Your runner checked it over: condition %d/10%s." % [int(it["condition"]), (", tested: " + ("works" if not it["fault"] else g.fault_label(it).to_lower())) if it["testable"] else ""]
+
 func runner_night():
 	if g.signatures.size() == 0:
 		g.night_events.append({"kind": "info", "text": "Your runner stayed home", "sub": "Give him a signature category to buy in (Expertise)."})
 		return
+	var orders = runner_orders()
+	var cap = clamp(int(orders.get("cap", 2)), 1, 3)
 	var budget = clamp(g.cash * 0.1, 0.0, 400.0)
 	if budget < 30.0:
 		return
@@ -329,35 +353,50 @@ func runner_night():
 		return
 	var venue = g.pick_line(RUNNER_VENUES)
 	var bought = []
+	var listed = 0
+	var any_tested = false
 	var spent = 0.0
 	var tries = 0
-	while tries < 14 and bought.size() < 4:
+	while tries < 18 and bought.size() < cap:
 		tries += 1
 		var arch = ["House Clearance", "Clueless Seller", "Desperate Seller", "Regular Seller", "Dealer"][g.rng.randi_range(0, 4)]
 		var it = g.generate_item(arch, {"cats": g.signatures})
 		if not g.signatures.has(it["category"]):
 			continue
-		# He judges it the way you would, a bit less sharply.
-		# He judges it the way you would, with what you'd be able to see.
+		# He judges it the way you would, with what you'd be able to see. Fewer, better buys.
 		your_read(it)
 		var guess = g.perceived_center(it) * g.rng.randf_range(0.85, 1.15)
 		var price = float(it["asking"]) * g.rng.randf_range(0.8, 0.95)
-		if guess < price * 1.5 or spent + price > budget or not g.can_store(it):
+		if guess < price * 1.7 or spent + price + 2.0 > budget or not g.can_store(it):
 			continue
-		spent += price
-		g.cash -= price
+		spent += price + 2.0
+		g.cash -= price + 2.0
 		g.day_stats["buy_spend"] += price
+		g.day_stats["research"] += 2.0
 		it["paid"] = price
 		it["asking"] = price
+		it["extra_spend"] = float(it.get("extra_spend", 0.0)) + 2.0
 		it["bought_day"] = g.day
 		it["source"] = "runner"
 		it["story"] = "Your runner found it at %s." % venue
 		g.hist(it, "Picked up by your runner at %s for %s." % [venue, g.fmt_money(price)])
+		runner_prep(it)
+		any_tested = any_tested or it["testable"]
 		g.inventory.append(it)
 		g.register_collection(it)
 		bought.append(it["name"])
+		if orders.get("list", true) and g.active_listing_count() < g.listing_cap() and it["auth_status"] != "Confirmed Counterfeit" and not (it["fault"] and str(it["fault_severity"]) == "Dead"):
+			var lp = max(1.0, g.suggested_price(it))
+			it["listing"] = lp
+			it["listed"] = true
+			it["listed_day"] = g.day
+			g.hist(it, "Listed online by your runner at %s." % g.fmt_money(lp))
+			listed += 1
 	if bought.size() > 0:
-		g.night_events.append({"kind": "info", "text": "Your runner came back from %s" % venue, "sub": "Spent %s on: %s." % [g.fmt_money(spent), ", ".join(bought)]})
+		var tail = " Checked, researched%s." % (" and tested" if any_tested else "")
+		if listed > 0:
+			tail += " He's listed %s at fair prices." % ("it" if bought.size() == 1 and listed == 1 else ("all of them" if listed == bought.size() else "%d" % listed))
+		g.night_events.append({"kind": "info", "text": "Your runner came back from %s" % venue, "sub": "Spent %s on: %s.%s" % [g.fmt_money(spent), ", ".join(bought), tail]})
 	else:
 		g.night_events.append({"kind": "info", "text": "Your runner came back empty-handed", "sub": "Nothing worth having at %s." % venue})
 

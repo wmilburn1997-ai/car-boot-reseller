@@ -275,7 +275,34 @@ func staff_card():
 		b.disabled = not allowed and not hired
 		row.add_child(b)
 		v.add_child(row)
+		if id == "runner" and hired:
+			# Orders: how much he brings back, and whether he lists it too.
+			var o = g.trade.runner_orders()
+			var orow = k.hbox(6)
+			orow.add_child(k.label("Brings back", "xs", k.TEXT2))
+			for n in [1, 2, 3]:
+				var nn = n
+				orow.add_child(k.button("up to %d" % n, "tab_on" if int(o.get("cap", 2)) == n else "ghost", func():
+					g.trade.runner_orders()["cap"] = nn
+					g.save_game()
+					g.call_deferred("_ui_rerender"), "", "s"))
+			v.add_child(orow)
+			v.add_child(toggle_row_small("He lists them for you at fair prices", bool(o.get("list", true)), func(on):
+				g.trade.runner_orders()["list"] = on
+				g.save_game()))
+			v.add_child(k.label("Everything he brings back is already checked, researched and tested (£2 an item).", "xs", k.TEXT3, true))
 	return p
+
+func toggle_row_small(name, on, cb):
+	var h = k.hbox(8)
+	var l = k.label(name, "xs", k.TEXT2, true)
+	k.expand(l)
+	h.add_child(l)
+	var c = CheckButton.new()
+	c.button_pressed = on
+	c.toggled.connect(cb)
+	h.add_child(c)
+	return h
 
 # ---------------------------------------------------------------------------
 # Perks

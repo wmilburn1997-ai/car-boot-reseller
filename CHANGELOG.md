@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.4: "A runner who helps"
+
+- Playtest finding: the Runner brought back up to four raw items a night, and processing them ate all your energy.
+- He now buys fewer, better items (guessed worth at least 1.7× the price, up from 1.5×). Up to 2 a night by default, adjustable to 1–3 under Business → Staff.
+- Runner items arrive prepped: condition checked, researched (comps) and tested if electrical. That's £2 an item, and no energy for you.
+- "He lists them for you at fair prices" (on by default): listed at the suggested fair price, within your listing cap.
+
 ## 0.13.3: "Deep research pays"
 
 - Playtest finding: a deep research **Find** almost never found anything. Only about 2% of items carry a deep-only detail. Now:
