@@ -7,7 +7,7 @@ var rng = RandomNumberGenerator.new()
 var run_seed = 0
 var forced_run_seed = -1   # tools set this for reproducible runs
 
-const GAME_VERSION = "0.13.1-playtest"
+const GAME_VERSION = "0.13.2-playtest"
 const STARTING_CASH = 300.0
 const SAVE_PATH = "user://savegame.json"
 # Tools can point the game at another save file (CBR_SAVE=user://x.json) so parallel test runs don't collide.
@@ -3344,6 +3344,9 @@ var ui_scale = 1.0
 var fullscreen = false
 var show_rng_toasts = false
 var show_rolls = true
+# Roll cards: "auto" (the full key the first few times per kind, then slim), "full", "slim" or "off".
+var roll_mode = "auto"
+var roll_seen = {}
 
 func load_settings():
 	var cfg = ConfigFile.new()
@@ -3356,6 +3359,12 @@ func load_settings():
 	fullscreen = to_bool(cfg.get_value("display", "fullscreen", false))
 	show_rng_toasts = to_bool(cfg.get_value("gameplay", "show_dice_popups", false))
 	show_rolls = to_bool(cfg.get_value("gameplay", "show_rolls", true))
+	roll_mode = str(cfg.get_value("gameplay", "roll_mode", "auto" if show_rolls else "off"))
+	if not roll_mode in ["auto", "full", "slim", "off"]:
+		roll_mode = "auto"
+	show_rolls = roll_mode != "off"
+	var rs = cfg.get_value("gameplay", "roll_seen", {})
+	roll_seen = rs if typeof(rs) == TYPE_DICTIONARY else {}
 	music_volume = float(cfg.get_value("audio", "music_volume", 0.5))
 	var ts = cfg.get_value("gameplay", "tips_seen", {})
 	tips_seen = ts if typeof(ts) == TYPE_DICTIONARY else {}
@@ -3369,6 +3378,8 @@ func save_settings():
 	cfg.set_value("display", "fullscreen", fullscreen)
 	cfg.set_value("gameplay", "show_dice_popups", show_rng_toasts)
 	cfg.set_value("gameplay", "show_rolls", show_rolls)
+	cfg.set_value("gameplay", "roll_mode", roll_mode)
+	cfg.set_value("gameplay", "roll_seen", roll_seen)
 	cfg.set_value("gameplay", "tips_seen", tips_seen)
 	cfg.save(SETTINGS_PATH)
 
@@ -3504,6 +3515,12 @@ func bug_report_text():
 	return "\n".join(lines)
 
 var patch_notes = [
+	{"version": "0.13.2: Out of the way", "notes": [
+		"Roll cards and notices never block a click: tap or click straight through them.",
+		"After the first few rolls of each kind, the card shrinks to a slim bar: zones, the number, one line of result. On PC it sits in the sidebar, clear of the stalls and the Buy button.",
+		"Settings → Roll cards: Auto, Full, Slim or Off.",
+		"Fewer, shorter notices on PC (two at a time).",
+	]},
 	{"version": "0.13.1: Rare rolls", "notes": [
 		"Every roll card now has a key: each zone of the bar is labelled with the roll you need and what it gets you, before the marker lands.",
 		"Rarer outcomes sit inside the hit zone. Research and deep research: under 10 is a Rare find (one extra hidden detail, or your fee back), under 2 is the Jackpot (everything, fee back).",
@@ -3860,7 +3877,15 @@ func show_roll(title, entries, text):
 	if sim_mode or ui == null or entries.size() == 0:
 		return
 	if show_rolls:
-		ui.roll_card(title, entries, text)
+		var slim = roll_mode == "slim"
+		if roll_mode == "auto":
+			# Learn it properly a few times, then it gets out of the way.
+			var n = int(roll_seen.get(title, 0))
+			slim = n >= 3
+			if n < 3:
+				roll_seen[title] = n + 1
+				save_settings()
+		ui.roll_card(title, entries, text, slim)
 	else:
 		add_toast(text, "info")
 

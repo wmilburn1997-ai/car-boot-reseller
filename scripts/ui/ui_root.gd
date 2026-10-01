@@ -872,9 +872,10 @@ func toast(text, kind = "info"):
 	r.custom_minimum_size = Vector2(0, 0)
 	h.add_child(r)
 	p.add_child(h)
-	p.gui_input.connect(_toast_input.bind(p))
+	# Toasts never take a click: tap straight through them.
+	ignore_mouse(p)
 	toast_box.add_child(p)
-	var maxn = 1 if mobile else 3
+	var maxn = 1 if mobile else 2
 	while toast_box.get_child_count() > maxn:
 		var old = toast_box.get_child(0)
 		toast_box.remove_child(old)
@@ -882,7 +883,7 @@ func toast(text, kind = "info"):
 	p.modulate = Color(1, 1, 1, 0)
 	var tw = p.create_tween()
 	tw.tween_property(p, "modulate", Color(1, 1, 1, 1), 0.15)
-	tw.tween_interval(3.2 if kind != "rng" else 2.2)
+	tw.tween_interval(2.8 if kind != "rng" else 2.0)
 	tw.tween_property(p, "modulate", Color(1, 1, 1, 0), 0.35)
 	tw.tween_callback(p.queue_free)
 
@@ -891,8 +892,26 @@ func _toast_input(ev, p):
 		p.queue_free()
 
 # --- roll cards: the visible dice ------------------------------------------------------
-func position_rolls():
+func position_rolls(slim = false):
 	if roll_box == null:
+		return
+	roll_box.grow_vertical = Control.GROW_DIRECTION_END
+	if slim and not mobile and nav_box != null and is_instance_valid(nav_box) and hud_refs.has("goal_box") and is_instance_valid(hud_refs["goal_box"]):
+		# PC: the slim bar sits in the sidebar, just above the goal card, clear of the stalls and the Buy button.
+		var nr = nav_box.get_global_rect()
+		var gr = hud_refs["goal_box"].get_parent().get_global_rect()
+		var o = overlay.get_global_rect().position
+		var sc = overlay.get_global_transform().get_scale()
+		roll_box.anchor_left = 0.0
+		roll_box.anchor_right = 0.0
+		roll_box.anchor_top = 0.0
+		roll_box.anchor_bottom = 0.0
+		roll_box.offset_left = (nr.position.x - o.x) / sc.x
+		roll_box.offset_right = roll_box.offset_left + nr.size.x / sc.x
+		roll_box.offset_top = (gr.position.y - o.y) / sc.y - 8.0
+		roll_box.offset_bottom = roll_box.offset_top
+		roll_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		roll_box.custom_minimum_size = Vector2(nr.size.x / sc.x, 0)
 		return
 	var w = (logical.x - 20.0) if mobile else 420.0
 	roll_box.anchor_left = 0.5
@@ -959,11 +978,141 @@ func roll_legend(e, compact):
 		nodes[r[0]] = h
 	return [lv, nodes]
 
-func roll_card(title, entries, text):
+func ignore_mouse(n):
+	# Every node in a roll card lets clicks through to the game underneath.
+	if n is Control:
+		n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for c in n.get_children():
+		ignore_mouse(c)
+
+func clear_rolls():
 	if roll_box == null or not is_instance_valid(roll_box):
 		return
+	for c in roll_box.get_children():
+		roll_box.remove_child(c)
+		c.queue_free()
+
+func roll_card_slim(title, entries, text):
+	# The quiet version for busy play: one thin bar per roll, the number, a line of result. Never blocks a click.
+	clear_rolls()
+	position_rolls(true)
+	# The screen rebuilds after the action; place the bar once the new sidebar has its size.
+	g.get_tree().process_frame.connect(func(): position_rolls(true), CONNECT_ONE_SHOT)
+	g.get_tree().create_timer(0.05).timeout.connect(func(): position_rolls(true))
+	var cw = roll_box.custom_minimum_size.x
+	var p = PanelContainer.new()
+	var st = k.sbox(Color(0.05, 0.065, 0.09, 0.93), k.LINE2, 8, 1, 8)
+	st.shadow_color = Color(0, 0, 0, 0.4)
+	st.shadow_size = 6
+	p.add_theme_stylebox_override("panel", st)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var v = k.vbox(4)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(v)
+	var many = entries.size() >= 4
+	var bar_h = 6.0 if many else 10.0
+	var label_w = 52.0 if entries.size() > 1 else 0.0
+	var bar_w = cw - 18.0 - label_w - (6.0 if label_w > 0.0 else 0.0)
+	var delay = 0.0
+	var best_special = false
+	var head = k.hbox(6)
+	head.add_child(k.label(str(title), "xs", k.GOLD))
+	var hr = k.label("", "xs", k.TEXT2)
+	hr.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	k.expand(hr)
+	head.add_child(hr)
+	v.add_child(head)
+	if entries.size() == 1:
+		hr.text = "%s%% to hit" % g.luck.pct_text(float(entries[0]["chance"]))
+	for e in entries:
+		var row = k.hbox(6)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if label_w > 0.0:
+			var nl = k.label(str(e.get("label", "")), "xs", k.TEXT3)
+			nl.custom_minimum_size = Vector2(label_w, 0)
+			nl.clip_text = true
+			row.add_child(nl)
+		var bar = Control.new()
+		bar.custom_minimum_size = Vector2(bar_w, bar_h)
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var bg = ColorRect.new()
+		bg.color = ROLL_MISS
+		bg.size = Vector2(bar_w, bar_h)
+		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.add_child(bg)
+		var bands = roll_bands(e)
+		var lo = 0.0
+		for b in bands:
+			var up = clamp(float(b[1]), 0.0, 1.0)
+			if up <= lo:
+				continue
+			var z = ColorRect.new()
+			z.color = band_color(b[2]).darkened(0.3)
+			z.position = Vector2(bar_w * lo, 0)
+			z.size = Vector2(max(3.0, bar_w * (up - lo)), bar_h)
+			z.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			bar.add_child(z)
+			lo = up
+		var marker = ColorRect.new()
+		marker.color = Color(1, 1, 1)
+		marker.size = Vector2(2, bar_h + 4)
+		marker.position = Vector2(0, -2)
+		marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.add_child(marker)
+		row.add_child(bar)
+		v.add_child(row)
+		var hit = e["hit"]
+		var band = g.luck.band_of(e["roll"], bands) if hit else null
+		var col = band_color(band[2]) if band != null else k.RED
+		var special = band != null and str(band[2]) in ["gold", "purple"] and bands.size() > 1
+		if special:
+			best_special = true
+		var word = (("HIT" if e.get("bands", []).size() == 0 else str(band[0]).to_upper()) if hit else "MISS")
+		var rv = g.luck.roll_text(e["roll"])
+		var final_x = clamp(bar_w * float(e["roll"]), 0.0, bar_w - 2.0)
+		var tw = marker.create_tween()
+		tw.tween_interval(delay)
+		tw.tween_property(marker, "position:x", bar_w * 0.85, 0.18).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(marker, "position:x", final_x, 0.32).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+		var single = entries.size() == 1
+		tw.tween_callback(func():
+			if not is_instance_valid(marker):
+				return
+			marker.color = col.lightened(0.3)
+			if single and is_instance_valid(hr):
+				hr.text = "%s · %s" % [rv, word]
+				hr.add_theme_color_override("font_color", col))
+		delay += 0.1 if many else 0.2
+	var res = k.label(str(text), "xs", k.TEXT, true)
+	res.modulate = Color(1, 1, 1, 0)
+	v.add_child(res)
+	ignore_mouse(p)
+	roll_box.add_child(p)
+	p.modulate = Color(1, 1, 1, 0)
+	var ftw = p.create_tween()
+	ftw.tween_property(p, "modulate", Color(1, 1, 1, 1), 0.08)
+	ftw.tween_interval(delay + 0.5)
+	ftw.tween_callback(func():
+		if is_instance_valid(res):
+			res.modulate = Color(1, 1, 1, 1)
+		var any_hit = false
+		for e2 in entries:
+			if e2["hit"]:
+				any_hit = true
+		g.play_sfx(("rare" if best_special else "coin") if any_hit else "fail"))
+	ftw.tween_interval(2.6 if not best_special else 3.6)
+	ftw.tween_property(p, "modulate", Color(1, 1, 1, 0), 0.3)
+	ftw.tween_callback(p.queue_free)
+
+func roll_card(title, entries, text, slim = false):
+	if roll_box == null or not is_instance_valid(roll_box):
+		return
+	if slim:
+		roll_card_slim(title, entries, text)
+		return
 	position_rolls()
-	while roll_box.get_child_count() >= 2:
+	while roll_box.get_child_count() >= 1:
 		var old = roll_box.get_child(0)
 		roll_box.remove_child(old)
 		old.queue_free()
@@ -973,8 +1122,8 @@ func roll_card(title, entries, text):
 	st.shadow_color = Color(0, 0, 0, 0.5)
 	st.shadow_size = 12
 	p.add_theme_stylebox_override("panel", st)
-	p.mouse_filter = Control.MOUSE_FILTER_STOP
-	p.gui_input.connect(_toast_input.bind(p))
+	# Clicks go straight through: the card never gets between you and the next buy.
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var v = k.vbox(8)
 	p.add_child(v)
 	var th = k.hbox(8)
@@ -1131,6 +1280,7 @@ func roll_card(title, entries, text):
 		v.add_child(shared_legend[0])
 		legend_rows += shared_legend[1].size()
 	v.add_child(result_lbl)
+	ignore_mouse(p)
 	roll_box.add_child(p)
 	p.modulate = Color(1, 1, 1, 0)
 	var ftw = p.create_tween()

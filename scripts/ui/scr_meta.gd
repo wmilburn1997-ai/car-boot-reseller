@@ -371,9 +371,19 @@ func build_settings(parent):
 	v.add_child(toggle_row("Sound effects", g.sfx_enabled, func(on):
 		g.sfx_enabled = on
 		g.save_settings()))
-	v.add_child(toggle_row("Show the roll for every gamble", g.show_rolls, func(on):
-		g.show_rolls = on
-		g.save_settings()))
+	var rm = k.hbox(6)
+	var rml = k.label("Roll cards", "m", k.TEXT2)
+	k.expand(rml)
+	rm.add_child(rml)
+	for o in [["auto", "Auto"], ["full", "Full"], ["slim", "Slim"], ["off", "Off"]]:
+		var key = o[0]
+		rm.add_child(k.button(o[1], "tab_on" if g.roll_mode == key else "ghost", func():
+			g.roll_mode = key
+			g.show_rolls = key != "off"
+			g.save_settings()
+			g.call_deferred("_ui_rerender"), "", "s"))
+	v.add_child(rm)
+	v.add_child(k.label("Auto shows the full key the first few times you make each kind of roll, then a slim bar. Clicks always go straight through.", "xs", k.TEXT3, true))
 	v.add_child(toggle_row("Also list every dice roll as a toast", g.show_rng_toasts, func(on):
 		g.show_rng_toasts = on
 		g.save_settings()))

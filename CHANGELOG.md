@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.2: "Out of the way"
+
+- Roll cards and toasts are click-through: nothing pops up between you and the next action.
+- Slim roll bar: after three of each kind of roll (Auto mode), the card becomes a thin bar with the zones, the roll, and one line of result, quicker to fade. On PC it docks in the sidebar above the goal card; on phones it sits under the HUD.
+- Settings → Roll cards: Auto / Full / Slim / Off (replaces the on/off toggle; old "off" carries over).
+- PC toasts: max two at a time, 2.8s.
+
 ## 0.13.1: "Rare rolls"
 
 - **A key on every roll card.** Each zone of the bar is coloured, edge-numbered and explained before the marker lands ("Under 2 · Jackpot 2% · every hidden detail on it, and your fee back"). The zone and key row you land in light up; the rest dim.
